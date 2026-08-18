@@ -74,3 +74,81 @@ the next sync; if a rule you are adding applies to every game, it belongs in
 bgp-admin at `templates/agent-docs/`, so ask before adding it.
 
 <!-- BGP-ADMIN:END -->
+
+## Project-specific notes
+
+### Stack
+
+- Vite + TypeScript + Phaser 3 (Arcade Physics). Pinned to Phaser `^3.80` and
+  TypeScript `^5.6` deliberately — `bun add phaser`/`typescript` will happily
+  pull Phaser 4 / TS 7, which are newer majors with different APIs. Don't
+  upgrade across those majors without deliberately re-verifying the whole
+  input/physics/tilemap surface.
+- `bun install`, `bun run dev` (Vite dev server), `bun run build` (runs
+  `tsc --noEmit` then `vite build` to `dist/` — matches what
+  `preview-deploy.yml` expects), `bun run preview`.
+- All pixel art is generated procedurally at boot (`src/pixelart/`) from
+  small palette-indexed grids drawn with `PixelCanvas.ts` helpers — there are
+  no binary image assets in the repo. `BootScene` registers every texture
+  before any other scene runs. If you add a new sprite/tile/prop, register it
+  there.
+
+### Architecture (for adding apparitions 2-18)
+
+- `src/data/missions/` — `Mission` interface + one file per implemented
+  mission (only `mission01.ts` exists) + `missionRegistry.ts` holding all 18
+  slots (2-18 are typed placeholders with `implemented: false`). Dates for
+  missions 4-17 were never specified in the brief (only 1, 2, 3, 18 were) —
+  left `dateKey: null` rather than invented; fill in as content arrives.
+  Don't invent them.
+- `src/gameplay/MissionManager.ts` — singleton tracking the *live* objective
+  index for whichever mission is active; only completion persists to
+  `SaveData`. In-progress state resets on reload by design (missions are
+  short).
+- `src/core/i18n/` + `src/data/locales/` — centralized localization, 12
+  languages. Only `en.ts` is fully populated; the other 11 are empty
+  `PartialLocaleDict` stubs that fall back to English key-by-key. Always
+  reference strings via `K.SOMETHING` from `core/i18n/keys.ts`, never inline.
+- `src/data/npc/`, `src/data/world/locations.ts` — NPC and location
+  registries. Locations other than `cachot`/`grotto` have
+  `interactableFromMission: null` (locked placeholder — walking up shows a
+  "not yet part of the story" toast via `Toast.ts`).
+- `src/gameplay/DialogueBox.ts` — single-speaker portrait + typewriter
+  (35ms/char), tap/click/Space/Enter to skip-then-advance. Portraits are
+  cropped from the same character sprite grid, keyed
+  `portrait_<characterId>_<expression>` (`portraits.ts`) — only `neutral`
+  exists today; adding expressions is just adding more grids there.
+
+### Known Phaser gotchas hit while building this
+
+- **Static body `setSize()` + `refreshBody()` is a trap.** Calling
+  `staticImage.body.setSize(w, h)` and then `staticImage.refreshBody()`
+  silently *undoes* the resize — `refreshBody()` re-derives the body from the
+  game object's current texture/frame, wiping out a manual `setSize`. Call
+  `setSize()` and stop; don't call `refreshBody()` afterwards. (This caused
+  every shrunk collider in `OverworldScene`/`MassabielleScene` to silently
+  stay at full texture size, which made the player appear to "get stuck"
+  short of where any collider should have been.)
+- **Y-depth sorting**: every world sprite (player, NPCs, trees, buildings)
+  uses `depthForY()` from `gameplay/utils.ts` with the *same* base
+  (`DEPTH.ACTORS`) so depth ordering reflects vertical position consistently.
+  The one deliberate exception is the Lady at the Massabielle grotto niche —
+  she's pinned to `DEPTH.ACTORS + 0.5` (see `MassabielleScene.ts`) so she
+  always renders in front of the grotto rock face regardless of Y-sort, since
+  the niche sits visually *on* the rock, not behind it.
+- Water/river tiles are not automatically solid — each scene that has a
+  river adds an explicit invisible blocker (`gameplay/utils.ts#createBlocker`)
+  over the water tiles. If you add a new river/water area, add its blocker
+  too or the player will walk on water.
+- `Phaser.Input.Keyboard.JustDown()` needs the key to still read `isDown` at
+  check time — a same-tick synthetic down+up (e.g. in an automated test) is
+  invisible to it. Not a game bug, just a testing footgun; hold keys down
+  across at least one frame when scripting input.
+
+### Verification
+
+There's no automated test suite yet (`Do not overbuild` applied to tooling
+too). Verify manually: `bun run build` for type-check + bundle, then
+`bun run dev` and click through in a real browser. Phaser games are easy to
+get into a state where physics silently no-ops (see the static body gotcha
+above) without throwing — a build passing is not proof the game is playable.
