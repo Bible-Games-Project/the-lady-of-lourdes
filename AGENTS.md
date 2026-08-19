@@ -230,6 +230,49 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   (`SHADOW_KEY`) as a child image synced each frame via
   `NpcActor#syncShadow()` / done inline in `Player.ts`.
 
+### Art direction: in transition, two pipelines exist side by side
+
+The maintainer rejected the procedural pixel-art look (`src/pixelart/`) and
+wants a soft, illustrated/chibi style instead, using their own reference
+images as the source of truth. This is **not yet approved for the real
+game** — do not port CachotScene/OverworldScene/etc. to it until told to.
+
+- `src/assets/realArt.ts` + `src/assets/characters/*.png` — the real-image
+  pipeline. The three PNGs are the maintainer's exact supplied images
+  (Bernadette full-body, Bernadette's face, the Lady of Lourdes), recovered
+  byte-for-byte from the session transcript, trimmed of transparent margin,
+  downscaled, nothing redrawn. Loaded via `Phaser.Scene#load.image()` and
+  imported as ES modules so Vite inlines them as base64 (`vite.config.ts`
+  sets `assetsInlineLimit: Infinity` for this) — no separate asset files to
+  route at runtime, works the same in dev, build, and a spliced single-file
+  Artifact preview.
+- **These textures need `setFilter(Phaser.Textures.FilterMode.LINEAR)`
+  explicitly.** The game's Phaser config sets `pixelArt: true` globally
+  (nearest-neighbor, correct for the procedural grid textures) — apply
+  linear filtering per-texture to any illustrated image or it scales jagged.
+  See `VisualTestScene.ts#create()`.
+- `src/scenes/VisualTestScene.ts` — an isolated sandbox for evaluating the
+  new direction, wired into `main.ts` but only reachable via `?visualtest`
+  in the URL (checked in `BootScene.ts`) or `window.__FORCE_VISUALTEST__`
+  (set by the standalone preview wrapper only, never in the real game).
+  Normal play never touches it. Only Bernadette, her dialogue portrait, and
+  the Lady use real art; everything else (Jeanne, the sister, trees, grass,
+  path, rocks, river, a house, the grotto shell) is a plain gray outline box
+  with a text label — deliberately not styled to look like anything, so it
+  can never be mistaken for finished art. **Do not "improve" those boxes
+  into coded/procedural approximations of the illustrated look** — the
+  maintainer explicitly rejected that as equivalent to what they're moving
+  away from. Replace a box only when a real matching asset exists.
+- No image-generation tool is available in this environment (checked via
+  ToolSearch and SearchMcpRegistry). The maintainer knows this. Missing
+  assets — Jeanne, the sister, mother, father, Peyramale, Jacomet,
+  villagers, trees, grass, dirt paths, rocks, the river, town/Cachot
+  buildings, the grotto rock face — need to be supplied by the maintainer or
+  produced some other way outside this session, in the same soft/pastel
+  illustrated style as the three reference images (see git history around
+  the commit that added `VisualTestScene` for the exact style notes given
+  to the maintainer). Don't invent them.
+
 ### Verification
 
 There's no automated test suite yet (`Do not overbuild` applied to tooling

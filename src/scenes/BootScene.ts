@@ -33,6 +33,15 @@ export class BootScene extends Phaser.Scene {
 
     AudioManager.init(this.sound);
 
+    // Art-direction review sandbox — see VisualTestScene.ts. Never part of the normal flow.
+    // The window flag exists only so a standalone preview build can force this without a URL
+    // it doesn't control (e.g. an Artifact preview page) — it is never set in the real game.
+    const forceVisualTest = Boolean((window as unknown as { __FORCE_VISUALTEST__?: boolean }).__FORCE_VISUALTEST__);
+    if (forceVisualTest || new URLSearchParams(window.location.search).has('visualtest')) {
+      this.scene.start('VisualTestScene');
+      return;
+    }
+
     const save = SaveData.get();
     if (save.languageConfirmed) {
       Localization.setLanguage(save.language);

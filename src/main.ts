@@ -9,6 +9,7 @@ import { ApparitionJourneyScene } from './scenes/ApparitionJourneyScene';
 import { OverworldScene } from './scenes/OverworldScene';
 import { CachotScene } from './scenes/CachotScene';
 import { MissionCompleteScene } from './scenes/MissionCompleteScene';
+import { VisualTestScene } from './scenes/VisualTestScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -35,6 +36,9 @@ const config: Phaser.Types.Core.GameConfig = {
     OverworldScene,
     CachotScene,
     MissionCompleteScene,
+    // Sandbox for the new art-direction review only — see VisualTestScene.ts. Reached solely
+    // via the ?visualtest URL flag in BootScene; never part of the normal game flow.
+    VisualTestScene,
   ],
 };
 
