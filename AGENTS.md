@@ -135,6 +135,32 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   `tasksPanel.isOpen() || topBar.isBlocking() || dialogueBox.isActive()` —
   copy that pattern exactly when adding a new gameplay scene, don't
   reinvent it.
+- `src/scenes/OverworldScene.ts` is the **entire** outdoor world: Le Cachot's
+  exterior, the town, the Gave de Pau (an L-shaped river — a horizontal arm
+  forms the town boundary with a bridge, a vertical arm beside the grotto is
+  never crossable on foot), the open field, the grotto, and the first
+  apparition's whole phase machine (`'explore'|'crossing'|'hush'|'apparition'
+  |'praying'|'ending'`), all as one continuous scene with zero internal scene
+  transitions. There is deliberately no separate "Massabielle" scene — the
+  player walks there. Only Le Cachot's *interior* (`CachotScene`) is a
+  separate scene, entered/exited via its door. Keep it this way; a second
+  outdoor scene has been explicitly rejected twice.
+- `src/gameplay/LeaderNpc.ts` drives an NPC that leads the player along fixed
+  waypoints (used for Jeanne after the "meet Jeanne" dialogue in
+  `OverworldScene`), as opposed to `gameplay/Follower.ts` which trails behind
+  the player (used for the younger sister, and for Jeanne again once the
+  scripted river-crossing cutscene takes over). `LeaderNpc` stops and waits
+  when the player falls past `maxDistance`, resumes once the player is back
+  within `resumeDistance`, and stops for good on its last waypoint — don't
+  merge this back into `Follower.ts`, the two have opposite semantics (led
+  vs. trailed) and reuse would need constant mode-branching.
+- `src/gameplay/RosaryUI.ts` lays the ten beads out on a circular/oval
+  parametric curve (`Math.cos`/`sin` around a center point) with a gap at the
+  bottom where the cross hangs, screen-fixed and centered — not a straight
+  line. It draws a translucent dark backdrop ellipse behind the beads first;
+  without it the dim (unprayed) bead color is nearly invisible against
+  light terrain (grass/dirt), since pixel-art bead sprites have no outline of
+  their own at that size.
 
 ### Known Phaser gotchas hit while building this
 
@@ -143,16 +169,26 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   silently *undoes* the resize — `refreshBody()` re-derives the body from the
   game object's current texture/frame, wiping out a manual `setSize`. Call
   `setSize()` and stop; don't call `refreshBody()` afterwards. (This caused
-  every shrunk collider in `OverworldScene`/`MassabielleScene` to silently
-  stay at full texture size, which made the player appear to "get stuck"
-  short of where any collider should have been.)
+  every shrunk collider in `OverworldScene` to silently stay at full texture
+  size, which made the player appear to "get stuck" short of where any
+  collider should have been.)
+- **`Camera.fadeOut()`/`fadeIn()` always force-restart the effect**, even if
+  one is already running (it's documented behavior — "forces the fade to
+  start, regardless of existing fades"). A door/trigger check that calls
+  `fadeToScene()` from every frame the player stands in a trigger zone (the
+  natural way to write it) will therefore reset the fade to 0% every frame
+  and it will *never* complete — the player gets stuck unable to leave.
+  `gameplay/transitions.ts#fadeToScene()` now guards against this itself
+  (`if (cameras.main.fadeEffect.isRunning) return;`) — call sites don't need
+  to add their own one-shot flag, but don't reintroduce a raw
+  `camera.fadeOut()` call elsewhere without the same guard.
 - **Y-depth sorting**: every world sprite (player, NPCs, trees, buildings)
   uses `depthForY()` from `gameplay/utils.ts` with the *same* base
   (`DEPTH.ACTORS`) so depth ordering reflects vertical position consistently.
-  The one deliberate exception is the Lady at the Massabielle grotto niche —
-  she's pinned to `DEPTH.ACTORS + 0.5` (see `MassabielleScene.ts`) so she
-  always renders in front of the grotto rock face regardless of Y-sort, since
-  the niche sits visually *on* the rock, not behind it.
+  The one deliberate exception is the Lady at the grotto niche — she's pinned
+  to `DEPTH.ACTORS + 0.5` (see `OverworldScene.ts`) so she always renders in
+  front of the grotto rock face regardless of Y-sort, since the niche sits
+  visually *on* the rock, not behind it.
 - Water/river tiles are not automatically solid — each scene that has a
   river adds an explicit invisible blocker (`gameplay/utils.ts#createBlocker`)
   over the water tiles. If you add a new river/water area, add its blocker
@@ -168,9 +204,9 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   `DIALOGUE` or above or it renders *underneath* the joystick/HUD — this
   exact bug happened once (dialogue portrait hidden behind the touch
   joystick) and was the reason for this ordering. A full-screen cinematic
-  fade/blackout (see `MassabielleScene`'s ending) must use `FADE` and put its
-  own captions at `FADE + 1`, not `UI` — otherwise the HUD shows through the
-  "blackout."
+  fade/blackout (see `OverworldScene`'s apparition ending) must use `FADE`
+  and put its own captions at `FADE + 1`, not `UI` — otherwise the HUD shows
+  through the "blackout."
 - **Blurry text root cause**: the game renders at a small logical resolution
   (480x270) that gets scaled up to fill the real viewport; canvas-rendered
   text is anti-aliased at any size, and nearest-neighbor-upscaling an
@@ -193,17 +229,6 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   when adding a character. Every character gets a small pixel shadow
   (`SHADOW_KEY`) as a child image synced each frame via
   `NpcActor#syncShadow()` / done inline in `Player.ts`.
-
-### Known deferred work
-
-The maintainer asked (separately from the character-art pass) for the
-Overworld and Massabielle scenes to be merged into one continuous map with a
-larger, L-shaped river and the grotto moved north-west, so Massabielle is no
-longer its own scene transition. That merge was **deferred** in favor of the
-higher-priority character/portrait art overhaul and has not been started —
-`OverworldScene.ts` and `MassabielleScene.ts` are still two separate scenes
-with the original (smaller, straight-river) layout. Don't assume it's done;
-check with the maintainer before starting it, since it's a large rewrite.
 
 ### Verification
 

@@ -14,7 +14,6 @@ export const SCENE_KEYS = {
   JOURNEY: 'ApparitionJourneyScene',
   OVERWORLD: 'OverworldScene',
   CACHOT: 'CachotScene',
-  MASSABIELLE: 'MassabielleScene',
   MISSION_COMPLETE: 'MissionCompleteScene',
 } as const;
 

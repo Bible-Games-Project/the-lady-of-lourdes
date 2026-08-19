@@ -25,8 +25,8 @@ function bead(lit: boolean) {
   fillRect(grid, 2, 7, 5, 7, 'B');
   setPixel(grid, 2, 2, 'H');
   setPixel(grid, 3, 2, 'H');
-  const base = lit ? '#c9a24a' : '#5f4a2e';
-  const hi = lit ? '#f2e0a0' : '#7a6242';
+  const base = lit ? '#c9a24a' : '#9c8158';
+  const hi = lit ? '#f2e0a0' : '#c1a578';
   return { grid, palette: { B: base, H: hi } };
 }
 

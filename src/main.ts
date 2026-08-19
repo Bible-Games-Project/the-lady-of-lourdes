@@ -8,7 +8,6 @@ import { MoreGamesScene } from './scenes/MoreGamesScene';
 import { ApparitionJourneyScene } from './scenes/ApparitionJourneyScene';
 import { OverworldScene } from './scenes/OverworldScene';
 import { CachotScene } from './scenes/CachotScene';
-import { MassabielleScene } from './scenes/MassabielleScene';
 import { MissionCompleteScene } from './scenes/MissionCompleteScene';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -35,7 +34,6 @@ const config: Phaser.Types.Core.GameConfig = {
     ApparitionJourneyScene,
     OverworldScene,
     CachotScene,
-    MassabielleScene,
     MissionCompleteScene,
   ],
 };

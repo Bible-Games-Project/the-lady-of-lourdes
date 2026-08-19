@@ -87,9 +87,9 @@ export const en: LocaleDict = {
   [K.DIALOGUE_MOTHER_M1_1]: 'Bernadette, take your sister and go gather some firewood. We have none left.',
   [K.DIALOGUE_MOTHER_M1_2]: 'Be careful, and stay together.',
   [K.DIALOGUE_BERNADETTE_M1_1]: 'Yes, Mother. We will go.',
-  [K.DIALOGUE_FRIEND_M1_1]: 'There you are! I know where we can find firewood, near Massabielle.',
-  [K.DIALOGUE_BERNADETTE_M1_2]: 'Come, follow me to Massabielle.',
+  [K.DIALOGUE_FRIEND_M1_1]: 'There you are! I know where we can find firewood, near Massabielle. Follow me.',
   [K.DIALOGUE_SISTER_M1_1]: "I'm coming too!",
+  [K.DIALOGUE_BERNADETTE_M1_2]: 'Lead the way.',
 
   [K.NARRATION_CACHOT_INTRO]: 'Le Cachot, Lourdes. Winter, 1858.',
   [K.NARRATION_RIVER_STAY_BEHIND]:
