@@ -8,12 +8,14 @@ import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { TouchControls } from '../gameplay/TouchControls';
 import { DialogueBox } from '../gameplay/DialogueBox';
-import { ObjectiveHud } from '../gameplay/ObjectiveHud';
+import { TasksPanel } from '../gameplay/TasksPanel';
+import { GameplayTopBar } from '../gameplay/GameplayTopBar';
 import { InteractionPrompt } from '../gameplay/InteractionPrompt';
 import { MissionManager } from '../gameplay/MissionManager';
 import { mission01, mission01Dialogue } from '../data/missions/mission01';
 import { isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
+import { textStyle } from '../ui/text';
 
 const INTERACT_RADIUS = 26;
 
@@ -21,7 +23,8 @@ export class CachotScene extends Phaser.Scene {
   private player!: Player;
   private touch!: TouchControls;
   private dialogueBox!: DialogueBox;
-  private objectiveHud!: ObjectiveHud;
+  private tasksPanel!: TasksPanel;
+  private topBar!: GameplayTopBar;
   private interactionPrompt!: InteractionPrompt;
   private mother!: NpcActor;
   private motherTalkedTo = false;
@@ -96,28 +99,25 @@ export class CachotScene extends Phaser.Scene {
     this.mother.setDepth(DEPTH.ACTORS);
 
     this.dialogueBox = new DialogueBox(this);
-    this.objectiveHud = new ObjectiveHud(this);
+    this.tasksPanel = new TasksPanel(this);
+    this.topBar = new GameplayTopBar(this);
     this.interactionPrompt = new InteractionPrompt(this);
-    this.objectiveHud.setText(MissionManager.getObjectiveText());
 
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
 
     this.add
-      .text(GAME_WIDTH / 2, offsetY - 12, Localization.t(K.NARRATION_CACHOT_INTRO), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '11px',
-        color: '#c9beac',
-      })
+      .text(GAME_WIDTH / 2, offsetY - 12, Localization.t(K.NARRATION_CACHOT_INTRO), textStyle({ fontSize: '11px', color: '#c9beac' }))
       .setOrigin(0.5)
       .setDepth(DEPTH.UI);
   }
 
   update(time: number): void {
-    this.player.setLocked(this.dialogueBox.isActive());
+    const blocked = this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
+    this.player.setLocked(blocked);
     this.player.update(time);
 
-    if (this.dialogueBox.isActive()) {
+    if (blocked) {
       this.interactionPrompt.hide();
       return;
     }
@@ -148,7 +148,7 @@ export class CachotScene extends Phaser.Scene {
       this.dialogueBox.start(mission01Dialogue.motherIntro, () => {
         this.motherTalkedTo = true;
         MissionManager.advanceObjective();
-        this.objectiveHud.setText(MissionManager.getObjectiveText());
+        this.tasksPanel.notifyNewObjective();
       });
     }
   }

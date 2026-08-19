@@ -1,15 +1,16 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_WIDTH } from '../core/constants';
 import { tweenPromise, wait } from './async';
+import { textStyle } from '../ui/text';
 
 /** A centered fade-in/fade-out caption line, used for narration beats and title cards. */
 export class Caption {
   private scene: Phaser.Scene;
   private text: Phaser.GameObjects.Text;
 
-  constructor(scene: Phaser.Scene, y: number, style: Phaser.Types.GameObjects.Text.TextStyle, depth = DEPTH.UI) {
+  constructor(scene: Phaser.Scene, y: number, style: Phaser.Types.GameObjects.Text.TextStyle, depth: number = DEPTH.UI) {
     this.scene = scene;
-    this.text = scene.add.text(GAME_WIDTH / 2, y, '', style);
+    this.text = scene.add.text(GAME_WIDTH / 2, y, '', textStyle(style));
     this.text.setOrigin(0.5);
     this.text.setScrollFactor(0);
     this.text.setDepth(depth);

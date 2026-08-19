@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../core/constants';
-import { textureKeyFor } from '../pixelart/characters';
-import { applyWalkBob, updateFacingTexture, type Facing } from './spriteFacing';
+import { SHADOW_KEY, textureKeyFor } from '../pixelart/characters';
+import { updateFacingAnimation, type Facing } from './spriteFacing';
 import { depthForY } from './utils';
 import type { TouchControls } from './TouchControls';
 
@@ -16,6 +16,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private keyD: Phaser.Input.Keyboard.Key;
   private touch: TouchControls | null;
   private locked = false;
+  private shadow: Phaser.GameObjects.Image;
+  private breathTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number, touch: TouchControls | null = null) {
     super(scene, x, y, textureKeyFor('bernadette', 'down'));
@@ -25,8 +27,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1);
     this.setCollideWorldBounds(true);
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(10, 6);
-    body.setOffset(3, 18);
+    body.setSize(10, 7);
+    body.setOffset(5, 20);
+
+    this.shadow = scene.add.image(x, y - 1, SHADOW_KEY);
+    this.shadow.setOrigin(0.5, 0.5);
 
     const keyboard = scene.input.keyboard!;
     this.cursors = keyboard.createCursorKeys();
@@ -46,12 +51,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.locked;
   }
 
-  update(time: number): void {
-    this.setDepth(depthForY(this.y, DEPTH.ACTORS));
+  update(_time: number): void {
+    const depth = depthForY(this.y, DEPTH.ACTORS);
+    this.setDepth(depth);
+    this.shadow.setPosition(this.x, this.y - 1);
+    this.shadow.setDepth(depth - 0.0005);
+
     const body = this.body as Phaser.Physics.Arcade.Body;
     if (this.locked) {
       body.setVelocity(0, 0);
-      applyWalkBob(this, false, time);
+      this.updateBreathing(false);
       return;
     }
 
@@ -71,10 +80,36 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (moving) {
       const len = Math.hypot(vx, vy) || 1;
       body.setVelocity((vx / len) * SPEED, (vy / len) * SPEED);
-      this.facing = updateFacingTexture(this, 'bernadette', vx, vy, this.facing);
+      this.facing = updateFacingAnimation(this, 'bernadette', vx, vy, this.facing, true);
     } else {
       body.setVelocity(0, 0);
+      updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false);
     }
-    applyWalkBob(this, moving, time);
+    this.updateBreathing(!moving);
+  }
+
+  private updateBreathing(idle: boolean): void {
+    if (idle) {
+      if (this.breathTween) return;
+      this.setScale(1, 1);
+      this.breathTween = this.scene.tweens.add({
+        targets: this,
+        scaleY: 1.03,
+        duration: 1500,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    } else if (this.breathTween) {
+      this.breathTween.stop();
+      this.breathTween = null;
+      this.setScale(1, 1);
+    }
+  }
+
+  destroy(fromScene?: boolean): void {
+    this.breathTween?.stop();
+    this.shadow.destroy();
+    super.destroy(fromScene);
   }
 }

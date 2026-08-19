@@ -5,6 +5,8 @@ import { NPCS } from '../data/npc/npcRegistry';
 import type { DialogueSequence } from '../data/dialogue/types';
 import { portraitKeyFor } from '../pixelart/portraits';
 import { UI_KEYS, UI_PANEL_SLICE } from '../pixelart/ui';
+import { textStyle } from '../ui/text';
+import { PortraitAnimator } from './PortraitAnimator';
 
 const CHAR_DELAY_MS = 35;
 
@@ -17,6 +19,7 @@ export class DialogueBox {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
   private portrait: Phaser.GameObjects.Image;
+  private portraitAnimator: PortraitAnimator;
   private nameText: Phaser.GameObjects.Text;
   private bodyText: Phaser.GameObjects.Text;
   private prompt: Phaser.GameObjects.Text;
@@ -51,28 +54,29 @@ export class DialogueBox {
     );
 
     this.portrait = scene.add.image(-boxWidth / 2 + 40, 0, portraitKeyFor('bernadette'));
-    this.portrait.setDisplaySize(56, 47);
+    this.portrait.setDisplaySize(58, 67);
+    this.portraitAnimator = new PortraitAnimator(scene, this.portrait);
 
-    this.nameText = scene.add.text(-boxWidth / 2 + 76, -boxHeight / 2 + 10, '', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '13px',
-      color: '#5a4d3a',
-      fontStyle: 'bold',
-    });
+    this.nameText = scene.add.text(
+      -boxWidth / 2 + 76,
+      -boxHeight / 2 + 10,
+      '',
+      textStyle({ fontSize: '13px', color: '#5a4d3a', fontStyle: 'bold' }),
+    );
 
-    this.bodyText = scene.add.text(-boxWidth / 2 + 76, -boxHeight / 2 + 28, '', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '12px',
-      color: '#3a3226',
-      wordWrap: { width: boxWidth - 92 },
-      lineSpacing: 4,
-    });
+    this.bodyText = scene.add.text(
+      -boxWidth / 2 + 76,
+      -boxHeight / 2 + 28,
+      '',
+      textStyle({ fontSize: '13px', color: '#3a3226', wordWrap: { width: boxWidth - 92 }, lineSpacing: 4 }),
+    );
 
-    this.prompt = scene.add.text(boxWidth / 2 - 18, boxHeight / 2 - 18, '▼', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '12px',
-      color: '#5a4d3a',
-    });
+    this.prompt = scene.add.text(
+      boxWidth / 2 - 18,
+      boxHeight / 2 - 18,
+      '▼',
+      textStyle({ fontSize: '12px', color: '#5a4d3a' }),
+    );
     this.prompt.setVisible(false);
 
     this.container = scene.add.container(x, y, [panel, this.portrait, this.nameText, this.bodyText, this.prompt]);
@@ -83,6 +87,7 @@ export class DialogueBox {
     scene.input.on('pointerdown', () => this.advance());
     scene.input.keyboard?.on('keydown-SPACE', () => this.advance());
     scene.input.keyboard?.on('keydown-ENTER', () => this.advance());
+    scene.input.keyboard?.on('keydown-E', () => this.advance());
   }
 
   start(sequence: DialogueSequence, onComplete?: () => void): void {
@@ -115,7 +120,7 @@ export class DialogueBox {
     }
     const line = this.sequence[this.lineIndex];
     const npc = NPCS[line.speaker];
-    this.portrait.setTexture(portraitKeyFor(line.speaker));
+    this.portraitAnimator.setSpeaker(line.speaker);
     this.nameText.setText(npc.nameKey ? Localization.t(npc.nameKey) : '');
     this.fullText = Localization.t(line.textKey);
     this.startTyping();
@@ -125,6 +130,7 @@ export class DialogueBox {
     this.bodyText.setText('');
     this.typing = true;
     this.prompt.setVisible(false);
+    this.portraitAnimator.startTalking();
     let revealed = 0;
     this.typeTimer?.remove();
     this.typeTimer = this.scene.time.addEvent({
@@ -146,6 +152,7 @@ export class DialogueBox {
     this.bodyText.setText(this.fullText);
     this.typing = false;
     this.prompt.setVisible(true);
+    this.portraitAnimator.stopTalking();
   }
 
   private close(): void {
@@ -153,6 +160,7 @@ export class DialogueBox {
     this.container.setVisible(false);
     this.typeTimer?.remove();
     this.typeTimer = null;
+    this.portraitAnimator.destroy();
     const callback = this.onComplete;
     this.onComplete = null;
     callback?.();
@@ -160,6 +168,7 @@ export class DialogueBox {
 
   destroy(): void {
     this.typeTimer?.remove();
+    this.portraitAnimator.destroy();
     this.container.destroy();
   }
 }

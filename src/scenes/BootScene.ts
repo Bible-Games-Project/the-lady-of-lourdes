@@ -4,13 +4,15 @@ import { SaveData } from '../core/SaveData';
 import { Localization } from '../core/i18n/Localization';
 import { AudioManager } from '../core/AudioManager';
 import { detectDeviceLanguage } from '../core/i18n/languages';
-import { registerCharacterTextures } from '../pixelart/characters';
+import { registerCharacterTextures, registerCharacterAnimations } from '../pixelart/characters';
 import { registerPortraitTextures } from '../pixelart/portraits';
 import { registerTileset } from '../pixelart/tiles';
 import { registerProps } from '../pixelart/props';
 import { registerInteriorProps } from '../pixelart/interiorProps';
 import { registerUiTextures } from '../pixelart/ui';
 import { registerHomeIllustration } from '../pixelart/homeIllustration';
+import { registerJourneyIcons } from '../pixelart/journeyIcons';
+import { registerRosaryTextures } from '../pixelart/rosary';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -19,12 +21,15 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     registerCharacterTextures(this);
+    registerCharacterAnimations(this);
     registerPortraitTextures(this);
     registerTileset(this);
     registerProps(this);
     registerInteriorProps(this);
     registerUiTextures(this);
     registerHomeIllustration(this);
+    registerJourneyIcons(this);
+    registerRosaryTextures(this);
 
     AudioManager.init(this.sound);
 

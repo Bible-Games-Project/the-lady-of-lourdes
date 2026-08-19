@@ -8,7 +8,8 @@ import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { TouchControls } from '../gameplay/TouchControls';
 import { DialogueBox } from '../gameplay/DialogueBox';
-import { ObjectiveHud } from '../gameplay/ObjectiveHud';
+import { TasksPanel } from '../gameplay/TasksPanel';
+import { GameplayTopBar } from '../gameplay/GameplayTopBar';
 import { InteractionPrompt } from '../gameplay/InteractionPrompt';
 import { Toast } from '../gameplay/Toast';
 import { updateFollowerPosition } from '../gameplay/Follower';
@@ -17,6 +18,7 @@ import { mission01Dialogue, MISSION_01_OBJECTIVES } from '../data/missions/missi
 import { LOCATIONS, type LocationId } from '../data/world/locations';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
+import { textStyle } from '../ui/text';
 
 const COLS = 30;
 const ROWS = 70;
@@ -71,7 +73,8 @@ export class OverworldScene extends Phaser.Scene {
   private player!: Player;
   private touch!: TouchControls;
   private dialogueBox!: DialogueBox;
-  private objectiveHud!: ObjectiveHud;
+  private tasksPanel!: TasksPanel;
+  private topBar!: GameplayTopBar;
   private interactionPrompt!: InteractionPrompt;
   private toast!: Toast;
   private keyE!: Phaser.Input.Keyboard.Key;
@@ -120,10 +123,10 @@ export class OverworldScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
     this.dialogueBox = new DialogueBox(this);
-    this.objectiveHud = new ObjectiveHud(this);
+    this.tasksPanel = new TasksPanel(this);
+    this.topBar = new GameplayTopBar(this);
     this.interactionPrompt = new InteractionPrompt(this);
     this.toast = new Toast(this);
-    this.refreshObjectiveText();
 
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
@@ -188,11 +191,7 @@ export class OverworldScene extends Phaser.Scene {
     this.cachotDoorZone = new Phaser.Geom.Rectangle(cachot.x + 12, cachot.y + 40, 24, 14);
 
     this.add
-      .text(cachot.x + 24, cachot.y - 4, Localization.t(K.LOCATION_CACHOT), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '10px',
-        color: '#3a3226',
-      })
+      .text(cachot.x + 24, cachot.y - 4, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '10px', color: '#3a3226' }))
       .setOrigin(0.5)
       .setDepth(DEPTH.OVERLAY_LOW);
 
@@ -202,11 +201,7 @@ export class OverworldScene extends Phaser.Scene {
       const cy = px.y + placement.heightPx;
       this.addStaticProp(placement.key, cx, cy, placement.widthPx, placement.heightPx);
       this.add
-        .text(cx, px.y - 6, Localization.t(LOCATIONS[placement.locationId].nameKey), {
-          fontFamily: 'Georgia, serif',
-          fontSize: '9px',
-          color: '#3a3226',
-        })
+        .text(cx, px.y - 6, Localization.t(LOCATIONS[placement.locationId].nameKey), textStyle({ fontSize: '9px', color: '#3a3226' }))
         .setOrigin(0.5)
         .setDepth(DEPTH.OVERLAY_LOW);
       const doorZone = new Phaser.Geom.Rectangle(cx - 12, cy - 8, 24, 14);
@@ -222,8 +217,8 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   update(time: number): void {
-    const dialogueActive = this.dialogueBox.isActive();
-    this.player.setLocked(dialogueActive);
+    const blocked = this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
+    this.player.setLocked(blocked);
     this.player.update(time);
 
     updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, time, DEPTH.ACTORS);
@@ -231,7 +226,7 @@ export class OverworldScene extends Phaser.Scene {
       updateFollowerPosition(this.friend, this.player.x + 16, this.player.y + 4, time, DEPTH.ACTORS);
     }
 
-    if (dialogueActive) {
+    if (blocked) {
       this.interactionPrompt.hide();
       return;
     }
@@ -277,7 +272,7 @@ export class OverworldScene extends Phaser.Scene {
         this.friendMet = true;
         this.sister.setVisible(true);
         MissionManager.advanceObjective();
-        this.refreshObjectiveText();
+        this.tasksPanel.notifyNewObjective();
       });
       return;
     }
@@ -302,12 +297,4 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  private refreshObjectiveText(): void {
-    if (!MissionManager.getMission()) {
-      this.objectiveHud.setVisible(false);
-      return;
-    }
-    this.objectiveHud.setVisible(true);
-    this.objectiveHud.setText(MissionManager.getObjectiveText());
-  }
 }

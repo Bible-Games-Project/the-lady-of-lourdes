@@ -46,6 +46,31 @@ export function mirrorGrid(grid: PixelGrid): PixelGrid {
   return grid.map((row) => [...row].reverse());
 }
 
+/**
+ * Returns a new grid with a 1px outline drawn into the transparent cells
+ * touching the silhouette — the standard "outlined sprite" pixel-art look.
+ * Leave at least 1px of transparent margin around the artwork or edge
+ * pixels get clipped.
+ */
+export function outlineGrid(grid: PixelGrid, outlineChar: string): PixelGrid {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  const result = cloneGrid(grid);
+  const isFilled = (x: number, y: number): boolean => {
+    const ch = grid[y]?.[x];
+    return !!ch && ch !== '.' && ch !== ' ';
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (isFilled(x, y)) continue;
+      if (isFilled(x - 1, y) || isFilled(x + 1, y) || isFilled(x, y - 1) || isFilled(x, y + 1)) {
+        result[y][x] = outlineChar;
+      }
+    }
+  }
+  return result;
+}
+
 function rasterize(grid: PixelGrid, palette: Palette, pixelSize: number): HTMLCanvasElement {
   const height = grid.length;
   const width = grid[0]?.length ?? 0;

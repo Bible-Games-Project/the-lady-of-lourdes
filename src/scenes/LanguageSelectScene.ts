@@ -5,6 +5,7 @@ import { K } from '../core/i18n/keys';
 import { SaveData } from '../core/SaveData';
 import { SUPPORTED_LANGUAGES, type LanguageCode } from '../core/i18n/languages';
 import { createButton } from '../ui/Button';
+import { textStyle } from '../ui/text';
 
 /** Shown once, before the very first playthrough, so the player can confirm/change the detected language. */
 export class LanguageSelectScene extends Phaser.Scene {
@@ -24,19 +25,16 @@ export class LanguageSelectScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#2c2521');
 
     this.add
-      .text(GAME_WIDTH / 2, 26, Localization.t(K.LANGUAGE_SELECT_TITLE), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '18px',
-        color: '#fffaf0',
-      })
+      .text(GAME_WIDTH / 2, 26, Localization.t(K.LANGUAGE_SELECT_TITLE), textStyle({ fontSize: '18px', color: '#fffaf0' }))
       .setOrigin(0.5);
 
     this.add
-      .text(GAME_WIDTH / 2, 46, Localization.t(K.LANGUAGE_SELECT_SUBTITLE), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '11px',
-        color: '#c9beac',
-      })
+      .text(
+        GAME_WIDTH / 2,
+        46,
+        Localization.t(K.LANGUAGE_SELECT_SUBTITLE),
+        textStyle({ fontSize: '12px', color: '#c9beac' }),
+      )
       .setOrigin(0.5);
 
     const cols = 3;

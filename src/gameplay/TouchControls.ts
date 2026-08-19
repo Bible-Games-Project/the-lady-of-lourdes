@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_HEIGHT, GAME_WIDTH } from '../core/constants';
+import { textStyle } from '../ui/text';
 
 /** On-screen virtual joystick + interact button for touch devices (mobile app builds). */
 export class TouchControls {
@@ -25,7 +26,7 @@ export class TouchControls {
 
     const interactButton = scene.add.circle(GAME_WIDTH - 40, GAME_HEIGHT - 42, 20, 0xfffaf0, 0.4);
     const interactLabel = scene.add
-      .text(GAME_WIDTH - 40, GAME_HEIGHT - 42, '●', { fontFamily: 'Georgia, serif', fontSize: '14px', color: '#3a3226' })
+      .text(GAME_WIDTH - 40, GAME_HEIGHT - 42, '●', textStyle({ fontSize: '14px', color: '#3a3226' }))
       .setOrigin(0.5);
     [interactButton, interactLabel].forEach((shape) => {
       shape.setScrollFactor(0);

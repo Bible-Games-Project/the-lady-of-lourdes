@@ -114,10 +114,27 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   `interactableFromMission: null` (locked placeholder — walking up shows a
   "not yet part of the story" toast via `Toast.ts`).
 - `src/gameplay/DialogueBox.ts` — single-speaker portrait + typewriter
-  (35ms/char), tap/click/Space/Enter to skip-then-advance. Portraits are
-  cropped from the same character sprite grid, keyed
-  `portrait_<characterId>_<expression>` (`portraits.ts`) — only `neutral`
-  exists today; adding expressions is just adding more grids there.
+  (35ms/char), tap/click/Space/Enter/E to skip-then-advance. Portraits are
+  **dedicated bust art** (`portraitTemplate.ts`), not crops of the overworld
+  sprite — keyed `portrait_<characterId>_<expression>`, with four expression
+  states (`neutral`/`blink`/`talk`/`talkBlink`) driven by
+  `gameplay/PortraitAnimator.ts` (randomized blink timer + occasional double
+  blink, mouth animates only while the line is typing). One animator instance
+  is reused per `DialogueBox`; `setSpeaker()` reseeds it on every line.
+- `src/scenes/ApparitionJourneyScene.ts` — the 18-mission path screen shown
+  after Home → Play. Progression state comes from
+  `missionRegistry.ts#getMissionState()` (locked/unlocked/completed), gated
+  by mission completion unless `SaveData.get().gameDevMode` is on (Settings
+  toggle, lets QA jump to any mission). Selecting an unlocked+implemented
+  mission goes straight to `CachotScene` — Mission 1 always starts inside Le
+  Cachot, never in the open world.
+- `src/gameplay/TasksPanel.ts` / `GameplayTopBar.ts` / `ui/ConfirmDialog.ts` —
+  the compact objective checklist, the in-gameplay gear/home buttons, and the
+  reusable confirm/cancel modal. All three are instantiated per-scene (not
+  global) and every scene's `update()` must gate movement/interaction on
+  `tasksPanel.isOpen() || topBar.isBlocking() || dialogueBox.isActive()` —
+  copy that pattern exactly when adding a new gameplay scene, don't
+  reinvent it.
 
 ### Known Phaser gotchas hit while building this
 
@@ -144,6 +161,49 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   check time — a same-tick synthetic down+up (e.g. in an automated test) is
   invisible to it. Not a game bug, just a testing footgun; hold keys down
   across at least one frame when scripting input.
+- **Depth layering is a strict stack, defined once in `core/constants.ts`**:
+  `GROUND < PROPS < ACTORS < OVERLAY_LOW < UI < DIALOGUE < FADE`. Persistent
+  gameplay chrome (joystick, Tasks button, gear/home) sits at `UI`; any modal
+  (`DialogueBox`, `ConfirmDialog`, `TasksPanel`'s popup) must sit at
+  `DIALOGUE` or above or it renders *underneath* the joystick/HUD — this
+  exact bug happened once (dialogue portrait hidden behind the touch
+  joystick) and was the reason for this ordering. A full-screen cinematic
+  fade/blackout (see `MassabielleScene`'s ending) must use `FADE` and put its
+  own captions at `FADE + 1`, not `UI` — otherwise the HUD shows through the
+  "blackout."
+- **Blurry text root cause**: the game renders at a small logical resolution
+  (480x270) that gets scaled up to fill the real viewport; canvas-rendered
+  text is anti-aliased at any size, and nearest-neighbor-upscaling an
+  anti-aliased texture looks blocky-mushy (sprites don't have this problem
+  because they're authored low-res on purpose). Fixed by giving every
+  `Phaser.GameObjects.Text` a higher internal `resolution` (supersampling) via
+  `ui/text.ts#textStyle()` — **always build text through that helper**, never
+  call `scene.add.text(...)` with a raw style object, or the text will be
+  blurry again.
+- **Character art bible** (`pixelart/personTemplate.ts` +
+  `pixelart/characters.ts`): one shared 20x28 "paper doll" skeleton, palette
+  per character, auto-outlined via `PixelCanvas.ts#outlineGrid()` (draws a
+  1px border into transparent cells touching the silhouette — leave a
+  transparent margin around any new silhouette or edge pixels clip). Walking
+  uses real 2-frame leg/arm animation (`step: 'a' | 'b'`), registered as
+  Phaser animations (`walkAnimKeyFor`) once in `BootScene`; idle is a gentle
+  `scaleY` breathing tween (see `Player.ts#updateBreathing`), not a texture.
+  Portraits are a *separate* bigger bust grid (`portraitTemplate.ts`), not a
+  crop of the body — keep both templates' proportions/palette in sync by eye
+  when adding a character. Every character gets a small pixel shadow
+  (`SHADOW_KEY`) as a child image synced each frame via
+  `NpcActor#syncShadow()` / done inline in `Player.ts`.
+
+### Known deferred work
+
+The maintainer asked (separately from the character-art pass) for the
+Overworld and Massabielle scenes to be merged into one continuous map with a
+larger, L-shaped river and the grotto moved north-west, so Massabielle is no
+longer its own scene transition. That merge was **deferred** in favor of the
+higher-priority character/portrait art overhaul and has not been started —
+`OverworldScene.ts` and `MassabielleScene.ts` are still two separate scenes
+with the original (smaller, straight-river) layout. Don't assume it's done;
+check with the maintainer before starting it, since it's a large rewrite.
 
 ### Verification
 

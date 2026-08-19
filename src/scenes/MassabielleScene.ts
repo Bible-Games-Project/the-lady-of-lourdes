@@ -7,9 +7,11 @@ import { PROP_KEYS } from '../pixelart/props';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { TouchControls } from '../gameplay/TouchControls';
-import { ObjectiveHud } from '../gameplay/ObjectiveHud';
+import { TasksPanel } from '../gameplay/TasksPanel';
+import { GameplayTopBar } from '../gameplay/GameplayTopBar';
 import { InteractionPrompt } from '../gameplay/InteractionPrompt';
 import { Caption } from '../gameplay/Caption';
+import { RosaryUI } from '../gameplay/RosaryUI';
 import { MissionManager } from '../gameplay/MissionManager';
 import { MISSION_01_FIREWOOD_TARGET, MISSION_01_OBJECTIVES } from '../data/missions/mission01';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
@@ -43,15 +45,16 @@ const FORD_ZONE = new Phaser.Geom.Rectangle(240, 136, RIVER_COL_START * TILE_SIZ
 const FAR_BANK = { sisterX: RIVER_COL_END * TILE_SIZE + 24, friendX: RIVER_COL_END * TILE_SIZE + 44, y: 272 };
 
 const INTERACT_RADIUS = 26;
-const ROSARY_BEADS = 5;
 
 type Phase = 'explore' | 'crossing' | 'hush' | 'apparition' | 'praying' | 'ending';
 
 export class MassabielleScene extends Phaser.Scene {
   private player!: Player;
   private touch!: TouchControls;
-  private objectiveHud!: ObjectiveHud;
+  private tasksPanel!: TasksPanel;
+  private topBar!: GameplayTopBar;
   private interactionPrompt!: InteractionPrompt;
+  private rosary!: RosaryUI;
   private keyE!: Phaser.Input.Keyboard.Key;
 
   private sister!: NpcActor;
@@ -63,8 +66,6 @@ export class MassabielleScene extends Phaser.Scene {
   private colliderBodies: (Phaser.Types.Physics.Arcade.ImageWithStaticBody | Phaser.GameObjects.Zone)[] = [];
 
   private phase: Phase = 'explore';
-  private rosaryBeads: Phaser.GameObjects.Image[] = [];
-  private rosaryProgress = 0;
 
   constructor() {
     super(SCENE_KEYS.MASSABIELLE);
@@ -77,8 +78,6 @@ export class MassabielleScene extends Phaser.Scene {
     this.phase = 'explore';
     this.colliderBodies = [];
     this.firewoodSprites = [];
-    this.rosaryBeads = [];
-    this.rosaryProgress = 0;
 
     this.cameras.main.fadeIn(500, 0, 0, 0);
     this.cameras.main.setBackgroundColor('#7d9a5c');
@@ -110,9 +109,10 @@ export class MassabielleScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
-    this.objectiveHud = new ObjectiveHud(this);
+    this.tasksPanel = new TasksPanel(this);
+    this.topBar = new GameplayTopBar(this);
     this.interactionPrompt = new InteractionPrompt(this);
-    this.objectiveHud.setText(MissionManager.getObjectiveText());
+    this.rosary = new RosaryUI(this);
 
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
@@ -179,9 +179,15 @@ export class MassabielleScene extends Phaser.Scene {
   }
 
   update(time: number): void {
-    const exploring = this.phase === 'explore';
+    const uiBlocked = this.tasksPanel.isOpen() || this.topBar.isBlocking();
+    const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
     this.player.update(time);
+
+    if (uiBlocked) {
+      this.interactionPrompt.hide();
+      return;
+    }
 
     updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, time, DEPTH.ACTORS);
     updateFollowerPosition(this.friend, this.player.x + 16, this.player.y + 4, time, DEPTH.ACTORS);
@@ -238,10 +244,9 @@ export class MassabielleScene extends Phaser.Scene {
         sprite.setActive(false);
         sprite.destroy();
         const collected = MissionManager.addFirewood();
-        this.objectiveHud.setText(MissionManager.getObjectiveText());
         if (collected >= MISSION_01_FIREWOOD_TARGET) {
           MissionManager.advanceObjective();
-          this.objectiveHud.setText(MissionManager.getObjectiveText());
+          this.tasksPanel.notifyNewObjective();
         }
         return;
       }
@@ -261,7 +266,7 @@ export class MassabielleScene extends Phaser.Scene {
     this.friend.setVisible(false);
 
     MissionManager.advanceObjective();
-    this.objectiveHud.setText(MissionManager.getObjectiveText());
+    this.tasksPanel.notifyNewObjective();
 
     this.phase = 'hush';
     await this.runHushSequence();
@@ -299,36 +304,16 @@ export class MassabielleScene extends Phaser.Scene {
   private beginPrayer(): void {
     this.phase = 'praying';
     this.interactionPrompt.hide();
-
-    const startX = GAME_WIDTH / 2 - ((ROSARY_BEADS - 1) * 18) / 2;
-    const y = GAME_HEIGHT - 26;
-    for (let i = 0; i < ROSARY_BEADS; i++) {
-      const bead = this.add.image(startX + i * 18, y, PROP_KEYS.ROSARY_BEAD);
-      bead.setScrollFactor(0);
-      bead.setDepth(DEPTH.UI);
-      bead.setDisplaySize(10, 10);
-      bead.setAlpha(0.35);
-      this.rosaryBeads.push(bead);
-    }
+    this.rosary.start(() => this.endApparition());
   }
 
   private advanceRosary(): void {
-    if (this.rosaryProgress >= this.rosaryBeads.length) return;
-    const bead = this.rosaryBeads[this.rosaryProgress];
-    bead.setAlpha(1);
-    this.tweens.add({ targets: bead, scale: 1.4, duration: 120, yoyo: true });
-    this.rosaryProgress++;
-
-    if (this.rosaryProgress >= ROSARY_BEADS) {
-      this.endApparition();
-    }
+    this.rosary.advance();
   }
 
   private async endApparition(): Promise<void> {
     this.phase = 'ending';
-    this.objectiveHud.setVisible(false);
-    this.rosaryBeads.forEach((bead) => bead.destroy());
-    this.rosaryBeads = [];
+    this.tasksPanel.destroy();
 
     await tweenPromise(this, { targets: [this.lady, this.ladyGlow], alpha: 0, duration: 1400 });
 
@@ -342,13 +327,13 @@ export class MassabielleScene extends Phaser.Scene {
       this,
       GAME_HEIGHT / 2 - 12,
       { fontFamily: 'Georgia, serif', fontSize: '16px', color: '#fffaf0', align: 'center' },
-      DEPTH.UI,
+      DEPTH.FADE + 1,
     );
     const titleCaption = new Caption(
       this,
       GAME_HEIGHT / 2 + 14,
       { fontFamily: 'Georgia, serif', fontSize: '13px', color: '#c9beac', align: 'center' },
-      DEPTH.UI,
+      DEPTH.FADE + 1,
     );
 
     await dateCaption.show(Localization.t(K.APPARITION_DATE_CARD), 2000, 700);

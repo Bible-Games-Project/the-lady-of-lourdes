@@ -44,7 +44,10 @@ class MissionManagerService {
   }
 
   getObjectiveText(): string {
-    const objective = this.getCurrentObjective();
+    return this.textForObjective(this.getCurrentObjective());
+  }
+
+  private textForObjective(objective: MissionObjective | null): string {
     if (!objective) return '';
     if (objective.id === MISSION_01_OBJECTIVES.COLLECT_FIREWOOD) {
       return Localization.t(objective.textKey, {
@@ -53,6 +56,17 @@ class MissionManagerService {
       });
     }
     return Localization.t(objective.textKey);
+  }
+
+  /** Every objective in the current mission, in order, with its completion state — for the Tasks panel. */
+  getObjectivesWithStatus(): Array<{ objective: MissionObjective; text: string; completed: boolean; current: boolean }> {
+    if (!this.mission) return [];
+    return this.mission.objectives.map((objective, index) => ({
+      objective,
+      text: this.textForObjective(objective),
+      completed: index < this.objectiveIndex,
+      current: index === this.objectiveIndex,
+    }));
   }
 
   addFirewood(): number {

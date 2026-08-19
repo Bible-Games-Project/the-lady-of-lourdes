@@ -13,6 +13,8 @@ export interface SaveDataShape {
   language: LanguageCode;
   music: AudioSettings;
   sfx: AudioSettings;
+  /** Developer/testing toggle: lets the apparition journey screen select any mission, skipping progression gating. */
+  gameDevMode: boolean;
   progress: {
     currentMissionId: string | null;
     completedMissionIds: string[];
@@ -26,6 +28,7 @@ function defaultSave(): SaveDataShape {
     language: 'en',
     music: { enabled: true, volume: 0.6 },
     sfx: { enabled: true, volume: 0.8 },
+    gameDevMode: false,
     progress: {
       currentMissionId: null,
       completedMissionIds: [],
@@ -93,6 +96,21 @@ class SaveDataStore {
 
   isMissionCompleted(missionId: string): boolean {
     return this.data.progress.completedMissionIds.includes(missionId);
+  }
+
+  setGameDevMode(enabled: boolean): void {
+    this.data.gameDevMode = enabled;
+    this.persist();
+  }
+
+  /** Wipes every locally saved value (language, progress, audio, dev mode). Does not reload the page. */
+  resetAll(): void {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {
+      // Storage unavailable; nothing to clear.
+    }
+    this.data = defaultSave();
   }
 }
 

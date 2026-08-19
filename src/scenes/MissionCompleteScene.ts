@@ -5,6 +5,7 @@ import { K } from '../core/i18n/keys';
 import { mission01 } from '../data/missions/mission01';
 import { PROP_KEYS } from '../pixelart/props';
 import { createButton } from '../ui/Button';
+import { textStyle } from '../ui/text';
 
 export class MissionCompleteScene extends Phaser.Scene {
   constructor() {
@@ -19,35 +20,23 @@ export class MissionCompleteScene extends Phaser.Scene {
     bead.setDisplaySize(28, 28);
 
     this.add
-      .text(GAME_WIDTH / 2, 100, Localization.t(K.MISSION_COMPLETE_TITLE), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '22px',
-        color: '#fffaf0',
-      })
+      .text(GAME_WIDTH / 2, 100, Localization.t(K.MISSION_COMPLETE_TITLE), textStyle({ fontSize: '22px', color: '#fffaf0' }))
       .setOrigin(0.5);
 
     if (mission01.titleKey) {
       this.add
-        .text(GAME_WIDTH / 2, 130, Localization.t(mission01.titleKey), {
-          fontFamily: 'Georgia, serif',
-          fontSize: '14px',
-          color: '#d8c9a0',
-        })
+        .text(GAME_WIDTH / 2, 130, Localization.t(mission01.titleKey), textStyle({ fontSize: '14px', color: '#d8c9a0' }))
         .setOrigin(0.5);
     }
 
     if (mission01.dateKey) {
       this.add
-        .text(GAME_WIDTH / 2, 150, Localization.t(mission01.dateKey), {
-          fontFamily: 'Georgia, serif',
-          fontSize: '12px',
-          color: '#c9beac',
-        })
+        .text(GAME_WIDTH / 2, 150, Localization.t(mission01.dateKey), textStyle({ fontSize: '12px', color: '#c9beac' }))
         .setOrigin(0.5);
     }
 
     createButton(this, GAME_WIDTH / 2, GAME_HEIGHT - 50, 200, 34, Localization.t(K.MISSION_COMPLETE_CONTINUE), () => {
-      this.scene.start(SCENE_KEYS.OVERWORLD);
+      this.scene.start(SCENE_KEYS.JOURNEY);
     });
   }
 }

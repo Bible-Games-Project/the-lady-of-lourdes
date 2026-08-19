@@ -1,4 +1,5 @@
 import { K } from '../../core/i18n/keys';
+import { SaveData } from '../../core/SaveData';
 import { mission01 } from './mission01';
 import type { Mission } from './types';
 
@@ -44,4 +45,24 @@ export const MISSIONS: Mission[] = [
 
 export function getMission(index: number): Mission | undefined {
   return MISSIONS.find((m) => m.index === index);
+}
+
+export type MissionState = 'locked' | 'unlocked' | 'completed';
+
+/**
+ * Normal progression: mission 1 always unlocked, mission N unlocked once
+ * mission N-1 is completed. Game Dev Mode (Settings) bypasses this so any
+ * mission can be selected for testing.
+ */
+export function getMissionState(index: number): MissionState {
+  const mission = getMission(index);
+  if (!mission) return 'locked';
+
+  if (SaveData.isMissionCompleted(mission.id)) return 'completed';
+  if (SaveData.get().gameDevMode) return 'unlocked';
+  if (index === 1) return 'unlocked';
+
+  const previous = getMission(index - 1);
+  if (previous && SaveData.isMissionCompleted(previous.id)) return 'unlocked';
+  return 'locked';
 }

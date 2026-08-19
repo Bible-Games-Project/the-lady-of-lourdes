@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { UI_KEYS, UI_BUTTON_SLICE } from '../pixelart/ui';
+import { textStyle } from './text';
 
 export function createButton(
   scene: Phaser.Scene,
@@ -23,7 +24,7 @@ export function createButton(
     UI_BUTTON_SLICE.border,
   );
   const text = scene.add
-    .text(0, 0, label, { fontFamily: 'Georgia, serif', fontSize: '14px', color: '#3a3226', fontStyle: 'bold' })
+    .text(0, 0, label, textStyle({ fontSize: '14px', color: '#3a3226', fontStyle: 'bold' }))
     .setOrigin(0.5);
 
   const container = scene.add.container(x, y, [panel, text]);

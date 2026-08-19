@@ -14,6 +14,10 @@ export const en: LocaleDict = {
   [K.COMMON_CLOSE]: 'Close',
   [K.COMMON_ON]: 'ON',
   [K.COMMON_OFF]: 'OFF',
+  [K.COMMON_CANCEL]: 'Cancel',
+  [K.COMMON_RESET]: 'Reset',
+  [K.COMMON_HOME]: 'Home',
+  [K.COMMON_LOCKED]: 'Locked',
 
   [K.HOME_PLAY]: 'Play',
   [K.HOME_SETTINGS]: 'Settings',
@@ -26,6 +30,22 @@ export const en: LocaleDict = {
   [K.SETTINGS_LANGUAGE]: 'Language',
   [K.SETTINGS_MUSIC]: 'Music',
   [K.SETTINGS_SFX]: 'Sound Effects',
+  [K.SETTINGS_GAME_DEV_MODE]: 'Game Dev Mode',
+  [K.SETTINGS_RESET_DATA]: 'Reset All Data',
+
+  [K.RESET_CONFIRM_TITLE]: 'Reset all data?',
+  [K.RESET_CONFIRM_MESSAGE]: 'This cannot be undone. Language, progress and settings will be erased.',
+
+  [K.HOME_CONFIRM_TITLE]: 'Return to Home?',
+  [K.HOME_CONFIRM_MESSAGE]: 'Your current progress is saved.',
+
+  [K.JOURNEY_TITLE]: 'The Apparitions',
+  [K.JOURNEY_LOCKED_NOTE]: 'Complete the previous apparition first.',
+  [K.JOURNEY_NOT_IMPLEMENTED_NOTE]: 'This apparition is not yet part of the story.',
+
+  [K.TASKS_BUTTON]: 'Tasks',
+  [K.TASKS_TITLE]: 'Tasks',
+  [K.TASKS_NEW_OBJECTIVE]: 'New objective',
 
   [K.LANGUAGE_SELECT_TITLE]: 'Choose your language',
   [K.LANGUAGE_SELECT_SUBTITLE]: 'You can change this later in Settings.',
@@ -51,8 +71,6 @@ export const en: LocaleDict = {
   [K.INTERACT_PRAY]: 'Pray',
   [K.INTERACT_EXIT]: 'Exit',
 
-  [K.OBJECTIVE_LABEL]: 'Objective',
-
   [K.MISSION_1_DATE]: '11 February 1858',
   [K.MISSION_1_TITLE]: 'The First Apparition',
   [K.MISSION_2_DATE]: '14 February 1858',
@@ -61,7 +79,7 @@ export const en: LocaleDict = {
 
   [K.MISSION_1_OBJ_TALK_TO_MOTHER]: 'Talk to your mother.',
   [K.MISSION_1_OBJ_GATHER_FIREWOOD]: 'Go with your sister to collect firewood.',
-  [K.MISSION_1_OBJ_GO_TO_MASSABIELLE]: 'Follow Jeanne to Massabielle.',
+  [K.MISSION_1_OBJ_GO_TO_MASSABIELLE]: 'Lead the way to Massabielle.',
   [K.MISSION_1_OBJ_COLLECT_FIREWOOD]: 'Collect firewood ({count}/{total}).',
   [K.MISSION_1_OBJ_REACH_RIVER]: 'Follow the others to the river.',
   [K.MISSION_1_OBJ_PRAY]: 'Pray the rosary.',
@@ -69,17 +87,15 @@ export const en: LocaleDict = {
   [K.DIALOGUE_MOTHER_M1_1]: 'Bernadette, take your sister and go gather some firewood. We have none left.',
   [K.DIALOGUE_MOTHER_M1_2]: 'Be careful, and stay together.',
   [K.DIALOGUE_BERNADETTE_M1_1]: 'Yes, Mother. We will go.',
-  [K.DIALOGUE_FRIEND_M1_1]: 'There you are. Come with me — I know where we can find firewood, near Massabielle.',
-  [K.DIALOGUE_BERNADETTE_M1_2]: 'All right. Let us go together.',
-  [K.DIALOGUE_SISTER_M1_1]: "I'm coming too.",
+  [K.DIALOGUE_FRIEND_M1_1]: 'There you are! I know where we can find firewood, near Massabielle.',
+  [K.DIALOGUE_BERNADETTE_M1_2]: 'Come, follow me to Massabielle.',
+  [K.DIALOGUE_SISTER_M1_1]: "I'm coming too!",
 
   [K.NARRATION_CACHOT_INTRO]: 'Le Cachot, Lourdes. Winter, 1858.',
   [K.NARRATION_RIVER_STAY_BEHIND]:
     'Bernadette has long suffered from asthma. Afraid of the cold water, she does not cross.',
   [K.NARRATION_ALONE]: 'Bernadette is alone.',
   [K.NARRATION_SOMETHING_UNUSUAL]: 'She hears something like a gust of wind.',
-
-  [K.FIREWOOD_PROGRESS]: 'Firewood: {count}/{total}',
 
   [K.APPARITION_DATE_CARD]: '11 February 1858',
   [K.APPARITION_TITLE_CARD]: 'First Apparition',

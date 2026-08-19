@@ -11,18 +11,22 @@ export const SCENE_KEYS = {
   HOME: 'HomeScene',
   SETTINGS: 'SettingsScene',
   MORE_GAMES: 'MoreGamesScene',
+  JOURNEY: 'ApparitionJourneyScene',
   OVERWORLD: 'OverworldScene',
   CACHOT: 'CachotScene',
   MASSABIELLE: 'MassabielleScene',
   MISSION_COMPLETE: 'MissionCompleteScene',
 } as const;
 
+// Ordered bottom-to-top: world layers, then persistent UI (joystick, tasks
+// button, gear/home), then modal dialogue/confirm overlays, then full-screen
+// fades/cinematics — each layer must draw over everything below it.
 export const DEPTH = {
   GROUND: 0,
   PROPS: 5,
   ACTORS: 10,
   OVERLAY_LOW: 100,
-  DIALOGUE: 200,
-  FADE: 300,
-  UI: 400,
+  UI: 200,
+  DIALOGUE: 300,
+  FADE: 400,
 } as const;

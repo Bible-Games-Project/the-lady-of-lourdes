@@ -1,15 +1,19 @@
 import type { CharacterId } from '../pixelart/characters';
-import { textureKeyFor } from '../pixelart/characters';
+import { textureKeyFor, walkAnimKeyFor } from '../pixelart/characters';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
-/** Picks the right texture (down/up/side, mirrored for left) from a movement vector. */
-export function updateFacingTexture(
+/**
+ * Picks the right facing (down/up/side, mirrored for left) from a movement
+ * vector, and plays/stops that character's real 2-frame walk animation.
+ */
+export function updateFacingAnimation(
   sprite: Phaser.GameObjects.Sprite,
   id: CharacterId,
   vx: number,
   vy: number,
   lastFacing: Facing,
+  moving: boolean,
 ): Facing {
   let facing = lastFacing;
   if (Math.abs(vx) > Math.abs(vy)) {
@@ -19,17 +23,17 @@ export function updateFacingTexture(
   }
 
   const textureFacing = facing === 'left' || facing === 'right' ? 'side' : facing;
-  sprite.setTexture(textureKeyFor(id, textureFacing));
   sprite.setFlipX(facing === 'left');
-  return facing;
-}
 
-/** Subtle squash/stretch while walking so movement reads without extra frame-by-frame art. */
-export function applyWalkBob(sprite: Phaser.GameObjects.Sprite, moving: boolean, time: number, baseScale = 1): void {
   if (moving) {
-    const t = Math.sin(time / 80);
-    sprite.setScale(baseScale * (1 + t * 0.04), baseScale * (1 - t * 0.04));
+    const animKey = walkAnimKeyFor(id, textureFacing);
+    if (sprite.anims.currentAnim?.key !== animKey || !sprite.anims.isPlaying) {
+      sprite.play(animKey, true);
+    }
   } else {
-    sprite.setScale(baseScale, baseScale);
+    sprite.anims.stop();
+    sprite.setTexture(textureKeyFor(id, textureFacing, null));
   }
+
+  return facing;
 }

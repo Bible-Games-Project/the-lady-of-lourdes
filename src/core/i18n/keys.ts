@@ -11,6 +11,10 @@ export const K = {
   COMMON_CLOSE: 'common.close',
   COMMON_ON: 'common.on',
   COMMON_OFF: 'common.off',
+  COMMON_CANCEL: 'common.cancel',
+  COMMON_RESET: 'common.reset',
+  COMMON_HOME: 'common.home',
+  COMMON_LOCKED: 'common.locked',
 
   HOME_PLAY: 'home.play',
   HOME_SETTINGS: 'home.settings',
@@ -23,6 +27,22 @@ export const K = {
   SETTINGS_LANGUAGE: 'settings.language',
   SETTINGS_MUSIC: 'settings.music',
   SETTINGS_SFX: 'settings.sfx',
+  SETTINGS_GAME_DEV_MODE: 'settings.gameDevMode',
+  SETTINGS_RESET_DATA: 'settings.resetData',
+
+  RESET_CONFIRM_TITLE: 'reset.confirmTitle',
+  RESET_CONFIRM_MESSAGE: 'reset.confirmMessage',
+
+  HOME_CONFIRM_TITLE: 'homeConfirm.title',
+  HOME_CONFIRM_MESSAGE: 'homeConfirm.message',
+
+  JOURNEY_TITLE: 'journey.title',
+  JOURNEY_LOCKED_NOTE: 'journey.lockedNote',
+  JOURNEY_NOT_IMPLEMENTED_NOTE: 'journey.notImplementedNote',
+
+  TASKS_BUTTON: 'tasks.button',
+  TASKS_TITLE: 'tasks.title',
+  TASKS_NEW_OBJECTIVE: 'tasks.newObjective',
 
   LANGUAGE_SELECT_TITLE: 'languageSelect.title',
   LANGUAGE_SELECT_SUBTITLE: 'languageSelect.subtitle',
@@ -48,8 +68,6 @@ export const K = {
   INTERACT_PRAY: 'interact.pray',
   INTERACT_EXIT: 'interact.exit',
 
-  OBJECTIVE_LABEL: 'objective.label',
-
   MISSION_1_DATE: 'mission.1.date',
   MISSION_1_TITLE: 'mission.1.title',
   MISSION_2_DATE: 'mission.2.date',
@@ -74,8 +92,6 @@ export const K = {
   NARRATION_RIVER_STAY_BEHIND: 'narration.riverStayBehind',
   NARRATION_ALONE: 'narration.alone',
   NARRATION_SOMETHING_UNUSUAL: 'narration.somethingUnusual',
-
-  FIREWOOD_PROGRESS: 'firewood.progress',
 
   APPARITION_DATE_CARD: 'apparition.dateCard',
   APPARITION_TITLE_CARD: 'apparition.titleCard',

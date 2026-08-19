@@ -6,6 +6,8 @@ export const UI_KEYS = {
   BUTTON: 'ui_button',
   GEAR: 'ui_gear',
   CARET: 'ui_caret',
+  HOME: 'ui_home',
+  SCROLL: 'ui_scroll',
 } as const;
 
 export const UI_PANEL_SLICE = { size: 24, border: 6 };
@@ -48,4 +50,24 @@ export function registerUiTextures(scene: Phaser.Scene): void {
   fillRect(caret, 2, 2, 5, 2, 'C');
   fillRect(caret, 3, 3, 4, 3, 'C');
   registerTexture(scene, UI_KEYS.CARET, caret, { C: '#5a4d3a' }, 1);
+
+  const home = makeGrid(16, 16);
+  const roof: Array<[number, number, number]> = [
+    [3, 7, 7],
+    [4, 6, 8],
+    [5, 5, 9],
+    [6, 4, 10],
+    [7, 3, 11],
+  ];
+  roof.forEach(([y, x0, x1]) => fillRect(home, x0, y, x1, y, 'C'));
+  fillRect(home, 4, 8, 11, 13, 'C');
+  fillRect(home, 7, 9, 8, 13, 'H');
+  registerTexture(scene, UI_KEYS.HOME, home, { C: '#5a4d3a', H: '#efe6d3' }, 1);
+
+  const scroll = makeGrid(16, 16);
+  fillRect(scroll, 3, 2, 12, 13, 'C');
+  fillRect(scroll, 2, 2, 13, 3, 'H');
+  fillRect(scroll, 2, 12, 13, 13, 'H');
+  [5, 7, 9].forEach((y) => fillRect(scroll, 5, y, 10, y, 'H'));
+  registerTexture(scene, UI_KEYS.SCROLL, scroll, { C: '#efe6d3', H: '#7a6a52' }, 1);
 }

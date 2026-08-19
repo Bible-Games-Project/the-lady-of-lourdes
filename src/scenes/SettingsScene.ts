@@ -9,6 +9,8 @@ import { UI_KEYS, UI_PANEL_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
 import { createToggle } from '../ui/Toggle';
 import { createSlider } from '../ui/Slider';
+import { textStyle, INK } from '../ui/text';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface SettingsSceneData {
   returnTo?: string;
@@ -18,6 +20,8 @@ interface SettingsSceneData {
 export class SettingsScene extends Phaser.Scene {
   private returnTo: string = SCENE_KEYS.HOME;
   private showingLanguageList = false;
+  private confirmDialog!: ConfirmDialog;
+  private keyEsc!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super(SCENE_KEYS.SETTINGS);
@@ -29,7 +33,25 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.confirmDialog = new ConfirmDialog(this);
+    this.keyEsc = this.input.keyboard!.addKey('ESC');
     this.redraw();
+  }
+
+  update(): void {
+    if (Phaser.Input.Keyboard.JustDown(this.keyEsc) && !this.confirmDialog.isActive()) {
+      if (this.showingLanguageList) {
+        this.showingLanguageList = false;
+        this.redraw();
+      } else {
+        this.close();
+      }
+    }
+  }
+
+  private close(): void {
+    this.scene.stop();
+    this.scene.resume(this.returnTo);
   }
 
   private redraw(): void {
@@ -60,23 +82,18 @@ export class SettingsScene extends Phaser.Scene {
 
   private renderMainPanel(): void {
     const panelW = 380;
-    const panelH = 190;
+    const panelH = 254;
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
     this.panel(cx, cy, panelW, panelH);
 
     this.add
-      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_TITLE), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '16px',
-        color: '#3a3226',
-        fontStyle: 'bold',
-      })
+      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_TITLE), textStyle({ fontSize: '16px', color: INK.dark, fontStyle: 'bold' }))
       .setOrigin(0.5);
 
     const rowX = cx - panelW / 2 + 20;
-    let rowY = cy - panelH / 2 + 46;
-    const labelStyle = { fontFamily: 'Georgia, serif', fontSize: '12px', color: '#3a3226' };
+    let rowY = cy - panelH / 2 + 44;
+    const labelStyle = textStyle({ fontSize: '12px', color: INK.dark });
 
     // Language.
     this.add.text(rowX, rowY, Localization.t(K.SETTINGS_LANGUAGE), labelStyle).setOrigin(0, 0.5);
@@ -86,7 +103,7 @@ export class SettingsScene extends Phaser.Scene {
       this.redraw();
     });
 
-    rowY += 44;
+    rowY += 40;
 
     // Music.
     this.add.text(rowX, rowY, Localization.t(K.SETTINGS_MUSIC), labelStyle).setOrigin(0, 0.5);
@@ -102,7 +119,7 @@ export class SettingsScene extends Phaser.Scene {
       AudioManager.refresh();
     });
 
-    rowY += 36;
+    rowY += 34;
 
     // SFX.
     this.add.text(rowX, rowY, Localization.t(K.SETTINGS_SFX), labelStyle).setOrigin(0, 0.5);
@@ -116,10 +133,32 @@ export class SettingsScene extends Phaser.Scene {
       sfxSlider.setEnabled(v);
     });
 
-    createButton(this, cx, cy + panelH / 2 - 22, 120, 26, Localization.t(K.COMMON_BACK), () => {
-      this.scene.stop();
-      this.scene.resume(this.returnTo);
+    rowY += 34;
+
+    // Game Dev Mode.
+    this.add.text(rowX, rowY, Localization.t(K.SETTINGS_GAME_DEV_MODE), labelStyle).setOrigin(0, 0.5);
+    createToggle(this, rowX + 90, rowY, SaveData.get().gameDevMode, (v) => {
+      SaveData.setGameDevMode(v);
     });
+
+    rowY += 40;
+
+    // Reset All Data.
+    createButton(this, cx, rowY, panelW - 60, 26, Localization.t(K.SETTINGS_RESET_DATA), () => {
+      this.confirmDialog.show({
+        title: Localization.t(K.RESET_CONFIRM_TITLE),
+        message: Localization.t(K.RESET_CONFIRM_MESSAGE),
+        confirmLabel: Localization.t(K.COMMON_RESET),
+        cancelLabel: Localization.t(K.COMMON_CANCEL),
+        danger: true,
+        onConfirm: () => {
+          SaveData.resetAll();
+          window.location.reload();
+        },
+      });
+    });
+
+    createButton(this, cx, cy + panelH / 2 - 22, 120, 26, Localization.t(K.COMMON_BACK), () => this.close());
   }
 
   private renderLanguageList(): void {
@@ -130,12 +169,7 @@ export class SettingsScene extends Phaser.Scene {
     this.panel(cx, cy, panelW, panelH);
 
     this.add
-      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_LANGUAGE), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '16px',
-        color: '#3a3226',
-        fontStyle: 'bold',
-      })
+      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_LANGUAGE), textStyle({ fontSize: '16px', color: INK.dark, fontStyle: 'bold' }))
       .setOrigin(0.5);
 
     const rows = Math.ceil(SUPPORTED_LANGUAGES.length / 2);

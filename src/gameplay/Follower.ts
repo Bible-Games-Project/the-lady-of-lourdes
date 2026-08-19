@@ -1,8 +1,8 @@
 import type { NpcActor } from './NpcActor';
 import { depthForY } from './utils';
 
-/** Eases a companion NPC toward a target point behind the player, with facing + walk bob. */
-export function updateFollowerPosition(actor: NpcActor, targetX: number, targetY: number, time: number, depthBase: number): void {
+/** Eases a companion NPC toward a target point behind the player, with facing + a real walk animation. */
+export function updateFollowerPosition(actor: NpcActor, targetX: number, targetY: number, _time: number, depthBase: number): void {
   if (!actor.visible) return;
 
   const dx = targetX - actor.x;
@@ -17,11 +17,6 @@ export function updateFollowerPosition(actor: NpcActor, targetX: number, targetY
   }
 
   actor.setDepth(depthForY(actor.y, depthBase));
-
-  if (dist > 4) {
-    const t = Math.sin(time / 80);
-    actor.setScale(1 + t * 0.04, 1 - t * 0.04);
-  } else {
-    actor.setScale(1, 1);
-  }
+  actor.setMoving(dist > 4);
+  actor.syncShadow();
 }

@@ -5,6 +5,7 @@ import { LanguageSelectScene } from './scenes/LanguageSelectScene';
 import { HomeScene } from './scenes/HomeScene';
 import { SettingsScene } from './scenes/SettingsScene';
 import { MoreGamesScene } from './scenes/MoreGamesScene';
+import { ApparitionJourneyScene } from './scenes/ApparitionJourneyScene';
 import { OverworldScene } from './scenes/OverworldScene';
 import { CachotScene } from './scenes/CachotScene';
 import { MassabielleScene } from './scenes/MassabielleScene';
@@ -31,6 +32,7 @@ const config: Phaser.Types.Core.GameConfig = {
     HomeScene,
     SettingsScene,
     MoreGamesScene,
+    ApparitionJourneyScene,
     OverworldScene,
     CachotScene,
     MassabielleScene,
