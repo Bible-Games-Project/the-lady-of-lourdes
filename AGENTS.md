@@ -128,17 +128,31 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   toggle, lets QA jump to any mission). Selecting an unlocked+implemented
   mission goes straight to `CachotScene` — Mission 1 always starts inside Le
   Cachot, never in the open world.
-- `src/pixelart/homePalette.ts` — a palette extracted from a maintainer-supplied
-  reference image, scoped to Home-screen art only (`homeIllustration.ts`, and
-  the `UI_KEYS.HOME_BUTTON`/`HOME_GEAR` textures in `pixelart/ui.ts`).
-  Deliberately separate from every other screen's palette/textures — when the
-  maintainer asks for one screen's visuals to match a reference, make new
-  keys/files for it rather than editing the shared `UI_KEYS.BUTTON`/`PANEL`/
-  `GEAR` textures, which `Settings`, `ConfirmDialog`, `TasksPanel`,
-  `DialogueBox`, and `GameplayTopBar` all still use. `ui/Button.ts#createButton`
-  takes an optional `ButtonStyle` (texture key, border, text color, hover
-  tint) for exactly this — defaults match the original shared button, so
-  existing call sites are untouched.
+- `src/assets/home/homeBackground.ts` + `home_background.png` — the Home
+  screen background is the maintainer's own finished artwork, loaded as a
+  real image and used exactly as supplied (recovered byte-for-byte from the
+  conversation that provided it — verified pixel-identical, see git history
+  around the commit that added it). **There is no procedural Home
+  background any more** — an earlier pass built one from a palette inferred
+  off this same reference image, and the maintainer explicitly rejected
+  that as a misunderstanding: they wanted the actual image, not a
+  recreation of its style. Don't regenerate one; if the background ever
+  needs to change, get a new real image. `HomeScene.ts#buildBackground()`
+  scales it uniformly ("cover", never a non-uniform stretch) — the source
+  is already 16:9 so in practice nothing is visibly cropped. Needs
+  `setFilter(LINEAR)` like any other real-photo/illustrated texture (see
+  the pixelArt gotcha below); set once in `BootScene.create()`.
+- `src/pixelart/homePalette.ts` — a palette extracted from that same
+  reference image, used only for the Home title/buttons/gear so they read
+  as belonging to the background (`UI_KEYS.HOME_BUTTON`/`HOME_GEAR` in
+  `pixelart/ui.ts`). Deliberately separate from every other screen's
+  palette/textures — when the maintainer asks for one screen's visuals to
+  match a reference, make new keys/files for it rather than editing the
+  shared `UI_KEYS.BUTTON`/`PANEL`/`GEAR` textures, which `Settings`,
+  `ConfirmDialog`, `TasksPanel`, `DialogueBox`, and `GameplayTopBar` all
+  still use. `ui/Button.ts#createButton` takes an optional `ButtonStyle`
+  (texture key, border, text color, hover tint) for exactly this — defaults
+  match the original shared button, so existing call sites are untouched.
 - `src/gameplay/TasksPanel.ts` / `GameplayTopBar.ts` / `ui/ConfirmDialog.ts` —
   the compact objective checklist, the in-gameplay gear/home buttons, and the
   reusable confirm/cancel modal. All three are instantiated per-scene (not

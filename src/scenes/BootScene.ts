@@ -10,13 +10,17 @@ import { registerTileset } from '../pixelart/tiles';
 import { registerProps } from '../pixelart/props';
 import { registerInteriorProps } from '../pixelart/interiorProps';
 import { registerUiTextures } from '../pixelart/ui';
-import { registerHomeIllustration } from '../pixelart/homeIllustration';
 import { registerJourneyIcons } from '../pixelart/journeyIcons';
 import { registerRosaryTextures } from '../pixelart/rosary';
+import { HOME_BACKGROUND_KEY, preloadHomeBackground } from '../assets/home/homeBackground';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
     super(SCENE_KEYS.BOOT);
+  }
+
+  preload(): void {
+    preloadHomeBackground(this);
   }
 
   create(): void {
@@ -27,9 +31,14 @@ export class BootScene extends Phaser.Scene {
     registerProps(this);
     registerInteriorProps(this);
     registerUiTextures(this);
-    registerHomeIllustration(this);
     registerJourneyIcons(this);
     registerRosaryTextures(this);
+
+    // The Home background is the maintainer's own finished art (soft/anti-aliased), not the
+    // procedural pixel grids the rest of the game uses. The game runs with `pixelArt: true`
+    // (nearest-neighbor everywhere by default) — force linear filtering on this one texture so
+    // it scales smoothly instead of going jagged.
+    this.textures.get(HOME_BACKGROUND_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
 
     AudioManager.init(this.sound);
 

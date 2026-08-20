@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import { HOME_ILLUSTRATION_KEY } from '../pixelart/homeIllustration';
+import { HOME_BACKGROUND_KEY } from '../assets/home/homeBackground';
 import { HOME_PALETTE } from '../pixelart/homePalette';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
@@ -14,9 +14,7 @@ export class HomeScene extends Phaser.Scene {
   }
 
   create(): void {
-    const bg = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, HOME_ILLUSTRATION_KEY);
-    bg.setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
-
+    this.buildBackground();
     this.buildTitle();
 
     // Settings: pixel-art gear, top-right corner, out of the way of the illustration.
@@ -61,6 +59,17 @@ export class HomeScene extends Phaser.Scene {
       },
       buttonStyle,
     );
+  }
+
+  /**
+   * The maintainer's own artwork, used as-is — no crop/recompose, just a uniform "cover" scale
+   * (never a non-uniform stretch, which would distort it) so it fills the frame edge-to-edge.
+   * The source is already 16:9, so in practice this is an exact fit with no visible crop.
+   */
+  private buildBackground(): void {
+    const bg = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, HOME_BACKGROUND_KEY);
+    const scale = Math.max(GAME_WIDTH / bg.width, GAME_HEIGHT / bg.height);
+    bg.setScale(scale);
   }
 
   /** Layered hard-edged pixel shadow (not a soft stroke) plus a small ornamental rule. */
