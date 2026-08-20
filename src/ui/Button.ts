@@ -7,6 +7,10 @@ export interface ButtonStyle {
   border?: number;
   textColor?: string;
   hoverTint?: number;
+  /** Panel opacity (0-1). Defaults to fully opaque — used for buttons meant to sit lightly over artwork. */
+  panelAlpha?: number;
+  /** Outline around the label, for readability when the panel itself is very transparent. */
+  textStroke?: { color: string; thickness: number };
 }
 
 export function createButton(
@@ -32,8 +36,20 @@ export function createButton(
     border,
     border,
   );
+  panel.setAlpha(style.panelAlpha ?? 1);
   const text = scene.add
-    .text(0, 0, label, textStyle({ fontSize: '14px', color: style.textColor ?? '#3a3226', fontStyle: 'bold' }))
+    .text(
+      0,
+      0,
+      label,
+      textStyle({
+        fontSize: '14px',
+        color: style.textColor ?? '#3a3226',
+        fontStyle: 'bold',
+        stroke: style.textStroke?.color,
+        strokeThickness: style.textStroke?.thickness,
+      }),
+    )
     .setOrigin(0.5);
 
   const container = scene.add.container(x, y, [panel, text]);

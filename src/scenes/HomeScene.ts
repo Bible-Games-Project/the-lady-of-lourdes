@@ -23,23 +23,32 @@ export class HomeScene extends Phaser.Scene {
       .setScale(1.2)
       .setInteractive({ useHandCursor: true });
     gear.setDepth(DEPTH.UI);
-    gear.on('pointerover', () => gear.setTint(0xf4ecd8));
+    gear.on('pointerover', () => gear.setTint(0xfffdf5));
     gear.on('pointerout', () => gear.clearTint());
     gear.on('pointerdown', () => this.openSettings());
+
+    // Small, mostly-transparent, and pushed into the bottom corners so the central artwork —
+    // Bernadette especially — stays unobstructed.
+    const buttonWidth = 112;
+    const buttonHeight = 26;
+    const marginX = 16;
+    const marginY = 16;
 
     const buttonStyle = {
       textureKey: UI_KEYS.HOME_BUTTON,
       border: UI_HOME_BUTTON_SLICE.border,
-      textColor: HOME_PALETTE.ink,
+      textColor: HOME_PALETTE.cream,
       hoverTint: 0xfff8e8,
+      panelAlpha: 0.2,
+      textStroke: { color: HOME_PALETTE.ink, thickness: 3 },
     };
 
     createButton(
       this,
-      GAME_WIDTH / 2,
-      196,
-      160,
-      34,
+      marginX + buttonWidth / 2,
+      GAME_HEIGHT - marginY - buttonHeight / 2,
+      buttonWidth,
+      buttonHeight,
       Localization.t(K.HOME_PLAY),
       () => {
         this.scene.start(SCENE_KEYS.JOURNEY);
@@ -49,10 +58,10 @@ export class HomeScene extends Phaser.Scene {
 
     createButton(
       this,
-      GAME_WIDTH / 2,
-      236,
-      160,
-      30,
+      GAME_WIDTH - marginX - buttonWidth / 2,
+      GAME_HEIGHT - marginY - buttonHeight / 2,
+      buttonWidth,
+      buttonHeight,
       Localization.t(K.HOME_MORE_GAMES),
       () => {
         this.scene.start(SCENE_KEYS.MORE_GAMES);
@@ -72,9 +81,21 @@ export class HomeScene extends Phaser.Scene {
     bg.setScale(scale);
   }
 
-  /** Layered hard-edged pixel shadow (not a soft stroke) plus a small ornamental rule. */
+  /**
+   * Same design as before — cream fill, hard-edge pixel shadow, gold rule — but with a full
+   * dark outline added around the fill this time. A single offset shadow only helps where the
+   * shadow itself lands on something lighter; over a busy photo (bright sky at the top here)
+   * that leaves some of the letterforms with too little contrast. An all-around stroke holds up
+   * regardless of what's behind it.
+   */
   private buildTitle(): void {
-    const style = textStyle({ fontSize: '20px', color: HOME_PALETTE.cream, fontStyle: 'bold' });
+    const style = textStyle({
+      fontSize: '20px',
+      color: HOME_PALETTE.cream,
+      fontStyle: 'bold',
+      stroke: HOME_PALETTE.ink,
+      strokeThickness: 4,
+    });
     const shadowStyle = textStyle({ fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' });
 
     this.add.text(GAME_WIDTH / 2 + 2, 28, 'The Lady of Lourdes', shadowStyle).setOrigin(0.5);

@@ -2,8 +2,10 @@
  * Palette extracted from the maintainer's Home-screen reference image (a pixel-art painting of
  * the Grotto at dusk-to-day: pale blue sky, snow-capped mountains, autumn foliage, gray grotto
  * stone, a gold-haloed Lady in a white robe with a blue sash, and a kneeling figure at a river).
- * Used only by Home-screen art (`homeIllustration.ts`, the Home button/gear textures in
- * `ui.ts`) — gameplay scenes keep their own palette (`pixelart/palette.ts`) untouched.
+ * The image itself is now the real Home background (`assets/home/homeBackground.ts`) — this
+ * palette is only for the foreground UI drawn on top of it (title, buttons, gear in
+ * `pixelart/ui.ts`), so they read as belonging to the same artwork. Gameplay scenes keep their
+ * own palette (`pixelart/palette.ts`) untouched.
  */
 export const HOME_PALETTE = {
   skyTop: '#5f93bc',
@@ -54,4 +56,11 @@ export const HOME_PALETTE = {
 
   ink: '#2c241d',
   cream: '#f5efe0',
+
+  // Pale pastel tones for UI that needs to read as *light* against the artwork's darker areas
+  // (the settings gear) — distinct from the warm-stone `rockStone`/`rockDark` tones above, which
+  // read too dark/muddy for that purpose.
+  gearLight: '#f2e6c8',
+  gearHighlight: '#fffdf5',
+  gearShadow: '#d9c9a0',
 } as const;

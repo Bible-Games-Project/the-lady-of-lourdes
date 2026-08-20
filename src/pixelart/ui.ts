@@ -56,7 +56,7 @@ function homeButtonGrid(size: number, border: number) {
  * unlike organic silhouettes like trees or rocks, which must never be circles). Simple
  * directional shading (light upper-left, dark lower-right) gives it dimension.
  */
-function gearGrid(size: number) {
+function gearGrid(size: number, colors: { base: string; highlight: string; shadow: string }) {
   const grid = makeGrid(size, size);
   const cx = (size - 1) / 2;
   const cy = (size - 1) / 2;
@@ -84,7 +84,7 @@ function gearGrid(size: number) {
       grid[y][x] = light > 0.3 ? 'H' : light < -0.35 ? 'S' : 'C';
     }
   }
-  return { grid, palette: { C: HOME_PALETTE.rockStone, H: HOME_PALETTE.mountainSnow, S: HOME_PALETTE.rockDark } };
+  return { grid, palette: { C: colors.base, H: colors.highlight, S: colors.shadow } };
 }
 
 export function registerUiTextures(scene: Phaser.Scene): void {
@@ -112,7 +112,9 @@ export function registerUiTextures(scene: Phaser.Scene): void {
   const homeButton = homeButtonGrid(UI_HOME_BUTTON_SLICE.size, UI_HOME_BUTTON_SLICE.border);
   registerTexture(scene, UI_KEYS.HOME_BUTTON, homeButton.grid, homeButton.palette, 1);
 
-  const homeGear = gearGrid(24);
+  // Pale pastel, not the rock/shadow tones used elsewhere — the gear sits over a busy
+  // illustration and needs to read as light against its darker areas.
+  const homeGear = gearGrid(24, { base: HOME_PALETTE.gearLight, highlight: HOME_PALETTE.gearHighlight, shadow: HOME_PALETTE.gearShadow });
   registerTexture(scene, UI_KEYS.HOME_GEAR, homeGear.grid, homeGear.palette, 1);
 
   const caret = makeGrid(8, 5);
