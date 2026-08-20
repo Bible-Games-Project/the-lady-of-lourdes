@@ -151,8 +151,44 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   shared `UI_KEYS.BUTTON`/`PANEL`/`GEAR` textures, which `Settings`,
   `ConfirmDialog`, `TasksPanel`, `DialogueBox`, and `GameplayTopBar` all
   still use. `ui/Button.ts#createButton` takes an optional `ButtonStyle`
-  (texture key, border, text color, hover tint) for exactly this — defaults
-  match the original shared button, so existing call sites are untouched.
+  (texture key, border, text color, hover tint, panel alpha, text stroke)
+  for exactly this — defaults match the original shared button, so existing
+  call sites are untouched.
+- **Home screen ambient effects** (`HomeScene.ts` + `pixelart/homeEffects.ts`):
+  the background image itself is still never touched. Everything alive is a
+  layer on top:
+  - Bernadette and the Lady each have a *cutout* — a crop of that exact
+    region of the background, feathered to transparent at the edges
+    (`HOME_BERNADETTE_CUTOUT_KEY`/`HOME_LADY_CUTOUT_KEY`,
+    `HOME_CUTOUT_SOURCE_RECT` for where in the original 1672x941 art each
+    one came from) — laid back at the identical position/scale and given a
+    barely-there breathing `scaleY` tween, anchored at origin `(0.5, 1)` so
+    the point that must stay pixel-aligned with the static background (feet
+    on the ground) never moves; only the upper body grows. Bernadette's
+    amplitude is deliberately ~4x the Lady's (kneeling girl breathes
+    visibly, the Lady is almost statuesque) — keep that hierarchy if you
+    touch these.
+  - `HomeScene.ts#toGameXY()` converts a pixel coordinate in the *original*
+    artwork to this scene's 480x270 canvas, using the same cover-scale
+    `buildBackground()` computed. Every position in this file (cutouts,
+    candle glows, the Lady's light) is authored in original-image
+    coordinates and converted through this — don't hardcode canvas-space
+    numbers for anything meant to line up with the art.
+  - Candle glows and the Lady's light rays are soft canvas-gradient
+    textures (`pixelart/homeEffects.ts`), not the hard-edged
+    `PixelCanvas.ts` grid the rest of the game's art uses — intentional,
+    since they're meant to blend into a painted illustration, not read as
+    pixel-art objects themselves. Candle flicker is a self-rescheduling
+    tween chain (`HomeScene.ts#flicker()`), not a fixed-period sine, so the
+    three candles drift in and out of phase instead of pulsing in lockstep.
+  - Leaves/motes are plain per-frame physics in `HomeScene.update()`
+    (fall/rise speed + wind drift + a sine wobble), not a particle emitter
+    — six leaves and three motes is cheap enough that a manual loop is
+    simpler than standing up `GameObjects.Particles` for it. Leaf textures
+    carry a faint halo (see the comment in `homeEffects.ts#leafCanvas()`)
+    because autumn-colored leaves drifting over an autumn-colored painting
+    camouflage almost completely without one — don't remove it thinking
+    it's unnecessary glow.
 - `src/gameplay/TasksPanel.ts` / `GameplayTopBar.ts` / `ui/ConfirmDialog.ts` —
   the compact objective checklist, the in-gameplay gear/home buttons, and the
   reusable confirm/cancel modal. All three are instantiated per-scene (not

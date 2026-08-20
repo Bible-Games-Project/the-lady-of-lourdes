@@ -12,7 +12,13 @@ import { registerInteriorProps } from '../pixelart/interiorProps';
 import { registerUiTextures } from '../pixelart/ui';
 import { registerJourneyIcons } from '../pixelart/journeyIcons';
 import { registerRosaryTextures } from '../pixelart/rosary';
-import { HOME_BACKGROUND_KEY, preloadHomeBackground } from '../assets/home/homeBackground';
+import {
+  HOME_BACKGROUND_KEY,
+  HOME_BERNADETTE_CUTOUT_KEY,
+  HOME_LADY_CUTOUT_KEY,
+  preloadHomeBackground,
+} from '../assets/home/homeBackground';
+import { registerHomeEffectTextures } from '../pixelart/homeEffects';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -33,12 +39,15 @@ export class BootScene extends Phaser.Scene {
     registerUiTextures(this);
     registerJourneyIcons(this);
     registerRosaryTextures(this);
+    registerHomeEffectTextures(this);
 
-    // The Home background is the maintainer's own finished art (soft/anti-aliased), not the
-    // procedural pixel grids the rest of the game uses. The game runs with `pixelArt: true`
-    // (nearest-neighbor everywhere by default) — force linear filtering on this one texture so
-    // it scales smoothly instead of going jagged.
-    this.textures.get(HOME_BACKGROUND_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    // The Home background (and the Bernadette/Lady cutouts taken from it) are the maintainer's
+    // own finished art (soft/anti-aliased), not the procedural pixel grids the rest of the game
+    // uses. The game runs with `pixelArt: true` (nearest-neighbor everywhere by default) — force
+    // linear filtering on these textures so they scale smoothly instead of going jagged.
+    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_CUTOUT_KEY, HOME_LADY_CUTOUT_KEY].forEach((key) => {
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
 
     AudioManager.init(this.sound);
 
