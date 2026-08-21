@@ -16,6 +16,7 @@ export const HOME_FX_KEYS = {
   GLOW: 'home_fx_glow',
   RAY: 'home_fx_ray',
   MOTE: 'home_fx_mote',
+  WATER_GLINT: 'home_fx_water_glint',
 } as const;
 
 function leafCanvas(color: string): HTMLCanvasElement {
@@ -97,4 +98,7 @@ export function registerHomeEffectTextures(scene: Phaser.Scene): void {
   scene.textures.addCanvas(HOME_FX_KEYS.GLOW, glowCanvas('rgba(245,201,90,0.9)', 48));
   scene.textures.addCanvas(HOME_FX_KEYS.RAY, rayCanvas());
   scene.textures.addCanvas(HOME_FX_KEYS.MOTE, glowCanvas('rgba(255,236,190,0.95)', 6));
+  // Cool blue-white, for the river — distinct from the warm gold used everywhere else (candles,
+  // the Lady's light, motes) so it reads as light on water rather than more firelight.
+  scene.textures.addCanvas(HOME_FX_KEYS.WATER_GLINT, glowCanvas('rgba(220,236,240,0.85)', 10));
 }

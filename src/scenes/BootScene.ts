@@ -16,6 +16,7 @@ import {
   HOME_BACKGROUND_KEY,
   HOME_BERNADETTE_CUTOUT_KEY,
   HOME_LADY_CUTOUT_KEY,
+  HOME_CLOUD_CUTOUT_KEY,
   preloadHomeBackground,
 } from '../assets/home/homeBackground';
 import { registerHomeEffectTextures } from '../pixelart/homeEffects';
@@ -45,7 +46,7 @@ export class BootScene extends Phaser.Scene {
     // own finished art (soft/anti-aliased), not the procedural pixel grids the rest of the game
     // uses. The game runs with `pixelArt: true` (nearest-neighbor everywhere by default) — force
     // linear filtering on these textures so they scale smoothly instead of going jagged.
-    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_CUTOUT_KEY, HOME_LADY_CUTOUT_KEY].forEach((key) => {
+    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_CUTOUT_KEY, HOME_LADY_CUTOUT_KEY, HOME_CLOUD_CUTOUT_KEY].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 

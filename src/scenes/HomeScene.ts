@@ -6,6 +6,7 @@ import {
   HOME_BACKGROUND_KEY,
   HOME_BERNADETTE_CUTOUT_KEY,
   HOME_LADY_CUTOUT_KEY,
+  HOME_CLOUD_CUTOUT_KEY,
   HOME_CUTOUT_SOURCE_RECT,
 } from '../assets/home/homeBackground';
 import { HOME_PALETTE } from '../pixelart/homePalette';
@@ -23,6 +24,23 @@ const CANDLE_SOURCE_POINTS: Array<{ x: number; y: number }> = [
 
 /** The Lady's halo center in the original artwork, for the soft light-ray layer. */
 const LADY_LIGHT_SOURCE_POINT = { x: 1152, y: 300 };
+
+/** A handful of points along the river's brightest ripples, in the original artwork. */
+const RIVER_GLINT_SOURCE_POINTS: Array<{ x: number; y: number }> = [
+  { x: 60, y: 680 },
+  { x: 150, y: 700 },
+  { x: 230, y: 690 },
+  { x: 100, y: 750 },
+  { x: 280, y: 660 },
+];
+
+interface Breather {
+  sprite: Phaser.GameObjects.Image;
+  baseScaleY: number;
+  amplitude: number;
+  periodMs: number;
+  phase: number;
+}
 
 interface DriftingSprite {
   sprite: Phaser.GameObjects.Image;
@@ -45,6 +63,10 @@ export class HomeScene extends Phaser.Scene {
   private bgOffsetY = 0;
   private leaves: DriftingSprite[] = [];
   private motes: DriftingSprite[] = [];
+  private breathers: Breather[] = [];
+  private cloud!: Phaser.GameObjects.Image;
+  private cloudBaseX = 0;
+  private elapsedMs = 0;
 
   constructor() {
     super(SCENE_KEYS.HOME);
@@ -52,9 +74,11 @@ export class HomeScene extends Phaser.Scene {
 
   create(): void {
     this.buildBackground();
+    this.buildClouds();
     this.buildLadyLight();
     this.buildBreathingFigures();
     this.buildCandleLight();
+    this.buildRiverGlints();
     this.buildTitle();
     this.buildLeaves();
     this.buildMotes();
@@ -81,7 +105,7 @@ export class HomeScene extends Phaser.Scene {
       border: UI_HOME_BUTTON_SLICE.border,
       textColor: HOME_PALETTE.cream,
       hoverTint: 0xfff8e8,
-      panelAlpha: 0.2,
+      panelAlpha: 0.34,
       textStroke: { color: HOME_PALETTE.ink, thickness: 3 },
     };
 
@@ -114,8 +138,11 @@ export class HomeScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     const dt = delta / 1000;
+    this.elapsedMs += delta;
     this.advanceDrift(this.leaves, dt, true);
     this.advanceDrift(this.motes, dt, false);
+    this.advanceBreathers();
+    this.advanceClouds();
   }
 
   /**
@@ -139,10 +166,16 @@ export class HomeScene extends Phaser.Scene {
   /**
    * Bernadette and the Lady are baked into the flat background image. Their cutouts (see
    * assets/home/homeBackground.ts) are laid exactly back over their original position/scale —
-   * invisible when still — and given a barely-there breathing tween. Anchored at the
+   * invisible when still — and given a barely-there breathing motion. Anchored at the
    * bottom-center of each cutout (their base on the ground) so it's the upper body that
    * rises/falls, not the whole figure floating; that also keeps the one point that must align
    * pixel-perfectly with the static background — where they meet the ground — fixed at all times.
+   *
+   * Driven directly by `Math.sin(elapsed)` in `advanceBreathers()` rather than a Phaser
+   * `yoyo + repeat` tween: a plain continuous sine of elapsed time is seamless *by construction*
+   * (sin(0) === sin(2π) and its derivative matches too), so there is no loop boundary to snap at,
+   * regardless of how Phaser's tween wrap-around happens to behave. Don't go back to a tween for
+   * this — that was tried first and had a visible jerk on each repeat.
    */
   private buildBreathingFigures(): void {
     const bRect = HOME_CUTOUT_SOURCE_RECT.bernadette;
@@ -151,13 +184,12 @@ export class HomeScene extends Phaser.Scene {
     bernadette.setOrigin(0.5, 1);
     bernadette.setScale(this.bgScale);
     bernadette.setDepth(2);
-    this.tweens.add({
-      targets: bernadette,
-      scaleY: this.bgScale * 1.012,
-      duration: 2100,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
+    this.breathers.push({
+      sprite: bernadette,
+      baseScaleY: this.bgScale,
+      amplitude: this.bgScale * 0.006,
+      periodMs: 4200,
+      phase: 0,
     });
 
     const lRect = HOME_CUTOUT_SOURCE_RECT.lady;
@@ -166,14 +198,79 @@ export class HomeScene extends Phaser.Scene {
     lady.setOrigin(0.5, 1);
     lady.setScale(this.bgScale);
     lady.setDepth(2);
+    this.breathers.push({
+      // Almost statuesque — a fraction of Bernadette's amplitude, on its own slower period so
+      // the two never fall into a visible unison.
+      sprite: lady,
+      baseScaleY: this.bgScale,
+      amplitude: this.bgScale * 0.0015,
+      periodMs: 6800,
+      phase: 1.7,
+    });
+  }
+
+  private advanceBreathers(): void {
+    this.breathers.forEach((b) => {
+      const angle = (this.elapsedMs / b.periodMs) * Math.PI * 2 + b.phase;
+      b.sprite.scaleY = b.baseScaleY + Math.sin(angle) * b.amplitude;
+    });
+  }
+
+  /**
+   * The sky's one cloud cluster, cut out the same way as Bernadette/the Lady, oscillating a few
+   * pixels left-right — again a plain sine of elapsed time, so it loops with no snap. The
+   * amplitude is kept well inside the cutout's feathered margin so the still, original cloud
+   * baked into the background is never uncovered at the extremes of the motion.
+   */
+  private buildClouds(): void {
+    const rect = HOME_CUTOUT_SOURCE_RECT.cloud;
+    const center = this.toGameXY(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    this.cloud = this.add.image(center.x, center.y, HOME_CLOUD_CUTOUT_KEY);
+    this.cloud.setScale(this.bgScale);
+    this.cloud.setDepth(0.5);
+    this.cloudBaseX = center.x;
+  }
+
+  private advanceClouds(): void {
+    const periodMs = 42000;
+    const amplitude = 4.5;
+    this.cloud.x = this.cloudBaseX + Math.sin((this.elapsedMs / periodMs) * Math.PI * 2) * amplitude;
+  }
+
+  /** Faint, intermittent glints of light on the river's ripples — never a moving texture. */
+  private buildRiverGlints(): void {
+    RIVER_GLINT_SOURCE_POINTS.forEach(({ x, y }, i) => {
+      const pos = this.toGameXY(x, y);
+      const glint = this.add.image(pos.x, pos.y, HOME_FX_KEYS.WATER_GLINT);
+      glint.setBlendMode(Phaser.BlendModes.ADD);
+      glint.setDepth(0.6);
+      glint.setScale(Phaser.Math.FloatBetween(0.6, 1));
+      glint.setAlpha(0);
+      // Stagger the first appearance so all five don't shimmer in lockstep.
+      this.time.delayedCall(i * 700, () => this.glintCycle(glint));
+    });
+  }
+
+  private glintCycle(target: Phaser.GameObjects.Image): void {
+    const peakAlpha = Phaser.Math.FloatBetween(0.25, 0.45);
     this.tweens.add({
-      // The Lady should feel almost statuesque — a small fraction of Bernadette's movement.
-      targets: lady,
-      scaleY: this.bgScale * 1.003,
-      duration: 3400,
-      yoyo: true,
-      repeat: -1,
+      targets: target,
+      alpha: peakAlpha,
+      duration: Phaser.Math.Between(1400, 2400),
       ease: 'Sine.easeInOut',
+      onComplete: () => {
+        if (!target.active) return;
+        this.tweens.add({
+          targets: target,
+          alpha: 0,
+          duration: Phaser.Math.Between(1400, 2400),
+          ease: 'Sine.easeInOut',
+          onComplete: () => {
+            if (!target.active) return;
+            this.time.delayedCall(Phaser.Math.Between(800, 2600), () => this.glintCycle(target));
+          },
+        });
+      },
     });
   }
 

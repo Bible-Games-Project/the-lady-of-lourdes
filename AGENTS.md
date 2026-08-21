@@ -157,30 +157,44 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
 - **Home screen ambient effects** (`HomeScene.ts` + `pixelart/homeEffects.ts`):
   the background image itself is still never touched. Everything alive is a
   layer on top:
-  - Bernadette and the Lady each have a *cutout* — a crop of that exact
-    region of the background, feathered to transparent at the edges
-    (`HOME_BERNADETTE_CUTOUT_KEY`/`HOME_LADY_CUTOUT_KEY`,
-    `HOME_CUTOUT_SOURCE_RECT` for where in the original 1672x941 art each
-    one came from) — laid back at the identical position/scale and given a
-    barely-there breathing `scaleY` tween, anchored at origin `(0.5, 1)` so
-    the point that must stay pixel-aligned with the static background (feet
-    on the ground) never moves; only the upper body grows. Bernadette's
-    amplitude is deliberately ~4x the Lady's (kneeling girl breathes
-    visibly, the Lady is almost statuesque) — keep that hierarchy if you
-    touch these.
+  - Bernadette, the Lady, and the sky's one cloud cluster each have a
+    *cutout* — a crop of that exact region of the background, feathered to
+    transparent at the edges (`HOME_BERNADETTE_CUTOUT_KEY`/
+    `HOME_LADY_CUTOUT_KEY`/`HOME_CLOUD_CUTOUT_KEY`, `HOME_CUTOUT_SOURCE_RECT`
+    for where in the original 1672x941 art each one came from) — laid back
+    at the identical position/scale, invisible when still. Bernadette and
+    the Lady are anchored at origin `(0.5, 1)` so the point that must stay
+    pixel-aligned with the static background (feet on the ground) never
+    moves; only the upper body grows. Bernadette's breathing amplitude is
+    deliberately ~4x the Lady's (kneeling girl breathes visibly, the Lady
+    is almost statuesque) — keep that hierarchy if you touch these.
+  - **Breathing and cloud drift are driven directly by `Math.sin(elapsed)`
+    in `HomeScene.update()` (see `advanceBreathers()`/`advanceClouds()`),
+    not a Phaser `yoyo: true, repeat: -1` tween.** A tween version shipped
+    first and had a visible jerk at every loop restart; a plain continuous
+    sine of elapsed time has no loop boundary to snap at by construction
+    (`sin(0) === sin(2π)`, derivative too). If you add another slow ambient
+    loop here, use this same pattern, not a yoyo tween — don't reintroduce
+    the bug. Any drift/oscillation amplitude must stay well inside the
+    cutout's feathered margin (see the comment on `HOME_CUTOUT_SOURCE_RECT`
+    in `homeBackground.ts`) or the still, un-animated copy baked into the
+    background shows through at the extremes.
   - `HomeScene.ts#toGameXY()` converts a pixel coordinate in the *original*
     artwork to this scene's 480x270 canvas, using the same cover-scale
     `buildBackground()` computed. Every position in this file (cutouts,
-    candle glows, the Lady's light) is authored in original-image
-    coordinates and converted through this — don't hardcode canvas-space
-    numbers for anything meant to line up with the art.
-  - Candle glows and the Lady's light rays are soft canvas-gradient
-    textures (`pixelart/homeEffects.ts`), not the hard-edged
-    `PixelCanvas.ts` grid the rest of the game's art uses — intentional,
-    since they're meant to blend into a painted illustration, not read as
-    pixel-art objects themselves. Candle flicker is a self-rescheduling
-    tween chain (`HomeScene.ts#flicker()`), not a fixed-period sine, so the
-    three candles drift in and out of phase instead of pulsing in lockstep.
+    candle glows, river glints, the Lady's light) is authored in
+    original-image coordinates and converted through this — don't hardcode
+    canvas-space numbers for anything meant to line up with the art.
+  - Candle glows, river glints, and the Lady's light rays are soft
+    canvas-gradient textures (`pixelart/homeEffects.ts`), not the
+    hard-edged `PixelCanvas.ts` grid the rest of the game's art uses —
+    intentional, since they're meant to blend into a painted illustration,
+    not read as pixel-art objects themselves. Their flicker/shimmer is a
+    self-rescheduling tween chain (`HomeScene.ts#flicker()`/
+    `#glintCycle()`), not a fixed-period yoyo, so instances drift in and
+    out of phase instead of pulsing in lockstep — and because each leg
+    targets a fresh random value there's no periodic "loop point" for this
+    one to snap at either, unlike the breathing/cloud case above.
   - Leaves/motes are plain per-frame physics in `HomeScene.update()`
     (fall/rise speed + wind drift + a sine wobble), not a particle emitter
     — six leaves and three motes is cheap enough that a manual loop is
