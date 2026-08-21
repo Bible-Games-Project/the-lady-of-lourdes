@@ -157,28 +157,39 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
 - **Home screen ambient effects** (`HomeScene.ts` + `pixelart/homeEffects.ts`):
   the background image itself is still never touched. Everything alive is a
   layer on top:
-  - Bernadette, the Lady, and the sky's one cloud cluster each have a
-    *cutout* — a crop of that exact region of the background, feathered to
-    transparent at the edges (`HOME_BERNADETTE_CUTOUT_KEY`/
-    `HOME_LADY_CUTOUT_KEY`/`HOME_CLOUD_CUTOUT_KEY`, `HOME_CUTOUT_SOURCE_RECT`
-    for where in the original 1672x941 art each one came from) — laid back
-    at the identical position/scale, invisible when still. Bernadette and
-    the Lady are anchored at origin `(0.5, 1)` so the point that must stay
-    pixel-aligned with the static background (feet on the ground) never
-    moves; only the upper body grows. Bernadette's breathing amplitude is
-    deliberately ~4x the Lady's (kneeling girl breathes visibly, the Lady
-    is almost statuesque) — keep that hierarchy if you touch these.
-  - **Breathing and cloud drift are driven directly by `Math.sin(elapsed)`
-    in `HomeScene.update()` (see `advanceBreathers()`/`advanceClouds()`),
-    not a Phaser `yoyo: true, repeat: -1` tween.** A tween version shipped
-    first and had a visible jerk at every loop restart; a plain continuous
-    sine of elapsed time has no loop boundary to snap at by construction
-    (`sin(0) === sin(2π)`, derivative too). If you add another slow ambient
-    loop here, use this same pattern, not a yoyo tween — don't reintroduce
-    the bug. Any drift/oscillation amplitude must stay well inside the
-    cutout's feathered margin (see the comment on `HOME_CUTOUT_SOURCE_RECT`
-    in `homeBackground.ts`) or the still, un-animated copy baked into the
-    background shows through at the extremes.
+  - The Lady and the sky's cloud cluster are **fully static** — shown only
+    via the untouched background, no cutout, no motion. This was tried the
+    other way (both had a subtle breathing/drift animation) and explicitly
+    reverted on maintainer request; don't reintroduce motion for either
+    without being asked. The Lady's soft light rays (`buildLadyLight()`,
+    see below) are a *separate* overlay and are unaffected by this — she
+    keeps her gentle moving light, she just doesn't breathe/sway herself.
+  - Bernadette has exactly one small animated cutout: `bernadette_torso_cutout.png`
+    (`HOME_BERNADETTE_TORSO_CUTOUT_KEY`, rect in `HOME_CUTOUT_SOURCE_RECT.bernadetteTorso`)
+    — a *tight* crop of only her torso/chest, deliberately excluding her
+    head/kerchief and her clasped hands, feathered to transparent at the
+    edges. It's laid back at its exact original position (origin `(0.5,1)`,
+    anchored at the bottom so her waist — the point that must stay
+    pixel-aligned with the static background — never moves; only the chest
+    above it subtly rises). An earlier version animated her *entire*
+    full-body cutout (bob + scale) and was explicitly rejected — it read as
+    "an animated sprite," not a person quietly breathing. If you revisit
+    this, keep the animated region small and anatomically specific (torso
+    only), and if a tighter/cleaner cutout can't be found, **the maintainer's
+    explicit fallback is to leave Bernadette fully static** — a visible
+    cutout edge or a moving whole-figure is worse than no animation at all.
+  - **Bernadette's breathing is driven directly by `Math.sin(elapsed)` in
+    `HomeScene.update()` (see `advanceBernadetteBreathing()`), not a Phaser
+    `yoyo: true, repeat: -1` tween.** A tween version shipped first (for the
+    old full-cutout approach) and had a visible jerk at every loop restart;
+    a plain continuous sine of elapsed time has no loop boundary to snap at
+    by construction (`sin(0) === sin(2π)`, derivative too). If you add
+    another slow ambient loop here, use this same pattern, not a yoyo
+    tween — don't reintroduce the bug. The scale amplitude must stay well
+    inside the cutout's feathered margin (see the comment on
+    `HOME_CUTOUT_SOURCE_RECT` in `homeBackground.ts`) or the still,
+    un-animated copy baked into the background shows through at the
+    extremes.
   - `HomeScene.ts#toGameXY()` converts a pixel coordinate in the *original*
     artwork to this scene's 480x270 canvas, using the same cover-scale
     `buildBackground()` computed. Every position in this file (cutouts,
