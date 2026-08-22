@@ -17,6 +17,7 @@ export const HOME_FX_KEYS = {
   RAY: 'home_fx_ray',
   MOTE: 'home_fx_mote',
   WATER_GLINT: 'home_fx_water_glint',
+  WATER_STREAK: 'home_fx_water_streak',
 } as const;
 
 function leafCanvas(color: string): HTMLCanvasElement {
@@ -89,6 +90,28 @@ function rayCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
+/**
+ * A short, soft-ended pixel-art highlight streak — used to suggest the river's current by
+ * drifting a few of these slowly along its surface (see HomeScene.ts#buildWaterFlow()). A thin
+ * horizontal bar with the alpha tapered at both ends (rather than a hard-edged rectangle) so it
+ * reads as a glint of light on moving water, not a moving UI element.
+ */
+function waterStreakCanvas(): HTMLCanvasElement {
+  const w = 12;
+  const h = 3;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, 'rgba(220,236,240,0)');
+  grad.addColorStop(0.5, 'rgba(220,236,240,0.9)');
+  grad.addColorStop(1, 'rgba(220,236,240,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0.5, w, h - 1);
+  return canvas;
+}
+
 export function registerHomeEffectTextures(scene: Phaser.Scene): void {
   if (scene.textures.exists(HOME_FX_KEYS.GLOW)) return;
 
@@ -101,4 +124,5 @@ export function registerHomeEffectTextures(scene: Phaser.Scene): void {
   // Cool blue-white, for the river — distinct from the warm gold used everywhere else (candles,
   // the Lady's light, motes) so it reads as light on water rather than more firelight.
   scene.textures.addCanvas(HOME_FX_KEYS.WATER_GLINT, glowCanvas('rgba(220,236,240,0.85)', 10));
+  scene.textures.addCanvas(HOME_FX_KEYS.WATER_STREAK, waterStreakCanvas());
 }

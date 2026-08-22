@@ -5,12 +5,31 @@ import { K } from '../core/i18n/keys';
 import { SaveData } from '../core/SaveData';
 import { AudioManager } from '../core/AudioManager';
 import { SUPPORTED_LANGUAGES } from '../core/i18n/languages';
-import { UI_KEYS, UI_PANEL_SLICE } from '../pixelart/ui';
-import { createButton } from '../ui/Button';
+import { UI_KEYS, UI_PANEL_SLICE, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
+import { HOME_PALETTE } from '../pixelart/homePalette';
+import { createButton, type ButtonStyle } from '../ui/Button';
 import { createToggle } from '../ui/Toggle';
 import { createSlider } from '../ui/Slider';
-import { textStyle, INK } from '../ui/text';
+import { textStyle } from '../ui/text';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { useFullBleedScale, useLetterboxScale } from '../core/scaleMode';
+
+/**
+ * Settings reuses the same warm cream/stone Home palette and the Home button texture (see
+ * pixelart/homePalette.ts, pixelart/ui.ts) so the screen reads as belonging to the same artwork
+ * — fully opaque here (unlike Home's own translucent buttons) since Settings sits over a plain
+ * dark overlay, not the illustration itself, and needs full readability.
+ */
+const SETTINGS_BUTTON_STYLE: ButtonStyle = {
+  textureKey: UI_KEYS.HOME_BUTTON,
+  border: UI_HOME_BUTTON_SLICE.border,
+  textColor: HOME_PALETTE.ink,
+};
+
+/** Scenes whose own screen is full-bleed (see core/scaleMode.ts) — Settings restores to this
+ *  scale mode on close if it's returning to one of them, or to the letterboxed gameplay mode
+ *  otherwise, since Settings can be reached from either kind of screen. */
+const FULL_BLEED_RETURN_SCENES: string[] = [SCENE_KEYS.HOME];
 
 interface SettingsSceneData {
   returnTo?: string;
@@ -33,6 +52,7 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   create(): void {
+    useFullBleedScale(this);
     this.confirmDialog = new ConfirmDialog(this);
     this.keyEsc = this.input.keyboard!.addKey('ESC');
     this.redraw();
@@ -50,13 +70,17 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   private close(): void {
+    if (!FULL_BLEED_RETURN_SCENES.includes(this.returnTo)) {
+      useLetterboxScale(this);
+    }
     this.scene.stop();
     this.scene.resume(this.returnTo);
   }
 
   private redraw(): void {
     this.children.removeAll(true);
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
+    const overlayColor = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.ink).color;
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, overlayColor, 0.6);
 
     if (this.showingLanguageList) {
       this.renderLanguageList();
@@ -69,7 +93,7 @@ export class SettingsScene extends Phaser.Scene {
     this.add.nineslice(
       cx,
       cy,
-      UI_KEYS.PANEL,
+      UI_KEYS.SETTINGS_PANEL,
       undefined,
       w,
       h,
@@ -88,20 +112,29 @@ export class SettingsScene extends Phaser.Scene {
     this.panel(cx, cy, panelW, panelH);
 
     this.add
-      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_TITLE), textStyle({ fontSize: '16px', color: INK.dark, fontStyle: 'bold' }))
+      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_TITLE), textStyle({ fontSize: '16px', color: HOME_PALETTE.ink, fontStyle: 'bold' }))
       .setOrigin(0.5);
 
     const rowX = cx - panelW / 2 + 20;
     let rowY = cy - panelH / 2 + 44;
-    const labelStyle = textStyle({ fontSize: '12px', color: INK.dark });
+    const labelStyle = textStyle({ fontSize: '12px', color: HOME_PALETTE.ink });
 
     // Language.
     this.add.text(rowX, rowY, Localization.t(K.SETTINGS_LANGUAGE), labelStyle).setOrigin(0, 0.5);
     const currentLanguage = SUPPORTED_LANGUAGES.find((l) => l.code === Localization.getLanguage());
-    createButton(this, cx + panelW / 2 - 76, rowY, 120, 24, currentLanguage?.nativeName ?? 'English', () => {
-      this.showingLanguageList = true;
-      this.redraw();
-    });
+    createButton(
+      this,
+      cx + panelW / 2 - 76,
+      rowY,
+      120,
+      24,
+      currentLanguage?.nativeName ?? 'English',
+      () => {
+        this.showingLanguageList = true;
+        this.redraw();
+      },
+      SETTINGS_BUTTON_STYLE,
+    );
 
     rowY += 40;
 
@@ -144,21 +177,30 @@ export class SettingsScene extends Phaser.Scene {
     rowY += 40;
 
     // Reset All Data.
-    createButton(this, cx, rowY, panelW - 60, 26, Localization.t(K.SETTINGS_RESET_DATA), () => {
-      this.confirmDialog.show({
-        title: Localization.t(K.RESET_CONFIRM_TITLE),
-        message: Localization.t(K.RESET_CONFIRM_MESSAGE),
-        confirmLabel: Localization.t(K.COMMON_RESET),
-        cancelLabel: Localization.t(K.COMMON_CANCEL),
-        danger: true,
-        onConfirm: () => {
-          SaveData.resetAll();
-          window.location.reload();
-        },
-      });
-    });
+    createButton(
+      this,
+      cx,
+      rowY,
+      panelW - 60,
+      26,
+      Localization.t(K.SETTINGS_RESET_DATA),
+      () => {
+        this.confirmDialog.show({
+          title: Localization.t(K.RESET_CONFIRM_TITLE),
+          message: Localization.t(K.RESET_CONFIRM_MESSAGE),
+          confirmLabel: Localization.t(K.COMMON_RESET),
+          cancelLabel: Localization.t(K.COMMON_CANCEL),
+          danger: true,
+          onConfirm: () => {
+            SaveData.resetAll();
+            window.location.reload();
+          },
+        });
+      },
+      SETTINGS_BUTTON_STYLE,
+    );
 
-    createButton(this, cx, cy + panelH / 2 - 22, 120, 26, Localization.t(K.COMMON_BACK), () => this.close());
+    createButton(this, cx, cy + panelH / 2 - 22, 120, 26, Localization.t(K.COMMON_BACK), () => this.close(), SETTINGS_BUTTON_STYLE);
   }
 
   private renderLanguageList(): void {
@@ -169,7 +211,7 @@ export class SettingsScene extends Phaser.Scene {
     this.panel(cx, cy, panelW, panelH);
 
     this.add
-      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_LANGUAGE), textStyle({ fontSize: '16px', color: INK.dark, fontStyle: 'bold' }))
+      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_LANGUAGE), textStyle({ fontSize: '16px', color: HOME_PALETTE.ink, fontStyle: 'bold' }))
       .setOrigin(0.5);
 
     const rows = Math.ceil(SUPPORTED_LANGUAGES.length / 2);
@@ -183,17 +225,35 @@ export class SettingsScene extends Phaser.Scene {
       const row = i % rows;
       const bx = startX + col * colW;
       const by = startY + row * rowH;
-      createButton(this, bx, by, colW - 24, 22, lang.nativeName, () => {
-        Localization.setLanguage(lang.code);
-        SaveData.setLanguage(lang.code, true);
-        this.showingLanguageList = false;
-        this.redraw();
-      });
+      createButton(
+        this,
+        bx,
+        by,
+        colW - 24,
+        22,
+        lang.nativeName,
+        () => {
+          Localization.setLanguage(lang.code);
+          SaveData.setLanguage(lang.code, true);
+          this.showingLanguageList = false;
+          this.redraw();
+        },
+        SETTINGS_BUTTON_STYLE,
+      );
     });
 
-    createButton(this, cx, cy + panelH / 2 - 20, 100, 24, Localization.t(K.COMMON_BACK), () => {
-      this.showingLanguageList = false;
-      this.redraw();
-    });
+    createButton(
+      this,
+      cx,
+      cy + panelH / 2 - 20,
+      100,
+      24,
+      Localization.t(K.COMMON_BACK),
+      () => {
+        this.showingLanguageList = false;
+        this.redraw();
+      },
+      SETTINGS_BUTTON_STYLE,
+    );
   }
 }

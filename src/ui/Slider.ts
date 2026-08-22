@@ -1,10 +1,18 @@
 import Phaser from 'phaser';
+import { HOME_PALETTE } from '../pixelart/homePalette';
 
 export interface SliderHandle {
   setValue(v: number): void;
   setEnabled(enabled: boolean): void;
   destroy(): void;
 }
+
+// Only ever used on the Settings screen — colored from the Home palette so it reads as the same
+// artwork's UI rather than a generic HTML slider.
+const TRACK_COLOR = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.pathStoneShade).color;
+const FILL_COLOR = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.glowGold).color;
+const HANDLE_COLOR = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.cream).color;
+const HANDLE_STROKE = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.ink).color;
 
 /** A simple 0..1 horizontal slider in absolute scene coordinates (kept out of containers to avoid drag-space ambiguity). */
 export function createSlider(
@@ -16,10 +24,10 @@ export function createSlider(
   onChange: (value: number) => void,
 ): SliderHandle {
   const trackHeight = 4;
-  const track = scene.add.rectangle(x, y, width, trackHeight, 0x7a6a52).setOrigin(0, 0.5);
-  const fill = scene.add.rectangle(x, y, Math.max(1, width * initialValue), trackHeight, 0xc9a84a).setOrigin(0, 0.5);
-  const handle = scene.add.circle(x + width * initialValue, y, 7, 0xfffaf0);
-  handle.setStrokeStyle(2, 0x5a4d3a);
+  const track = scene.add.rectangle(x, y, width, trackHeight, TRACK_COLOR).setOrigin(0, 0.5);
+  const fill = scene.add.rectangle(x, y, Math.max(1, width * initialValue), trackHeight, FILL_COLOR).setOrigin(0, 0.5);
+  const handle = scene.add.circle(x + width * initialValue, y, 7, HANDLE_COLOR);
+  handle.setStrokeStyle(2, HANDLE_STROKE);
 
   let enabled = true;
 

@@ -18,6 +18,7 @@ import {
   preloadHomeBackground,
 } from '../assets/home/homeBackground';
 import { registerHomeEffectTextures } from '../pixelart/homeEffects';
+import { JOURNEY_MAP_KEY, preloadJourneyMap } from '../assets/journey/journeyMap';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -26,6 +27,7 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     preloadHomeBackground(this);
+    preloadJourneyMap(this);
   }
 
   create(): void {
@@ -45,7 +47,7 @@ export class BootScene extends Phaser.Scene {
     // of the game uses. The game runs with `pixelArt: true` (nearest-neighbor everywhere by
     // default) — force linear filtering on these textures so they scale smoothly instead of
     // going jagged.
-    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY].forEach((key) => {
+    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY, JOURNEY_MAP_KEY].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 

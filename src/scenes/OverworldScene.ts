@@ -23,6 +23,7 @@ import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
 import { wait, tweenPromise } from '../gameplay/async';
 import { textStyle } from '../ui/text';
+import { useLetterboxScale } from '../core/scaleMode';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
@@ -145,6 +146,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   create(data: OverworldSceneData): void {
+    useLetterboxScale(this);
     this.cameras.main.fadeIn(400, 0, 0, 0);
     this.phase = 'explore';
     this.friendMet = false;

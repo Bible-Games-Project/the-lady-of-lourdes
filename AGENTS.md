@@ -127,7 +127,44 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   by mission completion unless `SaveData.get().gameDevMode` is on (Settings
   toggle, lets QA jump to any mission). Selecting an unlocked+implemented
   mission goes straight to `CachotScene` — Mission 1 always starts inside Le
-  Cachot, never in the open world.
+  Cachot, never in the open world. **Do not touch any of this logic when
+  reworking the screen's visuals** — see the Journey visuals note below for
+  what changed and stayed the same.
+- **Journey/Map visuals** (`ApparitionJourneyScene.ts` +
+  `assets/journey/journeyMap.ts` + `data/journeyRoute.ts` +
+  `pixelart/journeyIcons.ts`/`journeyPalette.ts`): same real-image approach as
+  Home — `journey_map.png` (941x1672, portrait) is the maintainer's own
+  finished artwork, used as-is, recovered byte-for-byte from the conversation
+  that supplied it. Unlike Home it needs no "cover" crop: it's already
+  portrait/scrollable, so `buildBackground()` just scales it uniformly to
+  `GAME_WIDTH` and the scaled height *becomes* `worldHeight` for the existing
+  camera-scroll system (drag/wheel/arrow-keys/keyboard, all unchanged).
+  - `data/journeyRoute.ts#ROUTE_WAYPOINTS` is a hand-placed polyline traced
+    *by eye* against this specific image (grid-overlay crops, read the pixel
+    coordinates of the actual painted trail/bridges/Grotto) — it is not
+    computed from anything and must be re-traced by hand if the artwork ever
+    changes. A Catmull-Rom spline through those waypoints
+    (`getRouteCurvePoints()`) is what both the drawn route line *and* the 18
+    node positions (`getRouteNodePoints()`, evenly spaced by arc length, not
+    by spline parameter) sample from — keeping them on the same function is
+    what guarantees the line always passes exactly through every medallion.
+    Node 1 is nearest the bottom-left, node 18 sits at the Grotto near the
+    top, crossing both painted bridges in between, per the maintainer's
+    explicit route description — don't replace this with a straight line or
+    a sine wave (that was the old design, explicitly rejected).
+  - `pixelart/journeyPalette.ts` + `journeyIcons.ts` are Journey-only,
+    sampled from this map image — same reasoning as `homePalette.ts`:
+    `JOURNEY_ICON_KEYS.MEDALLION`/`LOCK`/`CHECK`/`ARROW`/`HOME` are used
+    *only* by this scene, so they were safe to recolor/redesign freely
+    without touching the shared gameplay `pixelart/palette.ts` or
+    `pixelart/ui.ts` textures other scenes rely on.
+  - **`JOURNEY_ICON_KEYS.ARROW` points up by default; the scroll-down button
+    applies `.setFlipY(true)`.** The previous shared `UI_KEYS.CARET` pointed
+    *down* by default with no flip on the "up" button and a flip on the
+    "down" button — backwards, which is exactly why the scroll arrows read
+    as wrong-direction/confusing. If you touch these buttons again, keep the
+    texture's default orientation and the button's semantic direction in
+    sync; don't reason about it from the old caret's geometry.
 - `src/assets/home/homeBackground.ts` + `home_background.png` — the Home
   screen background is the maintainer's own finished artwork, loaded as a
   real image and used exactly as supplied (recovered byte-for-byte from the
@@ -148,12 +185,23 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   `pixelart/ui.ts`). Deliberately separate from every other screen's
   palette/textures — when the maintainer asks for one screen's visuals to
   match a reference, make new keys/files for it rather than editing the
-  shared `UI_KEYS.BUTTON`/`PANEL`/`GEAR` textures, which `Settings`,
-  `ConfirmDialog`, `TasksPanel`, `DialogueBox`, and `GameplayTopBar` all
-  still use. `ui/Button.ts#createButton` takes an optional `ButtonStyle`
-  (texture key, border, text color, hover tint, panel alpha, text stroke)
-  for exactly this — defaults match the original shared button, so existing
-  call sites are untouched.
+  shared `UI_KEYS.BUTTON`/`PANEL`/`GEAR` textures, which `ConfirmDialog`,
+  `TasksPanel`, `DialogueBox`, and `GameplayTopBar` still use. (`Settings`
+  now has its own recolored panel too, see below — it no longer uses the
+  plain shared `PANEL`.) `ui/Button.ts#createButton` takes an optional
+  `ButtonStyle` (texture key, border, text color, hover tint, panel alpha,
+  text stroke) for exactly this — defaults match the original shared
+  button, so existing call sites are untouched.
+- **`SettingsScene`'s own visual style**: reuses `UI_KEYS.HOME_BUTTON` for
+  its buttons and a Settings-only `UI_KEYS.SETTINGS_PANEL` (same bevel
+  structure as the shared `PANEL`, recolored with `HOME_PALETTE` —
+  `pixelart/ui.ts`) for its panel background, plus `ui/Toggle.ts` and
+  `ui/Slider.ts` recolored to `HOME_PALETTE` directly (both are used
+  *exclusively* by `SettingsScene`, so recoloring their defaults in place
+  was safe — no separate "Settings toggle" vs "shared toggle" split needed).
+  This was a deliberate choice to reuse the Home palette/button texture
+  rather than invent a third one, since the ask was specifically for
+  Settings to "belong to the Home screen."
 - **Home screen ambient effects** (`HomeScene.ts` + `pixelart/homeEffects.ts`):
   the background image itself is still never touched. Everything alive is a
   layer on top:
@@ -196,6 +244,14 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     candle glows, river glints, the Lady's light) is authored in
     original-image coordinates and converted through this — don't hardcode
     canvas-space numbers for anything meant to line up with the art.
+  - The river never animates itself — a few thin highlight streaks
+    (`HOME_FX_KEYS.WATER_STREAK`) drift slowly along short lanes on its
+    surface instead (`buildWaterFlow()`/`advanceWaterFlow()`,
+    `WATER_FLOW_LANES`). Same seamless-loop family as the breathing effect:
+    position is `Phaser.Math.Linear` over a continuous `(elapsed/period) % 1`,
+    and alpha tapers to 0 over the first/last quarter of the lane so the
+    wrap-from-1-back-to-0 happens while invisible — don't swap this for a
+    texture scroll or a yoyo tween.
   - Candle glows, river glints, and the Lady's light rays are soft
     canvas-gradient textures (`pixelart/homeEffects.ts`), not the
     hard-edged `PixelCanvas.ts` grid the rest of the game's art uses —
@@ -214,6 +270,33 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     because autumn-colored leaves drifting over an autumn-colored painting
     camouflage almost completely without one — don't remove it thinking
     it's unnecessary glow.
+- **`src/core/scaleMode.ts`** — the game ships as a native app (see "Native
+  boundary" above), so real device aspect ratios rarely match the 16:9
+  logical resolution (`GAME_WIDTH`x`GAME_HEIGHT`). Gameplay scenes
+  (Overworld/Cachot/MissionComplete/LanguageSelect/MoreGames) use
+  `useLetterboxScale()` (`Phaser.Scale.FIT`) so the *entire* logical canvas
+  is always visible — required, since their HUD (gear, joystick, Tasks
+  button) is pinned close to the logical edges and would get cropped
+  otherwise. Home, Settings, and the Journey map use `useFullBleedScale()`
+  (`Phaser.Scale.ENVELOP`) instead, per explicit maintainer request: these
+  screens must fill the device edge-to-edge with no letterbox bars, cropping
+  the art on mismatched aspect ratios rather than showing bars. Call the
+  right one at the top of every scene's `create()` — including ones reached
+  via `scene.launch()`, like `SettingsScene`, which restores the correct
+  mode on close based on `returnTo` since it can be opened from either kind
+  of screen (see `FULL_BLEED_RETURN_SCENES` there). The Scale Manager is
+  global to the one `Phaser.Game`/canvas, so this is a live runtime switch,
+  not a per-scene setting — **you cannot just assign
+  `scene.scale.scaleMode` and call `.refresh()`**: Phaser only applies a
+  scale mode's aspect/crop behavior to `displaySize` once, in
+  `ScaleManager#boot()`; `refresh()` never re-calls
+  `displaySize.setAspectMode()`, so a bare mode change reports the new mode
+  but has no visual effect. `scaleMode.ts` mirrors what `boot()` does
+  (`scale.displaySize.setAspectMode(mode)` before `refresh()`) — always go
+  through `useFullBleedScale()`/`useLetterboxScale()`, don't hand-roll this
+  again. Pointer/click hit-testing was verified to still map correctly after
+  a runtime switch (Phaser recomputes it live from the canvas rect), so no
+  extra input-coordinate work is needed.
 - `src/gameplay/TasksPanel.ts` / `GameplayTopBar.ts` / `ui/ConfirmDialog.ts` —
   the compact objective checklist, the in-gameplay gear/home buttons, and the
   reusable confirm/cancel modal. All three are instantiated per-scene (not
@@ -250,6 +333,37 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
 
 ### Known Phaser gotchas hit while building this
 
+- **A Text style object with `stroke`/`strokeThickness` keys present but
+  `undefined` silently breaks that Text's canvas sizing to 0x0 — the label
+  never renders at all, with no error.** This is *not* the same as omitting
+  the keys entirely (which works fine and is the "no stroke" default).
+  `ui/Button.ts#createButton()` used to always pass both keys
+  (`stroke: style.textStroke?.color, strokeThickness: style.textStroke?.thickness`),
+  which meant every button *without* a custom `ButtonStyle.textStroke` —
+  Settings, the language pickers, Mission Complete's continue button, i.e.
+  most buttons in the game — silently rendered with completely invisible
+  text (confirmed via `text.canvas.width === 0` and `text.frame.width ===
+  null`, not just low contrast). Fixed by only spreading those two keys into
+  the style object when `textStroke` is actually set. If you ever build a
+  style object for `scene.add.text()` conditionally, spread optional keys in
+  rather than assigning `possiblyUndefinedValue` directly to a key that's
+  always present — reproduce with `scene.add.text(x, y, 'x', { stroke:
+  undefined }).canvas.width` before trusting any "it's just low contrast"
+  assumption about invisible text.
+- **Scenes render in `game.scene.scenes` array order — i.e. the order given
+  in `main.ts`'s `scene: [...]` config — not launch/insertion order.**
+  `scene.launch()` on an already-registered scene (any scene listed in the
+  initial config array, which is all of them here) activates it *in place*;
+  it does not move it to the end of the render list. A scene meant to
+  overlay others via `scene.launch()`
+  (`SettingsScene`, opened from `HomeScene` *and* from gameplay via
+  `GameplayTopBar`) must be listed **after every scene it can be launched
+  over**, or it renders fully interactive but completely invisible
+  underneath them — confirmed by screenshotting Settings opened from
+  `CachotScene` and seeing the unpaused-looking gameplay view with no
+  overlay at all. `SettingsScene` is now last in `main.ts`'s scene array
+  specifically for this reason — don't reorder it earlier without re-testing
+  every scene that can open it.
 - **Static body `setSize()` + `refreshBody()` is a trap.** Calling
   `staticImage.body.setSize(w, h)` and then `staticImage.refreshBody()`
   silently *undoes* the resize — `refreshBody()` re-derives the body from the

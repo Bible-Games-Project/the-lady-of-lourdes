@@ -25,16 +25,22 @@ const config: Phaser.Types.Core.GameConfig = {
     default: 'arcade',
     arcade: { debug: false },
   },
+  // Phaser renders simultaneously-active scenes in this array's order (earlier = further back),
+  // regardless of which was launched more recently — `scene.launch()` activates an already
+  // -registered scene in place, it does not move it to the end. SettingsScene is `launch()`ed as
+  // an overlay on top of Home *and* on top of gameplay scenes (Overworld/Cachot, via the in-game
+  // gear), so it must be listed after every scene it can be opened over, or it silently renders
+  // *behind* them — fully present and interactive, just invisible. Keep it last.
   scene: [
     BootScene,
     LanguageSelectScene,
     HomeScene,
-    SettingsScene,
     MoreGamesScene,
     ApparitionJourneyScene,
     OverworldScene,
     CachotScene,
     MissionCompleteScene,
+    SettingsScene,
   ],
 };
 

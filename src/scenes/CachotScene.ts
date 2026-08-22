@@ -16,6 +16,7 @@ import { mission01, mission01Dialogue } from '../data/missions/mission01';
 import { isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
 import { textStyle } from '../ui/text';
+import { useLetterboxScale } from '../core/scaleMode';
 
 const INTERACT_RADIUS = 26;
 
@@ -36,6 +37,7 @@ export class CachotScene extends Phaser.Scene {
   }
 
   create(): void {
+    useLetterboxScale(this);
     MissionManager.startMission(mission01);
     this.motherTalkedTo = false;
     this.cameras.main.fadeIn(400, 0, 0, 0);

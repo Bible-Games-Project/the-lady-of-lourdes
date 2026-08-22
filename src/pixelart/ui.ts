@@ -14,6 +14,10 @@ export const UI_KEYS = {
   // changes Settings, dialogue, or the in-gameplay top bar.
   HOME_BUTTON: 'ui_home_button',
   HOME_GEAR: 'ui_home_gear',
+  // Settings-only panel background, same Home-inspired palette as HOME_BUTTON above (Settings
+  // reuses HOME_BUTTON itself for its buttons) — kept separate from PANEL for the same reason:
+  // ConfirmDialog/DialogueBox/TasksPanel/GameplayTopBar all still use the plain PANEL/BUTTON.
+  SETTINGS_PANEL: 'ui_settings_panel',
 } as const;
 
 export const UI_PANEL_SLICE = { size: 24, border: 6 };
@@ -93,6 +97,17 @@ export function registerUiTextures(scene: Phaser.Scene): void {
 
   const button = panelGrid(UI_BUTTON_SLICE.size, UI_BUTTON_SLICE.border, '#c9beac', '#7a6a52', '#5a4d3a');
   registerTexture(scene, UI_KEYS.BUTTON, button.grid, button.palette, 1);
+
+  // Settings panel: same bevel structure as PANEL above, recolored to the Home artwork's warm
+  // cream/stone palette so the Settings screen reads as belonging to it (see AGENTS.md).
+  const settingsPanel = panelGrid(
+    UI_PANEL_SLICE.size,
+    UI_PANEL_SLICE.border,
+    HOME_PALETTE.cream,
+    HOME_PALETTE.pathStoneShade,
+    HOME_PALETTE.ink,
+  );
+  registerTexture(scene, UI_KEYS.SETTINGS_PANEL, settingsPanel.grid, settingsPanel.palette, 1);
 
   const gear = makeGrid(16, 16);
   fillRect(gear, 6, 6, 9, 9, 'C');

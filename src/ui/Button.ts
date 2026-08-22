@@ -37,6 +37,14 @@ export function createButton(
     border,
   );
   panel.setAlpha(style.panelAlpha ?? 1);
+  // Only include `stroke`/`strokeThickness` when actually requested — Phaser's Text canvas
+  // sizing silently breaks (ends up 0x0, so the label never renders at all) if these keys are
+  // present with an `undefined` value, even though that's semantically "no stroke" and should be
+  // identical to omitting them. See AGENTS.md for the reproduction; don't reintroduce this by
+  // always passing both keys unconditionally.
+  const strokeProps = style.textStroke
+    ? { stroke: style.textStroke.color, strokeThickness: style.textStroke.thickness }
+    : {};
   const text = scene.add
     .text(
       0,
@@ -46,8 +54,7 @@ export function createButton(
         fontSize: '14px',
         color: style.textColor ?? '#3a3226',
         fontStyle: 'bold',
-        stroke: style.textStroke?.color,
-        strokeThickness: style.textStroke?.thickness,
+        ...strokeProps,
       }),
     )
     .setOrigin(0.5);

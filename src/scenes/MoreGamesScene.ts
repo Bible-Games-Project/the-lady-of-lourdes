@@ -4,6 +4,7 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { createButton } from '../ui/Button';
 import { textStyle } from '../ui/text';
+import { useLetterboxScale } from '../core/scaleMode';
 
 /** Placeholder for the cross-promotion screen showing the studio's other games. */
 export class MoreGamesScene extends Phaser.Scene {
@@ -12,6 +13,7 @@ export class MoreGamesScene extends Phaser.Scene {
   }
 
   create(): void {
+    useLetterboxScale(this);
     this.cameras.main.setBackgroundColor('#2c2521');
 
     this.add

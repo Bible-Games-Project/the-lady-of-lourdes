@@ -6,6 +6,7 @@ import { SaveData } from '../core/SaveData';
 import { SUPPORTED_LANGUAGES, type LanguageCode } from '../core/i18n/languages';
 import { createButton } from '../ui/Button';
 import { textStyle } from '../ui/text';
+import { useLetterboxScale } from '../core/scaleMode';
 
 /** Shown once, before the very first playthrough, so the player can confirm/change the detected language. */
 export class LanguageSelectScene extends Phaser.Scene {
@@ -16,6 +17,7 @@ export class LanguageSelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    useLetterboxScale(this);
     this.selected = Localization.getLanguage();
     this.redraw();
   }

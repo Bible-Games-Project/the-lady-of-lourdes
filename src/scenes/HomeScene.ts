@@ -12,6 +12,7 @@ import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
 import { textStyle } from '../ui/text';
+import { useFullBleedScale } from '../core/scaleMode';
 
 /** Candle positions in the *original* (1672x941) artwork — see toGameXY(). */
 const CANDLE_SOURCE_POINTS: Array<{ x: number; y: number }> = [
@@ -31,6 +32,26 @@ const RIVER_GLINT_SOURCE_POINTS: Array<{ x: number; y: number }> = [
   { x: 100, y: 750 },
   { x: 280, y: 660 },
 ];
+
+/**
+ * Short lanes along the river's surface (in the *original* artwork), each just a small local
+ * segment following the water's downstream-left drift rather than a full traversal of the river
+ * — the streaks are meant to read as "light glinting off water that is moving", not as objects
+ * traveling any real distance. See `buildWaterFlow()`.
+ */
+const WATER_FLOW_LANES: Array<{ x0: number; y0: number; x1: number; y1: number; periodMs: number }> = [
+  { x0: 78, y0: 668, x1: 42, y1: 694, periodMs: 8200 },
+  { x0: 168, y0: 688, x1: 128, y1: 714, periodMs: 9400 },
+  { x0: 246, y0: 678, x1: 208, y1: 702, periodMs: 7600 },
+  { x0: 118, y0: 738, x1: 78, y1: 762, periodMs: 8800 },
+  { x0: 296, y0: 648, x1: 258, y1: 672, periodMs: 9000 },
+];
+
+interface WaterStreak {
+  sprite: Phaser.GameObjects.Image;
+  lane: (typeof WATER_FLOW_LANES)[number];
+  phase: number;
+}
 
 interface DriftingSprite {
   sprite: Phaser.GameObjects.Image;
@@ -55,6 +76,7 @@ export class HomeScene extends Phaser.Scene {
   private motes: DriftingSprite[] = [];
   private bernadetteTorso: Phaser.GameObjects.Image | null = null;
   private bernadetteBaseScaleY = 1;
+  private waterStreaks: WaterStreak[] = [];
   private elapsedMs = 0;
 
   constructor() {
@@ -62,11 +84,13 @@ export class HomeScene extends Phaser.Scene {
   }
 
   create(): void {
+    useFullBleedScale(this);
     this.buildBackground();
     this.buildLadyLight();
     this.buildBreathingFigure();
     this.buildCandleLight();
     this.buildRiverGlints();
+    this.buildWaterFlow();
     this.buildTitle();
     this.buildLeaves();
     this.buildMotes();
@@ -130,6 +154,7 @@ export class HomeScene extends Phaser.Scene {
     this.advanceDrift(this.leaves, dt, true);
     this.advanceDrift(this.motes, dt, false);
     this.advanceBernadetteBreathing();
+    this.advanceWaterFlow();
   }
 
   /**
@@ -218,6 +243,43 @@ export class HomeScene extends Phaser.Scene {
           },
         });
       },
+    });
+  }
+
+  /**
+   * The river itself never moves — these are a handful of thin light streaks drifting slowly
+   * along short lanes on its surface (see `WATER_FLOW_LANES`) to give the impression the water is
+   * flowing, without animating the painted water texture itself. Two streaks per lane, half a
+   * cycle out of phase, so one is always fading in as the other fades out — combined with a
+   * continuous `Math.sin`/modulo position (the same seamless-loop technique as the breathing
+   * effect) and an alpha that tapers to 0 at both ends of the lane, the "reset" from end back to
+   * start is invisible (it happens while fully transparent). Don't swap this for a texture-scroll
+   * or a yoyo tween — see AGENTS.md on why continuous elapsed-time math is required here.
+   */
+  private buildWaterFlow(): void {
+    WATER_FLOW_LANES.forEach((lane) => {
+      [0, 0.5].forEach((phaseOffset) => {
+        const sprite = this.add.image(0, 0, HOME_FX_KEYS.WATER_STREAK);
+        sprite.setBlendMode(Phaser.BlendModes.ADD);
+        sprite.setDepth(0.6);
+        sprite.setScale(Phaser.Math.FloatBetween(0.8, 1.1));
+        this.waterStreaks.push({ sprite, lane, phase: phaseOffset });
+      });
+    });
+  }
+
+  private advanceWaterFlow(): void {
+    this.waterStreaks.forEach(({ sprite, lane, phase }) => {
+      const t = ((this.elapsedMs / lane.periodMs + phase) % 1 + 1) % 1;
+      const imgX = Phaser.Math.Linear(lane.x0, lane.x1, t);
+      const imgY = Phaser.Math.Linear(lane.y0, lane.y1, t);
+      const pos = this.toGameXY(imgX, imgY);
+      sprite.setPosition(pos.x, pos.y);
+      // Fade in over the first quarter of the lane, fade out over the last quarter, so the
+      // wrap-around from t=1 back to t=0 happens while fully invisible.
+      const fadeIn = Phaser.Math.Clamp(t / 0.25, 0, 1);
+      const fadeOut = Phaser.Math.Clamp((1 - t) / 0.25, 0, 1);
+      sprite.setAlpha(Math.min(fadeIn, fadeOut) * 0.5);
     });
   }
 

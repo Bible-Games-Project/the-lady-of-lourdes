@@ -6,6 +6,7 @@ import { mission01 } from '../data/missions/mission01';
 import { PROP_KEYS } from '../pixelart/props';
 import { createButton } from '../ui/Button';
 import { textStyle } from '../ui/text';
+import { useLetterboxScale } from '../core/scaleMode';
 
 export class MissionCompleteScene extends Phaser.Scene {
   constructor() {
@@ -13,6 +14,7 @@ export class MissionCompleteScene extends Phaser.Scene {
   }
 
   create(): void {
+    useLetterboxScale(this);
     this.cameras.main.setBackgroundColor('#2c2521');
     this.cameras.main.fadeIn(600, 0, 0, 0);
 
