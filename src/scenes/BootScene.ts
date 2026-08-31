@@ -4,7 +4,7 @@ import { SaveData } from '../core/SaveData';
 import { Localization } from '../core/i18n/Localization';
 import { AudioManager } from '../core/AudioManager';
 import { detectDeviceLanguage } from '../core/i18n/languages';
-import { registerCharacterTextures, registerCharacterAnimations } from '../pixelart/characters';
+import { registerCharacterTextures, registerCharacterAnimations, registerBernadetteShadowTexture } from '../pixelart/characters';
 import { registerPortraitTextures } from '../pixelart/portraits';
 import { registerTileset } from '../pixelart/tiles';
 import { registerProps } from '../pixelart/props';
@@ -19,6 +19,7 @@ import {
 } from '../assets/home/homeBackground';
 import { registerHomeEffectTextures } from '../pixelart/homeEffects';
 import { JOURNEY_MAP_KEY, preloadJourneyMap } from '../assets/journey/journeyMap';
+import { preloadBernadetteSprite, registerBernadetteSprite } from '../assets/player/bernadetteSprite';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -28,11 +29,14 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     preloadHomeBackground(this);
     preloadJourneyMap(this);
+    preloadBernadetteSprite(this);
   }
 
   create(): void {
     registerCharacterTextures(this);
     registerCharacterAnimations(this);
+    registerBernadetteSprite(this);
+    registerBernadetteShadowTexture(this);
     registerPortraitTextures(this);
     registerTileset(this);
     registerProps(this);

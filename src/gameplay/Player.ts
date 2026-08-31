@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../core/constants';
-import { SHADOW_KEY, textureKeyFor } from '../pixelart/characters';
+import { BERNADETTE_SHADOW_KEY, textureKeyFor } from '../pixelart/characters';
 import { updateFacingAnimation, type Facing } from './spriteFacing';
 import { depthForY } from './utils';
 import type { TouchControls } from './TouchControls';
@@ -17,7 +17,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private touch: TouchControls | null;
   private locked = false;
   private shadow: Phaser.GameObjects.Image;
-  private breathTween: Phaser.Tweens.Tween | null = null;
+  private idle = true;
 
   constructor(scene: Phaser.Scene, x: number, y: number, touch: TouchControls | null = null) {
     super(scene, x, y, textureKeyFor('bernadette', 'down'));
@@ -27,10 +27,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1);
     this.setCollideWorldBounds(true);
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(10, 7);
-    body.setOffset(5, 20);
+    // Sized/offset for the real-art frame (21x34 — see assets/player/bernadetteSprite.ts), not
+    // the old 20x28 procedural one: a little narrower and taller than before, roughly the same
+    // proportions.
+    body.setSize(10, 9);
+    body.setOffset(5, 24);
 
-    this.shadow = scene.add.image(x, y - 1, SHADOW_KEY);
+    this.shadow = scene.add.image(x, y - 1, BERNADETTE_SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
 
     const keyboard = scene.input.keyboard!;
@@ -51,16 +54,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.locked;
   }
 
-  update(_time: number): void {
+  update(time: number): void {
     const depth = depthForY(this.y, DEPTH.ACTORS);
     this.setDepth(depth);
-    this.shadow.setPosition(this.x, this.y - 1);
     this.shadow.setDepth(depth - 0.0005);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
     if (this.locked) {
       body.setVelocity(0, 0);
-      this.updateBreathing(false);
+      this.updateBreathing(true, time);
+      this.syncShadow();
       return;
     }
 
@@ -85,30 +88,44 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       body.setVelocity(0, 0);
       updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false);
     }
-    this.updateBreathing(!moving);
+    this.updateBreathing(!moving, time);
+    this.syncShadow();
   }
 
-  private updateBreathing(idle: boolean): void {
-    if (idle) {
-      if (this.breathTween) return;
+  /** The shadow tracks her x/y (ground position) only — never her breathing scale, which must not lift it off the ground. */
+  private syncShadow(): void {
+    this.shadow.setPosition(this.x, this.y - 1);
+  }
+
+  /**
+   * Driven directly by `Math.sin(time)` rather than a Phaser `yoyo: true, repeat: -1` tween — a
+   * plain continuous sine of elapsed time has no loop boundary to snap at by construction
+   * (`sin(0) === sin(2π)`, derivative too), unlike a yoyo tween, which had a visible jerk on
+   * every repeat when this same technique was tried on the Home screen (see AGENTS.md). `time` is
+   * Phaser's own running elapsed-ms clock, so no extra accumulator is needed. Very small amplitude
+   * (1.5%) and a slow ~4.2s cycle — "almost imperceptible", per the maintainer.
+   */
+  private updateBreathing(idle: boolean, time: number): void {
+    if (!idle) {
+      if (!this.idle) return;
+      this.idle = false;
       this.setScale(1, 1);
-      this.breathTween = this.scene.tweens.add({
-        targets: this,
-        scaleY: 1.03,
-        duration: 1500,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
-    } else if (this.breathTween) {
-      this.breathTween.stop();
-      this.breathTween = null;
-      this.setScale(1, 1);
+      this.shadow.setScale(1, 1);
+      this.shadow.setAlpha(1);
+      return;
     }
+    this.idle = true;
+    const periodMs = 4200;
+    const amplitude = 0.015;
+    const wave = Math.sin((time / periodMs) * Math.PI * 2);
+    this.setScale(1, 1 + wave * amplitude);
+    // The shadow reacts to the same breath, but only in width/opacity — it must stay flat on the
+    // ground, never lifting or scaling vertically with her.
+    this.shadow.setScale(1 + wave * 0.02, 1);
+    this.shadow.setAlpha(0.92 - wave * 0.08);
   }
 
   destroy(fromScene?: boolean): void {
-    this.breathTween?.stop();
     this.shadow.destroy();
     super.destroy(fromScene);
   }

@@ -127,9 +127,52 @@ export function registerShadowTexture(scene: Phaser.Scene): void {
   registerTexture(scene, SHADOW_KEY, shadowGrid(), { D: 'rgba(20,16,12,0.32)' }, 1);
 }
 
+/**
+ * Bernadette's own ground shadow — an irregular hand-authored blob (wider than tall, jagged
+ * edges, an asymmetric bulge rather than a symmetric ellipse) instead of the plain rounded
+ * rectangle every other character uses (`shadowGrid()` above, untouched). A softer inner core
+ * gives it a little depth without a blur filter (there is no such filter in this pixel-art
+ * pipeline). See `Player.ts` for how its scale/alpha react (very slightly) to her breathing while
+ * staying pinned to the ground.
+ */
+export const BERNADETTE_SHADOW_KEY = 'bernadette_shadow';
+
+function bernadetteShadowGrid() {
+  const grid = makeGrid(20, 7, '.');
+  fillRect(grid, 6, 0, 13, 0, 'D');
+  fillRect(grid, 3, 1, 16, 1, 'D');
+  fillRect(grid, 1, 2, 17, 2, 'D');
+  fillRect(grid, 0, 3, 16, 3, 'D');
+  fillRect(grid, 2, 4, 17, 4, 'D');
+  fillRect(grid, 4, 5, 14, 5, 'D');
+  fillRect(grid, 7, 6, 11, 6, 'D');
+  fillRect(grid, 5, 2, 14, 4, 'C');
+  return grid;
+}
+
+export function registerBernadetteShadowTexture(scene: Phaser.Scene): void {
+  registerTexture(
+    scene,
+    BERNADETTE_SHADOW_KEY,
+    bernadetteShadowGrid(),
+    { D: 'rgba(24,20,26,0.26)', C: 'rgba(24,20,26,0.34)' },
+    1,
+  );
+}
+
+/**
+ * Bernadette (the player character) is excluded from both loops below — she now uses the
+ * maintainer's own real artwork (`assets/player/bernadetteSprite.ts`), registered under these
+ * same `textureKeyFor`/`walkAnimKeyFor` keys separately. Registering a procedural version here
+ * too would either collide with or (depending on load order) silently pre-empt the real one,
+ * since `registerTexture`/`scene.anims.create` both no-op if the key already exists. Every other
+ * character (mother, sister, friend, lady, villagers) is unaffected and still procedural.
+ */
+const PROCEDURAL_CHARACTER_IDS = (Object.keys(CHARACTERS) as CharacterId[]).filter((id) => id !== 'bernadette');
+
 export function registerCharacterTextures(scene: Phaser.Scene): void {
   registerShadowTexture(scene);
-  (Object.keys(CHARACTERS) as CharacterId[]).forEach((id) => {
+  PROCEDURAL_CHARACTER_IDS.forEach((id) => {
     const def = CHARACTERS[id];
     const palette = personPalette(def.colors);
     FACINGS.forEach((facing) => {
@@ -143,7 +186,7 @@ export function registerCharacterTextures(scene: Phaser.Scene): void {
 
 /** One 2-frame walk-cycle animation per character per facing direction. */
 export function registerCharacterAnimations(scene: Phaser.Scene): void {
-  (Object.keys(CHARACTERS) as CharacterId[]).forEach((id) => {
+  PROCEDURAL_CHARACTER_IDS.forEach((id) => {
     FACINGS.forEach((facing) => {
       const key = walkAnimKeyFor(id, facing);
       if (scene.anims.exists(key)) return;

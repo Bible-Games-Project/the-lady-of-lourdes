@@ -422,13 +422,73 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   1px border into transparent cells touching the silhouette — leave a
   transparent margin around any new silhouette or edge pixels clip). Walking
   uses real 2-frame leg/arm animation (`step: 'a' | 'b'`), registered as
-  Phaser animations (`walkAnimKeyFor`) once in `BootScene`; idle is a gentle
-  `scaleY` breathing tween (see `Player.ts#updateBreathing`), not a texture.
-  Portraits are a *separate* bigger bust grid (`portraitTemplate.ts`), not a
-  crop of the body — keep both templates' proportions/palette in sync by eye
-  when adding a character. Every character gets a small pixel shadow
-  (`SHADOW_KEY`) as a child image synced each frame via
-  `NpcActor#syncShadow()` / done inline in `Player.ts`.
+  Phaser animations (`walkAnimKeyFor`) once in `BootScene`. Portraits are a
+  *separate* bigger bust grid (`portraitTemplate.ts`), not a crop of the
+  body — keep both templates' proportions/palette in sync by eye when adding
+  a character. Every character gets a small pixel shadow (`SHADOW_KEY`) as a
+  child image synced each frame via `NpcActor#syncShadow()`. **`bernadette`
+  is the one exception** — see below — every other `CharacterId` (mother,
+  sister, friend, lady, villagers) still goes through this whole system
+  unchanged.
+- **The player character (Bernadette) is real art, not this procedural
+  system** (`assets/player/bernadetteSprite.ts` +
+  `characters.ts#BERNADETTE_SHADOW_KEY`/`bernadetteShadowGrid()` +
+  `Player.ts`) — same reasoning as the Home background: the maintainer
+  supplied her own finished illustration (a single right-facing side-profile
+  pose) and it's used as-is, never redrawn/recolored. `characters.ts`
+  explicitly excludes `'bernadette'` from `registerCharacterTextures()`/
+  `registerCharacterAnimations()` (`PROCEDURAL_CHARACTER_IDS`) so the
+  procedural paper-doll version never gets registered under her texture
+  keys; `bernadetteSprite.ts` loads the real frames under those *exact same*
+  `textureKeyFor`/`walkAnimKeyFor` key strings instead. This means
+  `Player.ts`, `spriteFacing.ts`, and `NpcActor.ts` needed **zero** changes
+  to their movement/facing/animation-selection logic — they only ever
+  address characters through those key-generating functions, so swapping
+  what a key resolves to was enough.
+  - **Only one real pose exists (side, facing right).** `down`/`up`/`side`
+    all load the identical three frames; `left` is the existing
+    `spriteFacing.ts` `setFlipX` mirror of `side`, unchanged. There is no
+    real front or back view of her, and no image-generation tool is
+    available in this environment to invent one — per the maintainer's
+    explicit "do not create a different Bernadette," reusing the side view
+    for all four directions was judged the least-wrong option over
+    fabricating new angles. If real front/back art ever arrives, it slots in
+    as two more frame sets under the `down`/`up` keys in
+    `bernadetteSprite.ts` — nothing else needs to change.
+  - **The walk-cycle frames (`bernadette_walk_a/b.png`) are a cutout-puppet
+    deformation of the *same* source pixels, generated offline in Python,
+    not new drawn content and not a runtime effect.** A per-row horizontal
+    shear below the waist (0px at the waist, increasing toward the hem —
+    the skirt sway), a matching shift on the boots, and a 1px vertical bob.
+    **Critically, this deformation was applied at the sprite's actual tiny
+    in-game display size (21x34), after downscaling from the source's
+    native ~900x1500 resolution — not applied to the source and then
+    scaled down.** A 1-2px shift is a large, visible fraction of a
+    21px-wide frame; the same shift on the giant source becomes sub-pixel
+    noise once downscaled and disappears. If these frames are ever
+    regenerated, always deform at final display resolution.
+  - **Idle breathing is `Math.sin(time)` on `scaleY`, not a yoyo tween** —
+    same reasoning and same bug as Home's breathing effect (a yoyo tween
+    has a visible jerk on every loop repeat; a continuous sine doesn't, by
+    construction). `time` is the elapsed-ms value Phaser already passes into
+    `update()`, so no separate accumulator was needed. Very small amplitude
+    (1.5%, vs. the old tween's 3%) per "almost imperceptible."
+  - **Her shadow (`BERNADETTE_SHADOW_KEY`) is a distinct, hand-authored
+    irregular blob**, not the generic rounded-rectangle `SHADOW_KEY` every
+    other character still uses. It reacts to the same breathing sine as she
+    does, but only in `scaleX`/alpha, via `Player.ts#syncShadow()` staying
+    completely separate from the scale logic — its position is set from
+    `this.x`/`this.y` only, every frame, regardless of her breathing scale,
+    so it can never lift off the ground.
+  - Real-art textures need `setFilter(LINEAR)` like Home's (see the
+    pixelArt gotcha elsewhere in this doc) — done once in
+    `registerBernadetteSprite()`, called from `BootScene.create()` after
+    `preloadBernadetteSprite()` has finished loading in `preload()`.
+  - Player's Arcade Body is sized/offset for the new 21x34 frame (`body.setSize(10, 9)`,
+    `body.setOffset(5, 24)`) — a little narrower/taller than the old 20x28
+    procedural frame's `(10, 7)`/`(5, 20)`. Re-derive proportionally
+    (`old * newDimension / oldDimension`) if the frame size ever changes
+    again, don't guess.
 
 ### Art direction: history and current constraint
 
