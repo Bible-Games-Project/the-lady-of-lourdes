@@ -27,11 +27,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1);
     this.setCollideWorldBounds(true);
     const body = this.body as Phaser.Physics.Arcade.Body;
-    // Sized/offset for the real-art frame (21x34 — see assets/player/bernadetteSprite.ts), not
-    // the old 20x28 procedural one: a little narrower and taller than before, roughly the same
-    // proportions.
-    body.setSize(10, 9);
-    body.setOffset(5, 24);
+    // Sized/offset for the real-art frame (26x42 — see assets/player/bernadetteSprite.ts, sized
+    // up from an earlier 21x34 pass so the walk cycle's feet have enough pixels to read as two
+    // distinct feet), scaled proportionally from the original 20x28 procedural frame's (10,7)/(5,20).
+    body.setSize(12, 11);
+    body.setOffset(6, 30);
 
     this.shadow = scene.add.image(x, y - 1, BERNADETTE_SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);

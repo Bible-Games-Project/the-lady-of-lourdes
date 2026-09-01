@@ -445,34 +445,65 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   to their movement/facing/animation-selection logic — they only ever
   address characters through those key-generating functions, so swapping
   what a key resolves to was enough.
-  - **Only one real pose exists (side, facing right).** `down`/`up`/`side`
-    all load the identical three frames; `left` is the existing
-    `spriteFacing.ts` `setFlipX` mirror of `side`, unchanged. There is no
-    real front or back view of her, and no image-generation tool is
-    available in this environment to invent one — per the maintainer's
-    explicit "do not create a different Bernadette," reusing the side view
-    for all four directions was judged the least-wrong option over
-    fabricating new angles. If real front/back art ever arrives, it slots in
-    as two more frame sets under the `down`/`up` keys in
-    `bernadetteSprite.ts` — nothing else needs to change.
-  - **The walk-cycle frames (`bernadette_walk_a/b.png`) are a cutout-puppet
-    deformation of the *same* source pixels, generated offline in Python,
-    not new drawn content and not a runtime effect.** A per-row horizontal
-    shear below the waist (0px at the waist, increasing toward the hem —
-    the skirt sway), a matching shift on the boots, and a 1px vertical bob.
-    **Critically, this deformation was applied at the sprite's actual tiny
-    in-game display size (21x34), after downscaling from the source's
-    native ~900x1500 resolution — not applied to the source and then
-    scaled down.** A 1-2px shift is a large, visible fraction of a
-    21px-wide frame; the same shift on the giant source becomes sub-pixel
-    noise once downscaled and disappears. If these frames are ever
-    regenerated, always deform at final display resolution.
+  - **`down`/`side` share the real source pose (side, facing right)**;
+    `left` is the existing `spriteFacing.ts` `setFlipX` mirror of `side`,
+    unchanged. **`up` has its own separate constructed back-view frames**
+    (`bernadette_back_*.png`) — see the next bullet. There is still no real
+    front view; `down` reuses the side pose (the maintainer's follow-up
+    request scoped the back-view work to `up` only and didn't ask for a
+    front view, so `down` was deliberately left as-is rather than expanding
+    scope).
+  - **The back view (`up`) is reconstructed from her own pixels, not
+    mirrored/rotated from the front and not invented from scratch** — no
+    image-generation tool is available in this environment, and the
+    maintainer explicitly required a "genuine" back-facing interpretation.
+    The technique: for every row of the source image, everything left of
+    that row's own midpoint (in a right-facing profile, provably the *back*
+    of her veil/shawl/skirt — never her face, which is always further
+    right) is mirrored across a center axis, building a symmetric figure
+    from real back-of-garment pixels. Her braid was isolated separately (a
+    hue/saturation mask restricted to a hand-picked bounding box around it,
+    cleaned with connected-component filtering to drop stray skin-tone
+    blobs near the ear/jaw) and re-composited centered — the raw extraction
+    was too noisy to use directly, so the final braid on the back view is a
+    small hand-drawn ribbon using colors *sampled from that same
+    extraction*, not the extracted pixels themselves. If this ever needs
+    redoing, re-derive the mask/boundaries by eye against the actual image
+    (grid-overlay crops) rather than reusing old pixel coordinates verbatim
+    — they're specific to this exact source image.
+  - **The walk-cycle frames (`bernadette_walk_a/b.png` and
+    `bernadette_back_walk_a/b.png`) are a cutout-puppet deformation of the
+    *same* pixels, generated offline in Python — not new drawn content and
+    not a runtime effect.** Per-row horizontal shear below the waist (the
+    skirt sway), a sub-pixel vertical bob, a small opposite shift on the
+    visible hand(s) (counter-swinging arm), and — the key fix over an
+    earlier version of this pipeline — **independent shifts on the *left*
+    and *right* boot regions separately** (one moves down/forward as
+    "planted," the other up/back as "lifted," then the roles swap in the
+    other frame), instead of the whole foot cluster translating as one
+    block. A single shared boot-cluster shift reads as "the sprite
+    sliding," not "feet stepping" — the two feet have to move differently
+    from each other for it to read as walking.
+  - **Deform at a larger intermediate resolution, then downscale — not the
+    other way, and not directly at the final display size either.** The
+    final frames are 26x42 (down/side) / 15x42 (up), but the *deformation*
+    itself is computed on a ~60px-tall version (with a mild unsharp-mask
+    pass first, since LANCZOS downscaling alone blurred the boots past the
+    point of reading as two feet) and only downscaled to final size at the
+    very end. Deforming directly at 21x34 (the first version of this
+    pipeline) left too few pixels for the two feet to read as different
+    from each other; deforming the ~900x1500 source and downscaling after
+    made 1-2px shifts vanish into sub-pixel noise. If these frames are ever
+    regenerated, keep this two-stage (deform-large, then-downscale)
+    approach.
   - **Idle breathing is `Math.sin(time)` on `scaleY`, not a yoyo tween** —
     same reasoning and same bug as Home's breathing effect (a yoyo tween
     has a visible jerk on every loop repeat; a continuous sine doesn't, by
     construction). `time` is the elapsed-ms value Phaser already passes into
     `update()`, so no separate accumulator was needed. Very small amplitude
-    (1.5%, vs. the old tween's 3%) per "almost imperceptible."
+    (1.5%) per "almost imperceptible" — **the maintainer has explicitly
+    signed off on this exact effect twice now; don't touch `updateBreathing()`
+    without being asked.**
   - **Her shadow (`BERNADETTE_SHADOW_KEY`) is a distinct, hand-authored
     irregular blob**, not the generic rounded-rectangle `SHADOW_KEY` every
     other character still uses. It reacts to the same breathing sine as she
@@ -484,11 +515,15 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     pixelArt gotcha elsewhere in this doc) — done once in
     `registerBernadetteSprite()`, called from `BootScene.create()` after
     `preloadBernadetteSprite()` has finished loading in `preload()`.
-  - Player's Arcade Body is sized/offset for the new 21x34 frame (`body.setSize(10, 9)`,
-    `body.setOffset(5, 24)`) — a little narrower/taller than the old 20x28
-    procedural frame's `(10, 7)`/`(5, 20)`. Re-derive proportionally
-    (`old * newDimension / oldDimension`) if the frame size ever changes
-    again, don't guess.
+  - Player's Arcade Body is sized/offset for the down/side frame
+    (`BERNADETTE_FRAME_SIZE`, currently 26x42 — sized up from an earlier
+    21x34 pass specifically so the walk cycle's feet had enough pixels to
+    animate independently; see the deformation-resolution bullet above):
+    `body.setSize(12, 11)`, `body.setOffset(6, 30)`. One fixed body size is
+    used for all facings, including the narrower 15x42 `up` frame — re-derive
+    proportionally (`old * newDimension / oldDimension`) from the original
+    20x28 procedural frame's `(10, 7)`/`(5, 20)` if the frame size ever
+    changes again, don't guess.
 
 ### Art direction: history and current constraint
 
