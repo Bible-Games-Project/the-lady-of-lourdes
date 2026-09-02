@@ -297,6 +297,25 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   again. Pointer/click hit-testing was verified to still map correctly after
   a runtime switch (Phaser recomputes it live from the canvas rect), so no
   extra input-coordinate work is needed.
+- **`src/core/safeArea.ts`** — under `useFullBleedScale()` (ENVELOP), a
+  device whose aspect ratio doesn't match 16:9 crops part of the logical
+  480x270 canvas off-screen (top/bottom on a wider device, left/right on a
+  narrower one — see the `scaleMode.ts` bullet above). Anything positioned
+  at a fixed `GAME_WIDTH`/`GAME_HEIGHT`-relative coordinate near an edge can
+  end up entirely inside that cropped, invisible region — this is exactly
+  what happened to Home's gear/Play/More Games buttons (they sat close
+  enough to the logical top/bottom edges that wider-than-16:9 devices
+  cropped them off-screen). `getSafeAreaInsets()` computes the current
+  crop in logical pixels from `scale.displaySize` vs. `scale.parentSize`;
+  `onSafeAreaChange(scene, layout)` calls `layout(insets)` immediately and
+  again on every `Phaser.Scale.Events.RESIZE`, auto-unsubscribing on scene
+  shutdown. Any element that must always be reachable near a screen edge on
+  a full-bleed scene should be positioned via this, adding the scene's own
+  margin *on top of* the inset (`insets.right + 24`, not just `24`) — see
+  `HomeScene.ts`'s gear/Play/More Games for the pattern, including clamping
+  the two bottom buttons to their own half of the screen so they can never
+  cross each other on an extreme aspect ratio. Letterboxed (FIT) scenes
+  never need this — insets are always zero there, since FIT never crops.
 - `src/gameplay/TasksPanel.ts` / `GameplayTopBar.ts` / `ui/ConfirmDialog.ts` —
   the compact objective checklist, the in-gameplay gear/home buttons, and the
   reusable confirm/cancel modal. All three are instantiated per-scene (not

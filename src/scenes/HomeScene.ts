@@ -13,6 +13,7 @@ import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
 import { textStyle } from '../ui/text';
 import { useFullBleedScale } from '../core/scaleMode';
+import { onSafeAreaChange } from '../core/safeArea';
 
 /** Candle positions in the *original* (1672x941) artwork — see toGameXY(). */
 const CANDLE_SOURCE_POINTS: Array<{ x: number; y: number }> = [
@@ -96,10 +97,7 @@ export class HomeScene extends Phaser.Scene {
     this.buildMotes();
 
     // Settings: pixel-art gear, top-right corner, out of the way of the illustration.
-    const gear = this.add
-      .image(GAME_WIDTH - 24, 22, UI_KEYS.HOME_GEAR)
-      .setScale(1.2)
-      .setInteractive({ useHandCursor: true });
+    const gear = this.add.image(0, 0, UI_KEYS.HOME_GEAR).setScale(1.2).setInteractive({ useHandCursor: true });
     gear.setDepth(DEPTH.UI);
     gear.on('pointerover', () => gear.setTint(0xfffdf5));
     gear.on('pointerout', () => gear.clearTint());
@@ -121,10 +119,10 @@ export class HomeScene extends Phaser.Scene {
       textStroke: { color: HOME_PALETTE.ink, thickness: 3 },
     };
 
-    createButton(
+    const playButton = createButton(
       this,
-      marginX + buttonWidth / 2,
-      GAME_HEIGHT - marginY - buttonHeight / 2,
+      0,
+      0,
       buttonWidth,
       buttonHeight,
       Localization.t(K.HOME_PLAY),
@@ -134,10 +132,10 @@ export class HomeScene extends Phaser.Scene {
       buttonStyle,
     );
 
-    createButton(
+    const moreGamesButton = createButton(
       this,
-      GAME_WIDTH - marginX - buttonWidth / 2,
-      GAME_HEIGHT - marginY - buttonHeight / 2,
+      0,
+      0,
       buttonWidth,
       buttonHeight,
       Localization.t(K.HOME_MORE_GAMES),
@@ -146,6 +144,23 @@ export class HomeScene extends Phaser.Scene {
       },
       buttonStyle,
     );
+
+    // Anchored to their actual corner of the *visible* screen, not the logical canvas — under
+    // the full-bleed scale mode this scene uses (see core/scaleMode.ts), a device whose aspect
+    // ratio doesn't match 16:9 crops part of the logical canvas off-screen, so a fixed
+    // GAME_WIDTH/GAME_HEIGHT position can end up in that cropped, invisible region. See
+    // core/safeArea.ts.
+    onSafeAreaChange(this, (insets) => {
+      gear.setPosition(GAME_WIDTH - insets.right - 24, insets.top + 22);
+      const bottomY = GAME_HEIGHT - insets.bottom - marginY - buttonHeight / 2;
+      // Clamped to their own half of the screen so that on an extreme aspect ratio (far more
+      // cropped than this game is actually meant to be played at) the two buttons can shrink
+      // toward the center without ever crossing or swapping places.
+      const playX = Math.min(insets.left + marginX + buttonWidth / 2, GAME_WIDTH / 2 - buttonWidth / 2 - 4);
+      const moreGamesX = Math.max(GAME_WIDTH - insets.right - marginX - buttonWidth / 2, GAME_WIDTH / 2 + buttonWidth / 2 + 4);
+      playButton.setPosition(playX, bottomY);
+      moreGamesButton.setPosition(moreGamesX, bottomY);
+    });
   }
 
   update(_time: number, delta: number): void {
