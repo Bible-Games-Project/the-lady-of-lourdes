@@ -96,8 +96,15 @@ export class HomeScene extends Phaser.Scene {
     this.buildLeaves();
     this.buildMotes();
 
-    // Settings: pixel-art gear, top-right corner, out of the way of the illustration.
-    const gear = this.add.image(0, 0, UI_KEYS.HOME_GEAR).setScale(1.2).setInteractive({ useHandCursor: true });
+    // Settings: pixel-art gear, top-right corner, out of the way of the illustration. Anchored
+    // by its own right/top edge (Image's native setOrigin) rather than its center, so it can be
+    // positioned as `screenRightEdge - margin` / `screenTopEdge + margin` directly — see the
+    // onSafeAreaChange block below.
+    const gear = this.add
+      .image(0, 0, UI_KEYS.HOME_GEAR)
+      .setOrigin(1, 0)
+      .setScale(1.2)
+      .setInteractive({ useHandCursor: true });
     gear.setDepth(DEPTH.UI);
     gear.on('pointerover', () => gear.setTint(0xfffdf5));
     gear.on('pointerout', () => gear.clearTint());
@@ -107,8 +114,6 @@ export class HomeScene extends Phaser.Scene {
     // Bernadette especially — stays unobstructed.
     const buttonWidth = 112;
     const buttonHeight = 26;
-    const marginX = 16;
-    const marginY = 16;
 
     const buttonStyle = {
       textureKey: UI_KEYS.HOME_BUTTON,
@@ -119,6 +124,9 @@ export class HomeScene extends Phaser.Scene {
       textStroke: { color: HOME_PALETTE.ink, thickness: 3 },
     };
 
+    // Anchored by its own left/bottom *edge* (not its center) — see `ui/Button.ts`'s `origin`
+    // param — so it can be positioned as `screenLeftEdge + margin` / `screenBottomEdge - margin`
+    // directly, growing rightward/upward from that corner.
     const playButton = createButton(
       this,
       0,
@@ -130,8 +138,10 @@ export class HomeScene extends Phaser.Scene {
         this.scene.start(SCENE_KEYS.JOURNEY);
       },
       buttonStyle,
+      { x: 0, y: 1 },
     );
 
+    // Anchored by its own right/bottom edge, growing leftward/upward from that corner.
     const moreGamesButton = createButton(
       this,
       0,
@@ -143,23 +153,28 @@ export class HomeScene extends Phaser.Scene {
         this.scene.start(SCENE_KEYS.MORE_GAMES);
       },
       buttonStyle,
+      { x: 1, y: 1 },
     );
 
-    // Anchored to their actual corner of the *visible* screen, not the logical canvas — under
-    // the full-bleed scale mode this scene uses (see core/scaleMode.ts), a device whose aspect
-    // ratio doesn't match 16:9 crops part of the logical canvas off-screen, so a fixed
+    // Positioned relative to the actual corner of the *visible* screen, not the logical canvas —
+    // under the full-bleed scale mode this scene uses (see core/scaleMode.ts), a device whose
+    // aspect ratio doesn't match 16:9 crops part of the logical canvas off-screen, so a fixed
     // GAME_WIDTH/GAME_HEIGHT position can end up in that cropped, invisible region. See
-    // core/safeArea.ts.
+    // core/safeArea.ts. Because each element is anchored by the edge that faces its corner (set
+    // above), each position below is that edge's target coordinate directly — `edge ± margin` —
+    // with no width/height compensation needed.
+    const margin = 16;
     onSafeAreaChange(this, (insets) => {
-      gear.setPosition(GAME_WIDTH - insets.right - 24, insets.top + 22);
-      const bottomY = GAME_HEIGHT - insets.bottom - marginY - buttonHeight / 2;
-      // Clamped to their own half of the screen so that on an extreme aspect ratio (far more
-      // cropped than this game is actually meant to be played at) the two buttons can shrink
-      // toward the center without ever crossing or swapping places.
-      const playX = Math.min(insets.left + marginX + buttonWidth / 2, GAME_WIDTH / 2 - buttonWidth / 2 - 4);
-      const moreGamesX = Math.max(GAME_WIDTH - insets.right - marginX - buttonWidth / 2, GAME_WIDTH / 2 + buttonWidth / 2 + 4);
-      playButton.setPosition(playX, bottomY);
-      moreGamesButton.setPosition(moreGamesX, bottomY);
+      gear.setPosition(GAME_WIDTH - insets.right - margin, insets.top + margin);
+
+      const bottomEdge = GAME_HEIGHT - insets.bottom - margin;
+      // Clamped so that on an extreme aspect ratio (far more cropped than this game is actually
+      // meant to be played at) the two buttons can shrink toward the center without ever
+      // crossing or overlapping each other.
+      const playLeftEdge = Math.min(insets.left + margin, GAME_WIDTH / 2 - buttonWidth - 4);
+      const moreGamesRightEdge = Math.max(GAME_WIDTH - insets.right - margin, GAME_WIDTH / 2 + buttonWidth + 4);
+      playButton.setPosition(playLeftEdge, bottomEdge);
+      moreGamesButton.setPosition(moreGamesRightEdge, bottomEdge);
     });
   }
 

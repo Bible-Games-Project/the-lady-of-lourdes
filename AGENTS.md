@@ -314,7 +314,15 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   margin *on top of* the inset (`insets.right + 24`, not just `24`) — see
   `HomeScene.ts`'s gear/Play/More Games for the pattern, including clamping
   the two bottom buttons to their own half of the screen so they can never
-  cross each other on an extreme aspect ratio. Letterboxed (FIT) scenes
+  cross each other on an extreme aspect ratio. **These three are anchored
+  by the screen-facing *edge*, not the center**: the gear uses
+  `Image#setOrigin(1, 0)` (native Phaser support) so its position *is* its
+  top-right corner; Play/More Games use `createButton()`'s `origin` param
+  (`{ x: 0, y: 1 }` / `{ x: 1, y: 1 }` — see the `ui/Button.ts` bullet and
+  the Container hit-testing gotcha below) for the same reason on a
+  `Container`, which has no native origin. Either way the safeArea math
+  becomes a direct `edge ± margin`, no `± width / 2` needed — don't
+  reintroduce manual half-width/height offsets here. Letterboxed (FIT) scenes
   never need this — insets are always zero there, since FIT never crops.
 - `src/gameplay/TasksPanel.ts` / `GameplayTopBar.ts` / `ui/ConfirmDialog.ts` —
   the compact objective checklist, the in-gameplay gear/home buttons, and the
@@ -383,6 +391,28 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   overlay at all. `SettingsScene` is now last in `main.ts`'s scene array
   specifically for this reason — don't reorder it earlier without re-testing
   every scene that can open it.
+- **`Container`'s hit-testing always adds its own fixed `displayOrigin`
+  (`width/2, height/2` from `setSize()`) on top of whatever `hitArea`
+  rectangle you give it — `Container.originX`/`originY` are hardcoded
+  `0.5` (read-only; unlike `Image`/`Sprite`, `Container` has no
+  `setOrigin()`), and `InputManager#pointWithinHitArea()` unconditionally
+  does `x += gameObject.displayOriginX` before testing the point against
+  `hitArea`, regardless of where the container's children actually are.**
+  `ui/Button.ts#createButton()`'s `origin` param shifts the panel/text to
+  `(localX, localY)` so a non-center-anchored button's `(x, y)` lands on
+  the requested edge/corner instead of its center — the hit area must be
+  `new Rectangle(localX, localY, width, height)`, **not**
+  `Rectangle(localX - width / 2, localY - height / 2, width, height)`.
+  That extra `- width / 2, - height / 2` looks like the obvious
+  "re-center the hit area on the shifted content" fix and was the first
+  thing tried — it's wrong, because Phaser already applies an equivalent
+  shift itself via `displayOrigin`, so doing it again silently mis-hit-tests
+  everything except a perfectly center-anchored button (confirmed by
+  clicking across a bottom-anchored Play button in Playwright: only
+  roughly the top half of it actually registered clicks). If you ever hand
+  a `Container` a custom `hitArea`, reason about it in the *same local
+  space its children are placed in* — don't add a "centering" offset on
+  top, Phaser's own `displayOrigin` already is one.
 - **Static body `setSize()` + `refreshBody()` is a trap.** Calling
   `staticImage.body.setSize(w, h)` and then `staticImage.refreshBody()`
   silently *undoes* the resize — `refreshBody()` re-derives the body from the
