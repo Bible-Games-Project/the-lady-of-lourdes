@@ -565,10 +565,46 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     completely separate from the scale logic — its position is set from
     `this.x`/`this.y` only, every frame, regardless of her breathing scale,
     so it can never lift off the ground.
-  - Real-art textures need `setFilter(LINEAR)` like Home's (see the
-    pixelArt gotcha elsewhere in this doc) — done once in
-    `registerBernadetteSprite()`, called from `BootScene.create()` after
-    `preloadBernadetteSprite()` has finished loading in `preload()`.
+  - **Her textures must stay on Phaser's default NEAREST sampling — do NOT
+    call `setFilter(LINEAR)` on them, unlike the Home background.** An
+    earlier version of this file did exactly that (copying the Home
+    background's real-photo handling, reasoning she was "real illustration,
+    not the hard-edged procedural pixel grid"), and it was wrong: Home's
+    background is a single large image meant to read as illustration, but
+    Bernadette's frames are meant to read as pixel art like every other
+    character — the whole game already runs `pixelArt: true` in `main.ts`,
+    which defaults every texture to NEAREST/hard-edged sampling, and her
+    explicit LINEAR override was the one exception, smearing her small
+    15x42 frames into a visibly blurred silhouette on every scale-up (a
+    reported regression — confirmed by comparing `player.texture.source[0].scaleMode`
+    live: `1`/NEAREST after the fix vs. `0`/LINEAR before, and by zoomed
+    in-game screenshots showing her skirt/boot edges go from soft gradients
+    to the same hard-edged blocky pixels as the grass tiles around her).
+    `registerBernadetteSprite()` (`BootScene.create()`, after
+    `preloadBernadetteSprite()` has finished loading in `preload()`) now
+    just registers the walk animations and leaves filtering alone.
+  - **The frame PNGs themselves also had one redundant resampling pass —
+    removed for the same blur regression.** The generation pipeline (source
+    crop → ~60px-tall intermediate → final 15x42, both described above)
+    originally ran `Image.LANCZOS` *and* `ImageFilter.UnsharpMask` at each
+    of those two resizes; the unsharp pass was added to counter LANCZOS's
+    inherent softening but is itself extra, avoidable resampling on top of
+    an already-lossy resize. Frames were regenerated from the same untouched
+    alpha-cropped source panels (`bern3_side/back/front.png`, never touched
+    by any resize) with a single clean `Image.LANCZOS` resize per step and
+    no unsharp pass — idle frames need no deformation at all (breathing is
+    a runtime `scaleY` effect, never baked into the texture) so those are
+    one direct resize straight from the source crop to final size. Verified
+    the regenerated walk frames against the previous (approved) ones at
+    matched nearest-neighbor zoom before replacing them — same silhouette,
+    same boot/hand articulation, same skirt sway, only less redundant blur.
+    **Do not reintroduce an unsharp pass or raw nearest-neighbor for this
+    big a downscale ratio if these frames are ever regenerated again** — raw
+    nearest-neighbor at ~870px→15px was tried and tested visibly *worse*
+    (noisy/aliased, not crisp) than a single clean LANCZOS pass; the crisp,
+    hard-edged "pixel art" look comes from the render-time NEAREST filter
+    above scaling the small-but-cleanly-resampled texture up, not from how
+    the texture itself was originally downsampled.
   - Player's Arcade Body is sized/offset for the frame size shared by all 3
     facings (`BERNADETTE_FRAME_SIZE`, 15x42 — see the deformation-resolution
     bullet above for why the frames are that small): `body.setSize(7, 11)`,
