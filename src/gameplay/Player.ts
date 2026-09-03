@@ -27,11 +27,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1);
     this.setCollideWorldBounds(true);
     const body = this.body as Phaser.Physics.Arcade.Body;
-    // Sized/offset for the real-art frame (26x42 — see assets/player/bernadetteSprite.ts, sized
-    // up from an earlier 21x34 pass so the walk cycle's feet have enough pixels to read as two
-    // distinct feet), scaled proportionally from the original 20x28 procedural frame's (10,7)/(5,20).
-    body.setSize(12, 11);
-    body.setOffset(6, 30);
+    // Sized/offset for the real-art frame (15x42, shared by all 3 facings — see
+    // assets/player/bernadetteSprite.ts), scaled proportionally from the previous 26x42 frame's
+    // (12,11)/(6,30) box: same relative footprint near her feet, narrower to match the new width.
+    body.setSize(7, 11);
+    body.setOffset(4, 30);
 
     this.shadow = scene.add.image(x, y - 1, BERNADETTE_SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
@@ -83,10 +83,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (moving) {
       const len = Math.hypot(vx, vy) || 1;
       body.setVelocity((vx / len) * SPEED, (vy / len) * SPEED);
-      this.facing = updateFacingAnimation(this, 'bernadette', vx, vy, this.facing, true);
+      this.facing = updateFacingAnimation(this, 'bernadette', vx, vy, this.facing, true, true);
     } else {
       body.setVelocity(0, 0);
-      updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false);
+      updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
     }
     this.updateBreathing(!moving, time);
     this.syncShadow();

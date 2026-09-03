@@ -483,68 +483,73 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   system** (`assets/player/bernadetteSprite.ts` +
   `characters.ts#BERNADETTE_SHADOW_KEY`/`bernadetteShadowGrid()` +
   `Player.ts`) — same reasoning as the Home background: the maintainer
-  supplied her own finished illustration (a single right-facing side-profile
-  pose) and it's used as-is, never redrawn/recolored. `characters.ts`
-  explicitly excludes `'bernadette'` from `registerCharacterTextures()`/
-  `registerCharacterAnimations()` (`PROCEDURAL_CHARACTER_IDS`) so the
-  procedural paper-doll version never gets registered under her texture
-  keys; `bernadetteSprite.ts` loads the real frames under those *exact same*
-  `textureKeyFor`/`walkAnimKeyFor` key strings instead. This means
-  `Player.ts`, `spriteFacing.ts`, and `NpcActor.ts` needed **zero** changes
-  to their movement/facing/animation-selection logic — they only ever
-  address characters through those key-generating functions, so swapping
-  what a key resolves to was enough.
-  - **`down`/`side` share the real source pose (side, facing right)**;
-    `left` is the existing `spriteFacing.ts` `setFlipX` mirror of `side`,
-    unchanged. **`up` has its own separate constructed back-view frames**
-    (`bernadette_back_*.png`) — see the next bullet. There is still no real
-    front view; `down` reuses the side pose (the maintainer's follow-up
-    request scoped the back-view work to `up` only and didn't ask for a
-    front view, so `down` was deliberately left as-is rather than expanding
-    scope).
-  - **The back view (`up`) is reconstructed from her own pixels, not
-    mirrored/rotated from the front and not invented from scratch** — no
-    image-generation tool is available in this environment, and the
-    maintainer explicitly required a "genuine" back-facing interpretation.
-    The technique: for every row of the source image, everything left of
-    that row's own midpoint (in a right-facing profile, provably the *back*
-    of her veil/shawl/skirt — never her face, which is always further
-    right) is mirrored across a center axis, building a symmetric figure
-    from real back-of-garment pixels. Her braid was isolated separately (a
-    hue/saturation mask restricted to a hand-picked bounding box around it,
-    cleaned with connected-component filtering to drop stray skin-tone
-    blobs near the ear/jaw) and re-composited centered — the raw extraction
-    was too noisy to use directly, so the final braid on the back view is a
-    small hand-drawn ribbon using colors *sampled from that same
-    extraction*, not the extracted pixels themselves. If this ever needs
-    redoing, re-derive the mask/boundaries by eye against the actual image
-    (grid-overlay crops) rather than reusing old pixel coordinates verbatim
-    — they're specific to this exact source image.
-  - **The walk-cycle frames (`bernadette_walk_a/b.png` and
-    `bernadette_back_walk_a/b.png`) are a cutout-puppet deformation of the
-    *same* pixels, generated offline in Python — not new drawn content and
-    not a runtime effect.** Per-row horizontal shear below the waist (the
-    skirt sway), a sub-pixel vertical bob, a small opposite shift on the
-    visible hand(s) (counter-swinging arm), and — the key fix over an
-    earlier version of this pipeline — **independent shifts on the *left*
-    and *right* boot regions separately** (one moves down/forward as
-    "planted," the other up/back as "lifted," then the roles swap in the
-    other frame), instead of the whole foot cluster translating as one
-    block. A single shared boot-cluster shift reads as "the sprite
-    sliding," not "feet stepping" — the two feet have to move differently
-    from each other for it to read as walking.
+  supplied her own finished illustration and it's used as-is, never
+  redrawn/recolored. `characters.ts` explicitly excludes `'bernadette'` from
+  `registerCharacterTextures()`/`registerCharacterAnimations()`
+  (`PROCEDURAL_CHARACTER_IDS`) so the procedural paper-doll version never
+  gets registered under her texture keys; `bernadetteSprite.ts` loads the
+  real frames under those *exact same* `textureKeyFor`/`walkAnimKeyFor` key
+  strings instead. This means `Player.ts`, `spriteFacing.ts`, and
+  `NpcActor.ts` needed **no changes to their key-lookup logic** — they only
+  ever address characters through those key-generating functions, so
+  swapping what a key resolves to was enough. (`spriteFacing.ts` did gain one
+  new opt-in parameter for the diagonal rule below — see that bullet.)
+  - **All three facings (`side`/`up`/`down`) are genuine supplied art now —
+    no mirroring, rotation, or reconstruction of one pose to fake another.**
+    An earlier version of this file used a single right-facing side pose for
+    both `down` and `side`, and a *reconstructed* back view (built by
+    mirroring the side pose's own pixels — see git history if that technique
+    is ever needed again for a different character) for `up`. The maintainer
+    later supplied a proper 3-panel reference sheet (side / back / front, in
+    that fixed order) drawn specifically for this; that reconstruction is
+    obsolete and no longer used. `side` → `bernadette_side_*.png` (used as-is
+    for `right`, `setFlipX`-mirrored in `spriteFacing.ts` for `left`); `up` →
+    `bernadette_back_*.png`; `down` → `bernadette_front_*.png`. Each of the 3
+    source panels was cropped to its own precise alpha bounding box and all
+    three resized to the *same* final height so switching facing never jumps
+    her apparent scale — confirmed live via `player.displayWidth` staying
+    exactly `15` across every facing during Playwright testing.
+  - **Diagonal movement uses only the vertical-axis view (back/front), never
+    the side view** — an explicit maintainer requirement, since the 3-view
+    set has no diagonal art and "the vertical component determines the
+    sprite" regardless of how much horizontal vs. vertical motion there is.
+    Implemented as an opt-in `preferVerticalOnDiagonal` parameter on
+    `spriteFacing.ts#updateFacingAnimation()` (default `false`, so every
+    `NpcActor` caller — mother, Jeanne, etc. — keeps the old
+    dominant-axis-wins behavior unchanged); `Player.ts` passes `true` on both
+    of its call sites. This has to be a real rule, not just reliance on
+    keyboard ties falling through to the `else if (vy !== 0)` branch —
+    `TouchControls.vector` can be an arbitrary continuous unit vector (e.g.
+    `(0.6, 0.8)`), where plain `Math.abs(vx) > Math.abs(vy)` would pick
+    horizontal and violate the rule.
+  - **The walk-cycle frames (`bernadette_side/back/front_walk_a/b.png`) are a
+    cutout-puppet deformation of the *same* pixels per view, generated
+    offline in Python — not new drawn content and not a runtime effect.**
+    Per-row horizontal shear below the waist (the skirt sway — a single
+    direction for the side view; mirrored/opposing halves for back/front so
+    it reads as a subtle twist rather than a uniform lean), a sub-pixel
+    vertical bob, a small opposite shift on the hand region(s) (one hand for
+    the side view, two — independently shifted — for back/front, for
+    counter-swinging arms), and **independent shifts on the *left* and
+    *right* boot regions separately** (one moves down/forward as "planted,"
+    the other up/back as "lifted," then the roles swap in the other frame),
+    instead of the whole foot cluster translating as one block. A single
+    shared boot-cluster shift reads as "the sprite sliding," not "feet
+    stepping" — the two feet have to move differently from each other for it
+    to read as walking.
   - **Deform at a larger intermediate resolution, then downscale — not the
-    other way, and not directly at the final display size either.** The
-    final frames are 26x42 (down/side) / 15x42 (up), but the *deformation*
-    itself is computed on a ~60px-tall version (with a mild unsharp-mask
-    pass first, since LANCZOS downscaling alone blurred the boots past the
-    point of reading as two feet) and only downscaled to final size at the
-    very end. Deforming directly at 21x34 (the first version of this
-    pipeline) left too few pixels for the two feet to read as different
-    from each other; deforming the ~900x1500 source and downscaling after
-    made 1-2px shifts vanish into sub-pixel noise. If these frames are ever
-    regenerated, keep this two-stage (deform-large, then-downscale)
-    approach.
+    other way, and not directly at the final display size either.** All
+    3 views' final frames are 15x42, but the *deformation* itself is
+    computed on a ~60px-tall version (with a mild unsharp-mask pass first,
+    since LANCZOS downscaling alone blurred the boots past the point of
+    reading as two feet) and only downscaled to final size at the very end.
+    Deforming directly at the tiny final size left too few pixels for the
+    two feet to read as different from each other; deforming the large
+    source and downscaling after made 1-2px shifts vanish into sub-pixel
+    noise. If these frames are ever regenerated, keep this two-stage
+    (deform-large, then-downscale) approach, and reuse the asymmetric
+    (single hand/skirt-shear direction) variant for the side view vs. the
+    symmetric (mirrored hands/opposing skirt shear) variant for back/front.
   - **Idle breathing is `Math.sin(time)` on `scaleY`, not a yoyo tween** —
     same reasoning and same bug as Home's breathing effect (a yoyo tween
     has a visible jerk on every loop repeat; a continuous sine doesn't, by
@@ -564,15 +569,14 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     pixelArt gotcha elsewhere in this doc) — done once in
     `registerBernadetteSprite()`, called from `BootScene.create()` after
     `preloadBernadetteSprite()` has finished loading in `preload()`.
-  - Player's Arcade Body is sized/offset for the down/side frame
-    (`BERNADETTE_FRAME_SIZE`, currently 26x42 — sized up from an earlier
-    21x34 pass specifically so the walk cycle's feet had enough pixels to
-    animate independently; see the deformation-resolution bullet above):
-    `body.setSize(12, 11)`, `body.setOffset(6, 30)`. One fixed body size is
-    used for all facings, including the narrower 15x42 `up` frame — re-derive
-    proportionally (`old * newDimension / oldDimension`) from the original
-    20x28 procedural frame's `(10, 7)`/`(5, 20)` if the frame size ever
-    changes again, don't guess.
+  - Player's Arcade Body is sized/offset for the frame size shared by all 3
+    facings (`BERNADETTE_FRAME_SIZE`, 15x42 — see the deformation-resolution
+    bullet above for why the frames are that small): `body.setSize(7, 11)`,
+    `body.setOffset(4, 30)`, kept proportionally centered/near-the-feet from
+    the previous 26x42 frame's `(12, 11)`/`(6, 30)` box. One fixed body size
+    is used for all facings, since all 3 are now the same footprint —
+    re-derive proportionally (`old * newDimension / oldDimension`) if the
+    frame size ever changes again, don't guess.
 
 ### Art direction: history and current constraint
 
