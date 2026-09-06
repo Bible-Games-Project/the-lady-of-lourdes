@@ -613,6 +613,38 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     is used for all facings, since all 3 are now the same footprint —
     re-derive proportionally (`old * newDimension / oldDimension`) if the
     frame size ever changes again, don't guess.
+- **Her dialogue-box portrait is also real art now** (`assets/portraits/bernadettePortrait.ts`),
+  same pattern as the overworld sprite: `pixelart/portraits.ts#registerPortraitTextures()`
+  excludes `'bernadette'` from the procedural bust loop, and the real module preloads 4 images
+  under the exact same `portraitKeyFor('bernadette', expression)` keys `PortraitAnimator` already
+  addresses everyone through — no changes needed to `PortraitAnimator.ts` or `DialogueBox.ts` at
+  all; that existing blink/talk state machine (random non-rhythmic blink timer with an occasional
+  quick double-blink, mouth toggling only while `DialogueBox` is actively typing, independent of
+  each other) is exactly what the maintainer asked for and was already built for the procedural
+  portraits — it just needed a real-art `Expression → texture` mapping.
+  - **Only one pose was supplied** (eyes open, mouth open/smiling) — the other 3 `Expression`
+    states (`neutral`, `blink`, `talkBlink`) were derived from it by direct pixel editing on the
+    full-resolution source crop, not fabricated from scratch or reconstructed from a different
+    photo: `talk` is the supplied image untouched; `neutral` paints a closed-mouth line over the
+    open mouth/teeth; `blink` is `neutral` with both eyes painted closed; `talkBlink` is `talk`
+    with both eyes painted closed. "Painting closed" means erasing the eye/mouth region by
+    replacing it with real nearby skin pixels (feathered at the box edges so there's no visible
+    seam — a first attempt that copied a flat rectangular skin patch left obvious rectangular
+    edges, and a row-by-row left-right skin blend leaked eyebrow/hair color into the fill near the
+    box edges; the working technique donates a same-size patch from directly *below* the erased
+    region, feathered in), then drawing the new line on top in a color sampled from her own
+    lips/lashes. Re-derive the eye/mouth bounding boxes by eye against the actual source crop if
+    this is ever redone for a different portrait image — they're specific pixel coordinates for
+    this exact source, not a general formula.
+  - **Textures are generated at exactly 58x67 — the same size `DialogueBox.ts` displays the
+    portrait at (`setDisplaySize(58, 67)`)** — a single clean `Image.LANCZOS` downscale straight
+    from the edited full-resolution crop, so the renderer performs *no* scaling at all (the
+    aspect ratio doesn't perfectly match the source crop's natural ~0.888, so there's a ~2.5%
+    non-uniform stretch — imperceptible at this size, and preferred over cropping into her
+    braids/hood to force an exact match).
+  - **Do NOT call `setFilter(LINEAR)` on these textures** — same mistake, same fix, same reasoning
+    as the overworld sprite above: this portrait is meant to read as pixel art next to every other
+    character's procedural portrait, and the game already defaults every texture to NEAREST.
 
 ### Art direction: history and current constraint
 
