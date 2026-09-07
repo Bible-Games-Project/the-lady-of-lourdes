@@ -622,26 +622,43 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   quick double-blink, mouth toggling only while `DialogueBox` is actively typing, independent of
   each other) is exactly what the maintainer asked for and was already built for the procedural
   portraits — it just needed a real-art `Expression → texture` mapping.
-  - **Only one pose was supplied** (eyes open, mouth open/smiling) — the other 3 `Expression`
-    states (`neutral`, `blink`, `talkBlink`) were derived from it by direct pixel editing on the
-    full-resolution source crop, not fabricated from scratch or reconstructed from a different
-    photo: `talk` is the supplied image untouched; `neutral` paints a closed-mouth line over the
-    open mouth/teeth; `blink` is `neutral` with both eyes painted closed; `talkBlink` is `talk`
-    with both eyes painted closed. "Painting closed" means erasing the eye/mouth region by
-    replacing it with real nearby skin pixels (feathered at the box edges so there's no visible
-    seam — a first attempt that copied a flat rectangular skin patch left obvious rectangular
-    edges, and a row-by-row left-right skin blend leaked eyebrow/hair color into the fill near the
-    box edges; the working technique donates a same-size patch from directly *below* the erased
-    region, feathered in), then drawing the new line on top in a color sampled from her own
-    lips/lashes. Re-derive the eye/mouth bounding boxes by eye against the actual source crop if
-    this is ever redone for a different portrait image — they're specific pixel coordinates for
-    this exact source, not a general formula.
+  - **This is the second portrait swap** — the maintainer replaced the first supplied image with
+    a new one; the frames below are derived from that second image only, not layered on the first.
+    Only one pose was supplied each time, but the pose differs: the current source already has a
+    *closed*, resting mouth (the first source had it open) — so this time `neutral` is the
+    untouched source and `talk` is the fabricated state, the reverse of before. Always check which
+    mouth state the *current* source actually shows before deciding what needs painting; don't
+    assume the previous portrait's untouched/edited split still applies.
+  - **Eye-closing must be restricted to the real eye/eyelid pixels only — never a rectangular (or
+    even a generic geometric) region over part of the face.** The maintainer was explicit and
+    emphatic about this after reviewing the first portrait's technique description. The mask is
+    now found *by color*, not by shape: her irises/sclera are a cool blue-gray while every
+    surrounding pixel (skin, eyebrows, hair, kerchief) is warm-toned, so `red − blue` per pixel
+    cleanly separates "eye" from everything around it (skin ~95-110, eyebrow ~45-75, iris/sclera
+    ~-5 to +6 — a threshold around 55-60 lands cleanly between them). `scipy.ndimage` morphology
+    (`binary_dilation` → `binary_closing` → `binary_fill_holes` → keep-largest-component) cleans up
+    small anti-aliasing gaps in that raw threshold without ever growing the mask past the eye's own
+    silhouette. Two earlier attempts were tried and rejected for this exact reason: a plain
+    ellipse inscribed in a bounding box left real iris/lash pixels sticking out past its edge; a
+    Laplacian diffusion fill (repeatedly averaging each masked pixel with its neighbors) pulled in
+    dark eyebrow/crease color from just outside the mask and produced a muddy dark smudge instead
+    of skin. The mask that actually worked (content-based, above) is then filled with real skin
+    resampled from a patch further down the cheek, alpha-feathered at the mask's own eye-shaped
+    boundary (via `scipy.ndimage.distance_transform_edt`, not a rectangle's edges) before the
+    closed-lid line is drawn on top in a color sampled from her own lashes.
+  - **The fabricated mouth-open state needs to be bold, tall, and dark/saturated enough to survive
+    the downscale to this portrait's final 58x67 size — a subtle/thin version disappears
+    completely.** At 58x67 the mouth region is only ~3 pixel rows tall; a first attempt with a
+    delicate thin teeth-highlight line read as a flat gray smudge indistinguishable from a closed
+    mouth once downscaled. Always render candidate expression frames down to the *actual* final
+    58x67 size before judging them — softness/contrast that looks fine zoomed into the
+    full-resolution working crop can vanish entirely after the downscale.
+  - Bounding boxes/color thresholds above are specific pixel coordinates and color ranges for this
+    exact source image — re-derive them by eye (grid-overlay crops, as used throughout this
+    pipeline) against whatever image is current, never reuse old numbers verbatim.
   - **Textures are generated at exactly 58x67 — the same size `DialogueBox.ts` displays the
     portrait at (`setDisplaySize(58, 67)`)** — a single clean `Image.LANCZOS` downscale straight
-    from the edited full-resolution crop, so the renderer performs *no* scaling at all (the
-    aspect ratio doesn't perfectly match the source crop's natural ~0.888, so there's a ~2.5%
-    non-uniform stretch — imperceptible at this size, and preferred over cropping into her
-    braids/hood to force an exact match).
+    from the edited full-resolution crop, so the renderer performs *no* scaling at all.
   - **Do NOT call `setFilter(LINEAR)` on these textures** — same mistake, same fix, same reasoning
     as the overworld sprite above: this portrait is meant to read as pixel art next to every other
     character's procedural portrait, and the game already defaults every texture to NEAREST.
