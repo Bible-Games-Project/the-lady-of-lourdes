@@ -21,6 +21,7 @@ import { registerHomeEffectTextures } from '../pixelart/homeEffects';
 import { JOURNEY_MAP_KEY, preloadJourneyMap } from '../assets/journey/journeyMap';
 import { preloadBernadetteSprite, registerBernadetteSprite } from '../assets/player/bernadetteSprite';
 import { preloadBernadettePortrait } from '../assets/portraits/bernadettePortrait';
+import { preloadJeannePortrait } from '../assets/portraits/jeannePortrait';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -32,6 +33,7 @@ export class BootScene extends Phaser.Scene {
     preloadJourneyMap(this);
     preloadBernadetteSprite(this);
     preloadBernadettePortrait(this);
+    preloadJeannePortrait(this);
   }
 
   create(): void {

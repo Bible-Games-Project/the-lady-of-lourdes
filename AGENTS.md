@@ -662,6 +662,30 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   - **Do NOT call `setFilter(LINEAR)` on these textures** — same mistake, same fix, same reasoning
     as the overworld sprite above: this portrait is meant to read as pixel art next to every other
     character's procedural portrait, and the game already defaults every texture to NEAREST.
+- **Jeanne's (`CharacterId` `'friend'`) dialogue-box portrait is real art too now**
+  (`assets/portraits/jeannePortrait.ts`) — same treatment as Bernadette's, extended to a second
+  character. `pixelart/portraits.ts#registerPortraitTextures()` now excludes both `'bernadette'`
+  and `'friend'` (via `REAL_ART_PORTRAIT_IDS`) from the procedural bust loop; every other character
+  (mother, sister, lady, villagers) is still procedural. Again, zero changes needed to
+  `PortraitAnimator.ts`/`DialogueBox.ts` — only a real-art `Expression → texture` mapping preloaded
+  under the same `portraitKeyFor('friend', expression)` keys.
+  - Same situation as Bernadette's *second* portrait: only one pose supplied, mouth already
+    closed/resting, so `neutral`/`blink` are the untouched/eyes-only-edited states and
+    `talk`/`talkBlink` needed a fabricated open mouth.
+  - Reused the same content-based (`red − blue`) eye-isolation technique, but **had to re-verify it
+    actually discriminates for this character** rather than assume it would: Jeanne's eyes are
+    brown, not the blue-gray of Bernadette's second portrait, so the iris-vs-skin gap is narrower
+    (skin ~78-94, eyebrow ~69-78, iris/sclera ~15-40 here, vs. skin ~95-110/eyebrow ~45-75/iris
+    ~-5 to +6 for blue eyes) — the threshold had to sit close to the eyebrow's low end instead of
+    with a wide margin. It still works, but don't assume the exact threshold value transfers to a
+    different character/eye color without re-checking against a visualized mask overlay first.
+  - **Also hit a plain measurement bug worth flagging**: an initial eye bounding box was too
+    shallow (its bottom edge cut off before the eye's actual lower edge), so part of the iris/lower
+    lid fell *outside* the box entirely and was never touched by the mask logic at all — it just
+    stayed as unedited dark pixels beneath the "closed" line, no matter how the color threshold was
+    tuned. Symptom looked like a color-separation problem but was actually a box-geometry problem;
+    if a closed eye still shows a stray dark patch after threshold tuning, check the box bounds
+    against the actual image before touching the color logic again.
 
 ### Art direction: history and current constraint
 
