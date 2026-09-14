@@ -797,6 +797,25 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   texture key/size (procedural or a loaded real image), sizing the collider box as a fraction of
   the given width/height regardless of source.
 
+### Overworld presbytery: real art, same spot as the old placeholder
+
+- `src/assets/buildings/lourdesPresbytery.ts` + `lourdes_presbytery.png` — the "Presbytery"
+  building in `TOWN_BUILDINGS` is the maintainer's own artwork (two-story stone house, slate roof
+  with two chimneys, blue shutters, cross-gabled entry, garden with iron fence/gate), replacing the
+  generic `PROP_KEYS.TOWN_BUILDING` box it used to share with the hospice/maisonCenac/tribunal
+  entries — **those three are untouched**, still on the shared procedural texture; only the
+  presbytery's own `TOWN_BUILDINGS` entry got a dedicated key.
+- Same continuous-tone-source treatment as the grass/church: crop tight to opaque bounds
+  (978x817), `Image.BOX` downscale, then color-quantize (32 colors, median-cut, no dithering, alpha
+  untouched) to force flat pixel-art edges. Displayed at the texture's exact native size (84x70,
+  no `setDisplaySize`) for the same no-scaling-blur reason as the other two.
+- **Unlike the church, this one did *not* need to move** — sized to 84x70 (vs. the old
+  placeholder's 48x40) specifically so it still fits in the gap between the church (added earlier,
+  bottom edge at row ~43.4) and the tribunal building (row 50) without touching either, at the same
+  tile position (col 4, row 45) the old placeholder used. Verified with Playwright: no overlap with
+  the church or tribunal, player blocked walking straight into it (collision via the same
+  `addStaticProp()` path every other building uses, no bespoke code), Journey/Home unaffected.
+
 ### Art direction: history and current constraint
 
 The maintainer rejected the original procedural pixel-art look

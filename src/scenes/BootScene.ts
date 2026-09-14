@@ -24,6 +24,7 @@ import { preloadBernadettePortrait } from '../assets/portraits/bernadettePortrai
 import { preloadJeannePortrait } from '../assets/portraits/jeannePortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
 import { preloadLourdesChurch } from '../assets/buildings/lourdesChurch';
+import { preloadLourdesPresbytery } from '../assets/buildings/lourdesPresbytery';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -38,6 +39,7 @@ export class BootScene extends Phaser.Scene {
     preloadJeannePortrait(this);
     preloadLourdesGrass(this);
     preloadLourdesChurch(this);
+    preloadLourdesPresbytery(this);
   }
 
   create(): void {

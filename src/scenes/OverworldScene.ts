@@ -5,6 +5,11 @@ import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
 import { LOURDES_CHURCH_KEY, LOURDES_CHURCH_WIDTH, LOURDES_CHURCH_HEIGHT } from '../assets/buildings/lourdesChurch';
+import {
+  LOURDES_PRESBYTERY_KEY,
+  LOURDES_PRESBYTERY_WIDTH,
+  LOURDES_PRESBYTERY_HEIGHT,
+} from '../assets/buildings/lourdesPresbytery';
 import { PROP_KEYS } from '../pixelart/props';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
@@ -108,7 +113,18 @@ const TOWN_BUILDINGS: BuildingPlacement[] = [
     locationId: 'church',
   },
   { key: PROP_KEYS.TOWN_BUILDING, col: 21, row: 38, widthPx: 48, heightPx: 40, locationId: 'hospice' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 4, row: 45, widthPx: 48, heightPx: 40, locationId: 'presbytery' },
+  // Real artwork (see assets/buildings/lourdesPresbytery.ts), replacing the old shared
+  // TOWN_BUILDING placeholder box. Kept at the same tile position as the old placeholder (col 4,
+  // row 45) -- unlike the church, this spot already had enough headroom below the church and
+  // above the tribunal for the new art's 84x70 footprint, so no reposition was needed.
+  {
+    key: LOURDES_PRESBYTERY_KEY,
+    col: 4,
+    row: 45,
+    widthPx: LOURDES_PRESBYTERY_WIDTH,
+    heightPx: LOURDES_PRESBYTERY_HEIGHT,
+    locationId: 'presbytery',
+  },
   { key: PROP_KEYS.TOWN_BUILDING, col: 22, row: 45, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
   { key: PROP_KEYS.TOWN_BUILDING, col: 5, row: 50, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
 ];
