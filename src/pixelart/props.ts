@@ -8,7 +8,6 @@ export const PROP_KEYS = {
   FIREWOOD: 'prop_firewood',
   GROTTO: 'prop_grotto',
   CACHOT_EXTERIOR: 'prop_building_cachot',
-  CHURCH: 'prop_building_church',
   TOWN_BUILDING: 'prop_building_town',
   ROSARY_BEAD: 'prop_rosary_bead',
 } as const;
@@ -144,9 +143,6 @@ export function registerProps(scene: Phaser.Scene): void {
 
   const cachot = building(48, 40, PALETTE.wallDark, PALETTE.roofDark, PALETTE.skyDusk);
   registerTexture(scene, PROP_KEYS.CACHOT_EXTERIOR, cachot.grid, cachot.palette, 1);
-
-  const church = building(64, 64, PALETTE.wallLight, PALETTE.roofLight, PALETTE.skyDay);
-  registerTexture(scene, PROP_KEYS.CHURCH, church.grid, church.palette, 1);
 
   const town = building(48, 40, PALETTE.wallLight, PALETTE.roofLight, PALETTE.skyDay);
   registerTexture(scene, PROP_KEYS.TOWN_BUILDING, town.grid, town.palette, 1);

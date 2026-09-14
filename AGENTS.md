@@ -768,6 +768,35 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   grass's own average color (`#38737b`) so it blends instead of reading as
   a seam — update this if the grass texture ever changes again.
 
+### Overworld church building: real art, moved to fit
+
+- `src/assets/buildings/lourdesChurch.ts` + `lourdes_church.png` — the "Parish Church" building in
+  `TOWN_BUILDINGS` (`OverworldScene.ts`) is the maintainer's own church artwork (stone building,
+  slate roof, bell tower with cross, arched door, trees around the base), replacing the old
+  procedural placeholder that `pixelart/props.ts#registerProps()` used to generate under
+  `PROP_KEYS.CHURCH` (that generator call and the `CHURCH` key were removed — nothing else
+  referenced them). Same continuous-tone-source treatment as the grass (see above): source cropped
+  tight to its opaque bounds, `Image.BOX` downscale, then color quantization (32 colors here, more
+  than grass's 12, since the source has far more distinct materials — stone, slate, wood, foliage —
+  and a lower color count started banding visibly) with the alpha channel left untouched by the
+  quantize step. Displayed at the texture's exact native pixel size (94x118) with no
+  `setDisplaySize` scaling, same reasoning as the grass tile: avoids any scaling pass that could
+  blur it.
+- **The building moved 4 tiles west of its old placeholder spot** (col 6 → col 2, same row 36) —
+  the real art's footprint (94x118) is much bigger than the old placeholder's (64x64), and at the
+  old column it would have overlapped both the town plaza path (starts at col 10) and the
+  presbytery building (row 45). Moving it west keeps it in the same general position relative to
+  the other landmarks — immediately south of the river crossing, grouped with the presbytery on the
+  town's west side — which happens to match Saint-Pierre parish church's real-world adjacency to its
+  own presbytery. Verified with Playwright screenshots at multiple zoom levels: no overlap with the
+  presbytery or the path, correct "Parish Church" label position, and — since it's rendered through
+  `addStaticProp()` like every other building/prop, no bespoke collision code — confirmed the player
+  is blocked walking straight into it but can walk around either side normally.
+- Uses the same `addStaticProp(key, x, y, width, height)` path as every other building in
+  `buildBuildings()` — no new collision code was needed; that helper already generalizes to any
+  texture key/size (procedural or a loaded real image), sizing the collider box as a fraction of
+  the given width/height regardless of source.
+
 ### Art direction: history and current constraint
 
 The maintainer rejected the original procedural pixel-art look

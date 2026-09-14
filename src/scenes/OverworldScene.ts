@@ -4,6 +4,7 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
+import { LOURDES_CHURCH_KEY, LOURDES_CHURCH_WIDTH, LOURDES_CHURCH_HEIGHT } from '../assets/buildings/lourdesChurch';
 import { PROP_KEYS } from '../pixelart/props';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
@@ -90,8 +91,22 @@ interface BuildingPlacement {
   locationId: LocationId;
 }
 
+// The church (real artwork, see assets/buildings/lourdesChurch.ts) needs a much bigger footprint
+// than the old procedural placeholder (94x118 vs 64x64), so it moved 4 tiles further west (col 6
+// -> col 2) from its previous spot at the same row: that keeps it in the same general position
+// relative to the other landmarks (immediately south of the river crossing, on the west side next
+// to the presbytery, matching Saint-Pierre parish church's real-life placement next to its
+// presbytery) while clearing the town plaza path (starts at col 10) and the presbytery building
+// (row 45) with comfortable margin on both sides.
 const TOWN_BUILDINGS: BuildingPlacement[] = [
-  { key: PROP_KEYS.CHURCH, col: 6, row: 36, widthPx: 64, heightPx: 64, locationId: 'church' },
+  {
+    key: LOURDES_CHURCH_KEY,
+    col: 2,
+    row: 36,
+    widthPx: LOURDES_CHURCH_WIDTH,
+    heightPx: LOURDES_CHURCH_HEIGHT,
+    locationId: 'church',
+  },
   { key: PROP_KEYS.TOWN_BUILDING, col: 21, row: 38, widthPx: 48, heightPx: 40, locationId: 'hospice' },
   { key: PROP_KEYS.TOWN_BUILDING, col: 4, row: 45, widthPx: 48, heightPx: 40, locationId: 'presbytery' },
   { key: PROP_KEYS.TOWN_BUILDING, col: 22, row: 45, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
