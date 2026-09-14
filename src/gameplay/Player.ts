@@ -27,9 +27,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1);
     this.setCollideWorldBounds(true);
     const body = this.body as Phaser.Physics.Arcade.Body;
-    // Sized/offset for the real-art frame (15x42, shared by all 3 facings — see
-    // assets/player/bernadetteSprite.ts), scaled proportionally from the previous 26x42 frame's
-    // (12,11)/(6,30) box: same relative footprint near her feet, narrower to match the new width.
+    // One fixed collider used for all 3 facings, near her feet — the frames themselves are 42px
+    // tall throughout but vary in width per facing (13-18px, each view's own true proportions; see
+    // assets/player/bernadetteSprite.ts), so this is a representative center-ish box rather than a
+    // per-facing exact fit. Collision precision here has never needed to track her visual width
+    // exactly; a top-down game's movement/blocking feel is insensitive to a couple of px of
+    // left-right slack in a body this small.
     body.setSize(7, 11);
     body.setOffset(4, 30);
 

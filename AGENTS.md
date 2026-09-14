@@ -508,7 +508,10 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     source panels was cropped to its own precise alpha bounding box and all
     three resized to the *same* final height so switching facing never jumps
     her apparent scale — confirmed live via `player.displayWidth` staying
-    exactly `15` across every facing during Playwright testing.
+    exactly `15` across every facing during Playwright testing (true for
+    *that* source sheet specifically, where all 3 panels happened to have
+    similar proportions; see the *second* sprite-sheet-swap bullet below for
+    why width is no longer expected to be uniform).
   - **Diagonal movement uses only the vertical-axis view (back/front), never
     the side view** — an explicit maintainer requirement, since the 3-view
     set has no diagonal art and "the vertical component determines the
@@ -605,14 +608,43 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     hard-edged "pixel art" look comes from the render-time NEAREST filter
     above scaling the small-but-cleanly-resampled texture up, not from how
     the texture itself was originally downsampled.
-  - Player's Arcade Body is sized/offset for the frame size shared by all 3
-    facings (`BERNADETTE_FRAME_SIZE`, 15x42 — see the deformation-resolution
-    bullet above for why the frames are that small): `body.setSize(7, 11)`,
-    `body.setOffset(4, 30)`, kept proportionally centered/near-the-feet from
-    the previous 26x42 frame's `(12, 11)`/`(6, 30)` box. One fixed body size
-    is used for all facings, since all 3 are now the same footprint —
-    re-derive proportionally (`old * newDimension / oldDimension`) if the
-    frame size ever changes again, don't guess.
+  - Player's Arcade Body uses one fixed collider for all 3 facings
+    (`body.setSize(7, 11)`, `body.setOffset(4, 30)`), sized/positioned near
+    her feet against a nominal ~15px-wide frame — see the *second* sprite-
+    sheet-swap bullet below for why per-facing widths are no longer uniform
+    and this is now a representative approximation rather than an exact fit.
+    Re-derive proportionally (`old * newDimension / oldDimension`) only if
+    the shared *height* (`BERNADETTE_FRAME_HEIGHT`, currently 42) ever
+    changes — width no longer drives this, don't guess from it.
+  - **This is the second full gameplay-sprite-sheet swap** — the maintainer
+    replaced the original 3-view reference sheet (maroon/red dress) with an
+    entirely new one (blue dress); the old sheet's derived frames are gone,
+    not layered underneath. Same pipeline, same file names
+    (`bernadette_side/back/front_idle|walk_a|walk_b.png`), same measurement
+    method (grid-overlay crops to find waist/hem/hand bands by eye) — only
+    the source pixels and the measured band coordinates changed, since
+    they're specific to each source image's own proportions, not reusable
+    across sheets. **One real difference from the first sheet**: this
+    source's three panels have genuinely different native proportions (side
+    crop 276px wide vs. front 355px vs. back 390px, all at nearly the same
+    ~912-919px height) — a side profile is naturally narrower than a
+    front/back view of the same shoulders, so unlike the first sheet (whose
+    3 panels happened to share nearly the same width and thus produced
+    uniform 15px-wide final frames), this one's final frames are 13/16/18px
+    wide for side/front/back respectively, all at the same 42px height. This
+    is **not a bug and not something to force into uniformity** — squashing
+    them to a single width would distort the source art's real proportions,
+    which the maintainer explicitly required be preserved faithfully; only
+    height needs to match across facings (for consistent scale/ground
+    contact — see the bullet above), never width. `BERNADETTE_FRAME_SIZE`
+    (a `{width, height}` constant, now inaccurate) was replaced with
+    `BERNADETTE_FRAME_HEIGHT` (just the shared 42) for this reason — nothing
+    else imported the old constant's `width` field, so this was a safe
+    rename. Verified live: `scaleMode` stays `1`/NEAREST and `displayWidth`
+    correctly reads 13/18/16 for side/up/down respectively (matching the
+    source proportions, not a forced-uniform value) across all 4 cardinal
+    directions and all 4 diagonals, re-run through the full Playwright
+    direction/diagonal suite with breathing/shadow/facing logic untouched.
 - **Her dialogue-box portrait is also real art now** (`assets/portraits/bernadettePortrait.ts`),
   same pattern as the overworld sprite: `pixelart/portraits.ts#registerPortraitTextures()`
   excludes `'bernadette'` from the procedural bust loop, and the real module preloads 4 images
