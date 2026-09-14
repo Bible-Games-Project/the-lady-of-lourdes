@@ -719,6 +719,55 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
     if a closed eye still shows a stray dark patch after threshold tuning, check the box bounds
     against the actual image before touching the color logic again.
 
+### Overworld base grass: real art, Tilemap layer (not TileSprite)
+
+- `src/assets/terrain/lourdesGrass.ts` + `lourdes_grass.png` — the base
+  ground texture for the playable Overworld (`OverworldScene.ts`) is the
+  maintainer's own grass artwork, not the old procedural `TILE.GRASS_A`/
+  `GRASS_B` tiles. Scope is deliberately narrow: **Overworld only** — the
+  Journey/Map screen (`journey_map.png`) and Home (`home_background.png`)
+  are separate images and were untouched.
+- The supplied 1254x1254 source *looks* like pixel art but its raw pixel
+  data is continuous-tone (values drift smoothly pixel-to-pixel, not
+  repeated flat blocks — confirmed by direct numpy sampling). Resizing
+  alone, at any target size or with any resampling filter, just produces a
+  *smaller* soft image. What actually produces genuine flat-color,
+  hard-edged pixel art from a source like this is `Image.BOX` downscale
+  (here to 157x157) **followed by color quantization**
+  (`quantize(colors=12, method=MEDIANCUT, dither=NONE)`) — quantization is
+  what snaps each pixel to one of a small discrete palette, creating flat
+  regions with hard boundaries; the downscale alone cannot do that. Keep
+  this two-step order in mind for any future "pixel art" source image that
+  turns out to be continuous-tone under inspection — it's not obvious from
+  looking at a thumbnail, only from sampling raw adjacent pixel values.
+- **Rendered as a real `Tilemap` + `TilemapLayer`, not a `TileSprite`.**
+  This matters and is not obvious: `Phaser.GameObjects.TileSprite` builds
+  its repeating fill by `drawImage`-ing the source frame into an internal
+  power-of-two Canvas2D context (`this.fillContext`), and in WebGL mode
+  (this game's renderer) that specific compositing path never gets
+  `Smoothing.disable()` called on it — Phaser only disables smoothing on a
+  *different* internal canvas, and only in Canvas-renderer mode. Net
+  effect: every `TileSprite` in a WebGL + `pixelArt: true` game renders its
+  fill through a smoothed intermediate composite regardless of the source
+  texture's own `scaleMode`, with no public API to override it. This was
+  confirmed empirically — even a genuinely flat-quantized texture still
+  came out visibly blurred through `TileSprite` in Playwright screenshots.
+  Switching to a real `Tilemap` layer (same GPU quad/texture-batch path as
+  every other sprite/tile in the game) fixed it immediately. **If a future
+  background/ground texture needs to tile across an area and must stay
+  pixel-crisp, use a `Tilemap` layer, never `TileSprite`.**
+  `OverworldScene.ts#buildTerrain()` lays the grass down as its own
+  `Tilemap` layer at `DEPTH.GROUND - 1`; the existing path/river/stone/cave
+  layer sits at `DEPTH.GROUND` on top, with its grid cells defaulting to
+  Phaser's `-1` ("empty tile" sentinel — renders nothing) wherever grass
+  should show through, instead of the old explicit `GRASS_A`/`GRASS_B`
+  index.
+- The map (416x928) is narrower than the camera's logical viewport (480
+  wide) at zoom 1, so `cameras.main.setBackgroundColor(...)` shows as a
+  thin strip past the map's left/right edges. Kept in sync with the new
+  grass's own average color (`#38737b`) so it blends instead of reading as
+  a seam — update this if the grass texture ever changes again.
+
 ### Art direction: history and current constraint
 
 The maintainer rejected the original procedural pixel-art look

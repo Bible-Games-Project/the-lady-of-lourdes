@@ -22,6 +22,7 @@ import { JOURNEY_MAP_KEY, preloadJourneyMap } from '../assets/journey/journeyMap
 import { preloadBernadetteSprite, registerBernadetteSprite } from '../assets/player/bernadetteSprite';
 import { preloadBernadettePortrait } from '../assets/portraits/bernadettePortrait';
 import { preloadJeannePortrait } from '../assets/portraits/jeannePortrait';
+import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -34,6 +35,7 @@ export class BootScene extends Phaser.Scene {
     preloadBernadetteSprite(this);
     preloadBernadettePortrait(this);
     preloadJeannePortrait(this);
+    preloadLourdesGrass(this);
   }
 
   create(): void {

@@ -3,6 +3,7 @@ import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE } from '../core/c
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
+import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
 import { PROP_KEYS } from '../pixelart/props';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
@@ -205,11 +206,41 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private buildTerrain(): void {
-    this.cameras.main.setBackgroundColor('#8fae6b');
+    // The map (416x928) is narrower than the camera's logical viewport (480 wide) at zoom 1, so
+    // this color shows as a thin strip past the map's left/right edges whenever the camera is
+    // horizontally centered or further — sampled as the new grass texture's own average color
+    // (was '#8fae6b', matching the old olive-green procedural grass) so that strip blends in
+    // instead of reading as a visible seam next to the new artwork.
+    this.cameras.main.setBackgroundColor('#38737b');
 
-    const data: number[][] = Array.from({ length: ROWS }, (_, r) =>
-      Array.from({ length: COLS }, (_, c) => ((r * 5 + c * 11) % 9 === 0 ? TILE.GRASS_B : TILE.GRASS_A)),
-    );
+    // The maintainer's own real grass artwork (see assets/terrain/lourdesGrass.ts) is its own
+    // Tilemap layer covering the whole map, laid down *underneath* the tilemap layer built below
+    // (a real Tilemap, not a TileSprite — see that file's comment for why TileSprite renders this
+    // visibly soft in WebGL mode regardless of texture filtering). Every cell in the layer built
+    // below defaults to `-1` (Phaser's "empty" tile — renders nothing, lets this show through)
+    // unless explicitly overwritten with a path/water/stone/cave tile further down, which is how
+    // grass now differs from every other terrain type: it's a base layer of its own, not a tile
+    // placed per-cell like `TILE.GRASS_A`/`GRASS_B` used to be.
+    const grassCols = Math.ceil(MAP_W / LOURDES_GRASS_TILE_SIZE);
+    const grassRows = Math.ceil(MAP_H / LOURDES_GRASS_TILE_SIZE);
+    const grassData: number[][] = Array.from({ length: grassRows }, () => Array.from({ length: grassCols }, () => 0));
+    const grassMap = this.make.tilemap({
+      data: grassData,
+      tileWidth: LOURDES_GRASS_TILE_SIZE,
+      tileHeight: LOURDES_GRASS_TILE_SIZE,
+    });
+    const grassTileset = grassMap.addTilesetImage(
+      'lourdesGrassTile',
+      LOURDES_GRASS_KEY,
+      LOURDES_GRASS_TILE_SIZE,
+      LOURDES_GRASS_TILE_SIZE,
+      0,
+      0,
+    )!;
+    const grassLayer = grassMap.createLayer(0, grassTileset, 0, 0)!;
+    grassLayer.setDepth(DEPTH.GROUND - 1);
+
+    const data: number[][] = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => -1));
 
     for (let r = FIELD_PATH_START_ROW; r < RIVER_H_TOP - 1; r++) {
       for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.DIRT_PATH;
