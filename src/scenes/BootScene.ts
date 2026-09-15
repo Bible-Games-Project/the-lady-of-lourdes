@@ -20,6 +20,8 @@ import {
 import { registerHomeEffectTextures } from '../pixelart/homeEffects';
 import { JOURNEY_MAP_KEY, preloadJourneyMap } from '../assets/journey/journeyMap';
 import { preloadBernadetteSprite, registerBernadetteSprite } from '../assets/player/bernadetteSprite';
+import { preloadSisterSprite, registerSisterSprite } from '../assets/npc/sisterSprite';
+import { preloadMotherSprite, registerMotherSprite } from '../assets/npc/motherSprite';
 import { preloadBernadettePortrait } from '../assets/portraits/bernadettePortrait';
 import { preloadJeannePortrait } from '../assets/portraits/jeannePortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
@@ -35,6 +37,8 @@ export class BootScene extends Phaser.Scene {
     preloadHomeBackground(this);
     preloadJourneyMap(this);
     preloadBernadetteSprite(this);
+    preloadSisterSprite(this);
+    preloadMotherSprite(this);
     preloadBernadettePortrait(this);
     preloadJeannePortrait(this);
     preloadLourdesGrass(this);
@@ -46,6 +50,8 @@ export class BootScene extends Phaser.Scene {
     registerCharacterTextures(this);
     registerCharacterAnimations(this);
     registerBernadetteSprite(this);
+    registerSisterSprite(this);
+    registerMotherSprite(this);
     registerBernadetteShadowTexture(this);
     registerPortraitTextures(this);
     registerTileset(this);

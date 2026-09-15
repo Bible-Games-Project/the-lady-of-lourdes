@@ -6,6 +6,7 @@ import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { INTERIOR_PROP_KEYS } from '../pixelart/interiorProps';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
+import { MOTHER_FRAME_HEIGHT } from '../assets/npc/motherSprite';
 import { TouchControls } from '../gameplay/TouchControls';
 import { DialogueBox } from '../gameplay/DialogueBox';
 import { TasksPanel } from '../gameplay/TasksPanel';
@@ -19,6 +20,12 @@ import { textStyle } from '../ui/text';
 import { useLetterboxScale } from '../core/scaleMode';
 
 const INTERACT_RADIUS = 26;
+
+// The shared NPC ground shadow (`SHADOW_KEY`) is sized for the ~28px-tall procedural character
+// grid (`personTemplate.ts`) every other NpcActor still uses. The mother's real-art frames are
+// MOTHER_FRAME_HEIGHT (42px, full adult scale, same as Bernadette) tall -- scale her shadow by the
+// same ratio so it keeps the same size-to-character relationship the baseline characters have.
+const MOTHER_SHADOW_SCALE = MOTHER_FRAME_HEIGHT / 28;
 
 export class CachotScene extends Phaser.Scene {
   private player!: Player;
@@ -97,7 +104,7 @@ export class CachotScene extends Phaser.Scene {
     this.player.setDepth(DEPTH.ACTORS);
     this.physics.add.collider(this.player, furniture);
 
-    this.mother = new NpcActor(this, offsetX + roomW / 2 + 10, offsetY + wall + 46, 'mother', 'down');
+    this.mother = new NpcActor(this, offsetX + roomW / 2 + 10, offsetY + wall + 46, 'mother', 'down', MOTHER_SHADOW_SCALE);
     this.mother.setDepth(DEPTH.ACTORS);
 
     this.dialogueBox = new DialogueBox(this);

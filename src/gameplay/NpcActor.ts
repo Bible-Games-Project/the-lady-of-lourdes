@@ -10,7 +10,18 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
   private moving = false;
   private shadow: Phaser.GameObjects.Image;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, id: CharacterId, facing: Facing = 'down') {
+  /**
+   * `shadowScale` lets a real-art character's shadow track its own height instead of always
+   * rendering at the shared `SHADOW_KEY` texture's native size. That texture was sized for the
+   * ~28px-tall procedural character grid (`personTemplate.ts`) every other `NpcActor` still uses;
+   * a real-art character taller or shorter than that (the mother at 42px, the sister at ~36px —
+   * see `assets/npc/motherSprite.ts`/`sisterSprite.ts`) needs the shadow scaled by the same ratio
+   * to keep the same size-to-character relationship ("size logic") the baseline characters have,
+   * rather than a shadow that reads as too small (or too large) for its owner. Defaults to `1`
+   * (no scaling) so every existing caller (mother/sister/friend/villagers at their original
+   * procedural size) is completely unaffected.
+   */
+  constructor(scene: Phaser.Scene, x: number, y: number, id: CharacterId, facing: Facing = 'down', shadowScale = 1) {
     const textureFacing = facing === 'left' || facing === 'right' ? 'side' : facing;
     super(scene, x, y, textureKeyFor(id, textureFacing, null));
     this.id = id;
@@ -21,6 +32,7 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
 
     this.shadow = scene.add.image(x, y - 1, SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
+    if (shadowScale !== 1) this.shadow.setScale(shadowScale);
   }
 
   private currentTextureFacing(): 'down' | 'up' | 'side' {

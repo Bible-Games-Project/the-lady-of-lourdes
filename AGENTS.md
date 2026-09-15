@@ -816,51 +816,115 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   the church or tribunal, player blocked walking straight into it (collision via the same
   `addStaticProp()` path every other building uses, no bespoke code), Journey/Home unaffected.
 
-### Church/presbytery display scale: human-scale-vs-Bernadette, and its hard ceiling
+### Church/presbytery: current layout, footprint collision, and why the tribunal moved
 
-- `OverworldScene.ts`'s comment above `TOWN_BUILDINGS` has the full math; summary here. Both
-  buildings are displayed well above their native texture size (`addStaticProp(...,
-  resizeVisual: true)` → `Image#setDisplaySize`, still nearest-neighbor filtered, never re-samples
-  the source pixels) using `BERNADETTE_FRAME_HEIGHT` (42px) as the target door height, per an
-  explicit maintainer request. That forced relocating both off their old spots (previously stacked
-  in the same narrow strip immediately west of the plaza path) — neither fits there any more
-  without overlapping the path or the tribunal building.
-- New layout: church takes the tall band directly south of the river (row 36 down to the
-  tribunal's top edge, 224px of headroom), width-bound (the plaza path at x160 is the ceiling —
-  currently 154px, using a 4px left-edge inset instead of the original 8px to claw back a few more
-  pixels of scale, see below) → ~1.64x scale, ~31px door (~74% of Bernadette). Presbytery takes the
-  short band south of the tribunal (tribunal's bottom edge down to the map's bottom edge, only 80px
-  of headroom), height-bound → 1.086x scale, ~8px door (19% of Bernadette).
-- **Church art was swapped for a second version** (same subject/composition, lighter
-  whitewashed-stone-and-blue-roof palette instead of the first version's tan/dark-slate one — see
-  `assets/buildings/lourdesChurch.ts`) with a follow-up ask to push the scale further ("Bernadette
-  should no longer look noticeably taller than the door", explicitly *not* requiring an exact 42px
-  match, and explicitly limited to "a very small position adjustment" rather than another big
-  reposition). The new art's door-to-width ratio (~19px door in the 94px-wide native texture) is
-  almost identical to the first version's (~18px), so the same width-vs-plaza-path ceiling applies
-  almost unchanged — squeezed the width ceiling from 150px to 154px (4px left-inset instead of 8px)
-  for a modest gain, landing at ~74% instead of the previous ~68%. If asked to close this gap
-  further, the math above already shows why a small tweak can't do much more — it needs the same
-  kind of full reposition the presbytery got, which this particular ask explicitly ruled out.
-- **The presbytery's door cannot reach anywhere near 42px on this map, full stop** — not a
-  judgment call, a hard geometric fact worth not re-deriving if this ever comes up again. Its
-  source art draws the door quite small relative to its own canvas (7px door in an 84px-wide
-  texture, vs. the church's 18px door in a 94px-wide texture) — literally matching Bernadette would
-  need ~504px of width, more than the *entire* 416px-wide map, regardless of where it's placed or
-  how much taller the available band is (width is the binding constraint for this particular
-  source image, not height, because of its own native aspect ratio). Getting further than the
-  current 19% would require either moving the tribunal or letting the building overlap the plaza
-  path — both explicitly ruled out. If asked to push this further, that trade-off has to go back to
-  the maintainer; don't just try more repositioning math, it won't find a materially better spot.
-- Both buildings kept an 8px left-edge inset (map edge buffer) and stayed on the same west-side
-  x-column (x8) so they still read as grouped together despite the different row bands.
-- The door interaction zone (`buildBuildings()`'s `doorZone`) is now sized proportionally to each
-  building's `widthPx`/`heightPx` (half width, 0.35×height, 0.2×height offset) instead of a fixed
-  24x14 — for hospice/maisonCenac/tribunal (still 48x40) this computes to the exact same fixed
-  values as before, so nothing changed for them; only church/presbytery's zones actually grew.
-  Collision works the same way: `addStaticProp()`'s collider sizing was already a fraction of
-  whatever `width`/`height` it's given, so passing the new bigger values was enough — no separate
-  collider-scaling code was needed.
+This whole area went through several rounds — read this section rather than the git history for
+the current state; older revisions of this section (and the two above it) describe superseded
+positions/sizes. `OverworldScene.ts`'s own comment above `SPECIAL_BUILDINGS` has the authoritative
+numbers; this is the summary plus the non-obvious reasoning behind them.
+
+- **Both buildings are `SPECIAL_BUILDINGS`, not `TOWN_BUILDINGS`.** They render via
+  `addFootprintBuilding()` (own method, see its doc comment in `OverworldScene.ts`), not
+  `addStaticProp()` — the difference is collision: instead of one rectangle sized off the whole
+  sprite, each gets several small `createBlocker()` zones matching only its actual solid footprint
+  (wall/fence base + tree/shrub trunks — `CHURCH_FOOTPRINT`/`PRESBYTERY_FOOTPRINT`, fractions of
+  the building's own displayed width/height, measured by eye against the texture). Depth sorting
+  needs no special-casing: the building's depth is set once from `depthForY(cy, DEPTH.ACTORS)`
+  (`cy` = its bottom/ground-contact edge), and the player's depth is already recomputed every frame
+  the same way (`Player.update()`) — so a player north of `cy` always draws behind the building
+  (lower depth) and south of it always draws in front, with no per-frame work needed on the
+  building's side. This is the same trick every other static prop in the file already used for
+  depth; footprint collision is what actually makes the "walk behind the roof" illusion usable,
+  since the old single-box collider blocked the player from ever getting close enough to the upper
+  sprite to see it happen. Verified via injected keyboard input (not manually-set velocity — see
+  the note below) from all four approach directions, and by reading the actual computed depth
+  values (not just eyeballing screenshots) for a player position north vs. south of `cy`.
+- **The tribunal moved** from its original col 5 / row 50 (a few rows south of the church, in the
+  same narrow west strip) to col 20 / row 55 (east side, south of Maison Cénac) — same 48x40
+  procedural art, unchanged, just relocated. This is what actually unblocked the presbytery: its
+  old ~80px-tall band (tribunal's old bottom edge to the map's bottom edge) was the thing capping
+  its scale at two prior rounds' worth of tweaking (~19% of Bernadette's door height, an
+  unsatisfying "still a tiny miniature" result even after repeated small adjustments). With the
+  tribunal gone, the presbytery now uses the *same* ~156px-wide corridor the church itself is
+  capped at by the plaza path (row 49, right below the church) — a real, satisfying jump. The
+  church's own ceiling is unrelated to the tribunal and didn't move: it was always the plaza path
+  (unmovable terrain) that capped its width at ~156px, not any building's position.
+- Current numbers: church ~1.66x (94x122 → ~156x202), ~32px door (~75% of Bernadette). Presbytery
+  ~1.56x (100x80 → ~156x125), ~16px door (~37% of Bernadette) — **still short of a literal
+  Bernadette-height door** even with the extra room, because this source's door is drawn small
+  relative to its own canvas (10px door in a 100px-wide texture, vs. the church's ~19px in 94px) —
+  but now visually reads as matching the church's own width, which is what "feels appropriately
+  sized next to the church" actually meant in practice.
+- **Presbytery art was swapped for a second version** (same lighter whitewashed-stone-and-blue-roof
+  palette as the church's own second version, now with a front garden/shed) — see
+  `assets/buildings/lourdesPresbytery.ts`. Fully replaced, not edited/blended.
+- **Playwright collision-test gotcha, worth not re-discovering**: setting `player.body.setVelocity(...)`
+  directly in a `page.evaluate()` call and then waiting does *not* reliably test sustained movement
+  against a collider — `Player.update()` re-reads keyboard state and overwrites velocity to
+  whatever the (empty, in a scripted test) input state says on the very next frame, so an injected
+  velocity only survives about one physics tick (~1-2px of drift) regardless of whether a collider
+  is actually there. This produces deceptively similar-looking "barely moved" results for both a
+  genuinely-blocked test and a broken one. Use real simulated key presses instead
+  (`page.keyboard.down('ArrowLeft')` / `waitForTimeout` / `keyboard.up`) so `Player.update()`'s own
+  input-reading logic drives the velocity every frame, the same as actual play. Also: read a
+  `depth`/position value in a *separate* `page.evaluate()` call after a `waitForTimeout`, not
+  inside the same call that just set the position — `Player.update()` (and any other per-frame
+  recompute) hasn't run yet at that point, so the read reflects the *previous* frame's state.
+- The door interaction zone (`buildBuildings()`'s generic `doorZone` for hospice/maisonCenac/
+  tribunal) is unaffected by any of this — `addFootprintBuilding()` computes its own door zone from
+  the footprint's first (wall/fence) rectangle instead of the generic proportional formula.
+
+### Real-art secondary characters (mother, sister): same system as Bernadette
+
+- `pixelart/characters.ts#CharacterId` already had `'sister'` and `'mother'` entries (procedural
+  placeholders, already placed as `NpcActor`s — sister near the Cachot door in
+  `OverworldScene.ts`, mother inside `CachotScene.ts`) before either got real art — the maintainer
+  asked for their sprites "using the same character system," and that system already existed by
+  construction, so integrating real art was mostly a drop-in: `assets/npc/sisterSprite.ts` and
+  `assets/npc/motherSprite.ts` (new `src/assets/npc/` dir, mirroring `assets/player/`) register
+  real textures under the exact same `textureKeyFor`/`walkAnimKeyFor` keys the procedural version
+  used, and `PROCEDURAL_CHARACTER_IDS` now excludes both (`REAL_ART_CHARACTER_IDS = ['bernadette',
+  'sister', 'mother']`) so nothing double-registers. `NpcActor`'s existing facing/walk-anim/shadow
+  logic needed **zero changes** for any of this to work — it already addresses characters purely
+  through those key-generating functions.
+- **Sister is sized at 85% of Bernadette's height** (`SISTER_FRAME_HEIGHT = Math.round(42 * 0.85)`
+  = 36px) per an explicit "she is her younger sister" ask — the *only* real-art character besides
+  Bernadette herself not at the full 42px. **Mother is full 42px**, same as Bernadette, per an
+  explicit "do not make her look like a child character."
+  `MOTHER_FRAME_HEIGHT`/`SISTER_FRAME_HEIGHT` are each their own constant (not imported from
+  Bernadette's file) so `motherSprite.ts`/`sisterSprite.ts` don't take a dependency on
+  `assets/player/bernadetteSprite.ts` merely to reuse a number.
+- **NpcActor's shared ground shadow (`SHADOW_KEY`) needed a new optional `shadowScale` constructor
+  param** (default `1`, so every existing caller is unaffected) — that texture was sized for the
+  ~28px-tall procedural character grid (`personTemplate.ts`'s `H` constant) every other `NpcActor`
+  still uses, and a real-art character taller than that (36-42px vs. 28px) needs its shadow scaled
+  by the same ratio to keep the same size-to-character relationship, or it reads as too small.
+  `OverworldScene.ts`/`CachotScene.ts` each compute their own `..._SHADOW_SCALE = ..._FRAME_HEIGHT
+  / 28` constant and pass it at the `new NpcActor(...)` call site.
+- **Walk-cycle frames reuse Bernadette's cutout-puppet deformation *technique*** (per-row shear
+  below the waist, independent boot shifts, generated at a padded intermediate size then
+  downscaled once — see the walk-cycle bullet under "Redesign character sprite system" above) but
+  with two deliberate adaptations for this source art specifically — not deviations out of
+  laziness, and worth keeping if this technique is ever reused for a future character:
+  - **Single-direction shear for every view, not a mirrored per-half "twist."** Mirroring (shifting
+    the left and right halves of each row oppositely, as Bernadette's front/back frames do) opened
+    a visible transparent gap at the center seam on a frame this narrow (11-17px final width) — not
+    enough pixels in each half-row to absorb an independent split without a visible hole. A uniform
+    whole-row shift reads as a clean subtle sway with no seam artifact at this pixel scale.
+  - **The clasped-hands region moves as a single shifting unit, not two independent hands.** This
+    source's hands are drawn interlocked/overlapping in front (fingers laced together), not as two
+    separate hand shapes — independent per-hand movement needs two distinguishable shapes to shift
+    apart from each other, and doing that here would have visibly torn the clasped pose apart.
+  - Boots still get independent left/right shifts (opposite vertical offsets, swapping between
+    frames 'a'/'b') — this source has two clearly separate boot shapes, so that part of the
+    original recipe applied unchanged.
+  - **Deformation needs padding around the intermediate-size array before shearing/shifting**, or
+    pixels pushed past the (alpha-tight, zero-margin) crop's edge either wrap around (if using
+    `np.roll`) or clip — both looked broken (a visible seam or a chunk of missing silhouette). Pad
+    on all sides (`pad = max(4, intermediate_h // 10)` worked well), deform on the padded canvas,
+    then crop back to the original unpadded bounds *before* the final downscale — cropping back is
+    what keeps the character's feet the same distance from the frame's bottom edge as the idle
+    frame, so facing switches between idle/walk don't visibly bob her.
 
 ### Art direction: history and current constraint
 

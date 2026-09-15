@@ -161,14 +161,18 @@ export function registerBernadetteShadowTexture(scene: Phaser.Scene): void {
 }
 
 /**
- * Bernadette (the player character) is excluded from both loops below — she now uses the
- * maintainer's own real artwork (`assets/player/bernadetteSprite.ts`), registered under these
- * same `textureKeyFor`/`walkAnimKeyFor` keys separately. Registering a procedural version here
- * too would either collide with or (depending on load order) silently pre-empt the real one,
- * since `registerTexture`/`scene.anims.create` both no-op if the key already exists. Every other
- * character (mother, sister, friend, lady, villagers) is unaffected and still procedural.
+ * Bernadette, her sister, and her mother are excluded from both loops below — they now use the
+ * maintainer's own real artwork (`assets/player/bernadetteSprite.ts`, `assets/npc/sisterSprite.ts`,
+ * `assets/npc/motherSprite.ts`), registered under these same `textureKeyFor`/`walkAnimKeyFor` keys
+ * separately. Registering a procedural version here too would either collide with or (depending on
+ * load order) silently pre-empt the real one, since `registerTexture`/`scene.anims.create` both
+ * no-op if the key already exists. Every other character (friend, lady, villagers) is unaffected
+ * and still procedural.
  */
-const PROCEDURAL_CHARACTER_IDS = (Object.keys(CHARACTERS) as CharacterId[]).filter((id) => id !== 'bernadette');
+const REAL_ART_CHARACTER_IDS: CharacterId[] = ['bernadette', 'sister', 'mother'];
+const PROCEDURAL_CHARACTER_IDS = (Object.keys(CHARACTERS) as CharacterId[]).filter(
+  (id) => !REAL_ART_CHARACTER_IDS.includes(id),
+);
 
 export function registerCharacterTextures(scene: Phaser.Scene): void {
   registerShadowTexture(scene);
