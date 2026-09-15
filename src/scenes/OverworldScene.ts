@@ -6,6 +6,7 @@ import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
 import { LOURDES_CHURCH_KEY } from '../assets/buildings/lourdesChurch';
 import { LOURDES_PRESBYTERY_KEY } from '../assets/buildings/lourdesPresbytery';
+import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { PROP_KEYS } from '../pixelart/props';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
@@ -92,63 +93,105 @@ interface BuildingPlacement {
   locationId: LocationId;
 }
 
-// The church and presbytery are scaled up well beyond their native texture size (94x118 and
-// 84x70) to bring them toward human scale -- the reference is Bernadette's own in-game height
-// (BERNADETTE_FRAME_HEIGHT = 42px): each building's uniform scale factor is chosen so its door is
-// approximately that tall. That pushes both far past their old ~64x64/48x40 footprints, which
-// forced relocating them off their previous spots (both used to sit stacked in the same narrow
-// strip immediately west of the town plaza path) -- neither fits there any more without
-// overlapping the path (starts at col 10 / x160) or the tribunal building (col 5, row 50).
-//
-// New layout, still the same west-side strip but split into the two open bands that strip
-// actually has once the tribunal building is accounted for:
-//  - The church takes the tall band directly south of the river (row 36 down to the tribunal's
-//    top edge at y800, 224px of headroom). Width is the binding constraint there -- the plaza
-//    path starts at x160, so the widest this strip can go is ~156px before touching it; a 4px
-//    left-edge inset (x4) keeps a small buffer off the map's own left edge too, leaving 154px of
-//    usable width. **Second version of this art** (see `assets/buildings/lourdesChurch.ts`) has an
-//    18px door in the 94px-wide first version's texture and a ~19px door in this one's 94x122
-//    texture -- close enough that the same width ceiling applies almost unchanged: 154px gives a
-//    1.638x scale (94x122 -> ~154x200) and a ~31px door, about 74% of Bernadette's height. That's
-//    the largest this art can go at this position without crossing into the plaza -- a full 42px
-//    door would need ~206px of width, well past what's available before the path. Closing that
-//    gap further needs a bigger reposition (like the presbytery's, moving to a different band
-//    entirely) rather than a tweak here -- out of scope for a "very small adjustment only" ask.
-//  - The presbytery takes the short-but-still-clear band south of the tribunal (tribunal's bottom
-//    edge at y840 down to the map's bottom edge at y928, 80px of headroom) -- height is the
-//    binding constraint there, giving a 1.086x scale (84x70 -> ~91x76) and a ~8px door. This
-//    building's art draws its door much smaller relative to its own canvas than the church's does,
-//    so even this band's full height falls well short of a 42px door (that would need ~504px of
-//    width, several times the entire map's 416px width) -- 1.086x is the most this piece of art can
-//    grow while still fitting anywhere in this strip without overlapping the tribunal or the map
-//    edge. Still a genuine, visible increase (previously the presbytery was left at its native
-//    84x70), just not a literal door-height match -- the source art's own proportions make that
-//    physically impossible on this map without moving the tribunal or widening the plaza, and the
-//    brief was explicit that hitting the literal target isn't worth breaking the town layout for.
-// Both buildings stay in the same general area (immediately south-west of the river crossing,
-// clearly grouped together and separate from the rest of the town) so they still read as
-// belonging together, per Saint-Pierre parish church's real historical adjacency to its own
-// presbytery.
+// The tribunal moved from its original col 5 / row 50 (immediately south of the church/presbytery
+// strip) to this spot on the east side, south of Maison Cénac -- freeing the whole south end of
+// the west strip for the presbytery below, since that spot was otherwise the only thing capping
+// how big the presbytery could get (see SPECIAL_BUILDINGS below). Unrelated to the church, which
+// is capped by the plaza path itself (unmovable terrain), not by the tribunal.
 const TOWN_BUILDINGS: BuildingPlacement[] = [
+  { key: PROP_KEYS.TOWN_BUILDING, col: 21, row: 38, widthPx: 48, heightPx: 40, locationId: 'hospice' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 22, row: 45, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 20, row: 55, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
+];
+
+/**
+ * A collision rectangle as a fraction of a `SpecialBuilding`'s own displayed width/height,
+ * measured by eye against the building's texture (grid-overlay crops, same technique used
+ * throughout this file's asset work) -- so it automatically scales and repositions correctly
+ * whenever the building's own `widthPx`/`heightPx`/`col`/`row` change, instead of needing to be
+ * re-measured in absolute pixels every time the building is resized.
+ */
+interface FootprintRect {
+  xFrac: number;
+  yFrac: number;
+  wFrac: number;
+  hFrac: number;
+}
+
+interface SpecialBuilding {
+  key: string;
+  col: number;
+  row: number;
+  widthPx: number;
+  heightPx: number;
+  locationId: LocationId;
+  /** Small rectangles matching the building's actual solid footprint (wall base, tree/shrub
+   * trunks) -- NOT one big box over the whole sprite. Anything above/behind this footprint (the
+   * roof, upper stories, tree canopies) is walkable-through for Y-sort purposes: the player only
+   * visually renders behind the building while north of `col`/`row`'s own y (see
+   * `addFootprintBuilding()`), and only actually collides once they reach one of these rects. */
+  footprint: FootprintRect[];
+}
+
+// Church footprint (measured on the 94x122 native texture, see lourdesChurch.ts): the stone
+// wall + low fence the entrance sits behind, plus the two flanking trees' trunk/base areas.
+// Excludes the roof, bell tower, and tree canopies entirely -- those are tall enough in the
+// sprite that a player standing "in" them (north of the building's own row) should render behind
+// the building, not collide with it.
+const CHURCH_FOOTPRINT: FootprintRect[] = [
+  { xFrac: 0.17, yFrac: 0.754, wFrac: 0.702, hFrac: 0.213 }, // wall + fence base
+  { xFrac: 0.128, yFrac: 0.779, wFrac: 0.149, hFrac: 0.123 }, // left tree trunk/base
+  { xFrac: 0.723, yFrac: 0.754, wFrac: 0.234, hFrac: 0.148 }, // right tree/bush base
+];
+
+// Presbytery footprint (measured on the 100x80 native texture, see lourdesPresbytery.ts): the
+// low fence/gate along the front, plus the tree cluster on the left and the tree/garden-shed
+// cluster on the right.
+const PRESBYTERY_FOOTPRINT: FootprintRect[] = [
+  { xFrac: 0.12, yFrac: 0.75, wFrac: 0.76, hFrac: 0.2 }, // fence + gate base
+  { xFrac: 0.02, yFrac: 0.625, wFrac: 0.14, hFrac: 0.2 }, // left tree cluster
+  { xFrac: 0.74, yFrac: 0.5, wFrac: 0.22, hFrac: 0.325 }, // right tree/shed cluster
+];
+
+// The church and presbytery are scaled up well beyond their native texture size to bring them
+// toward human scale -- the reference is Bernadette's own in-game height (BERNADETTE_FRAME_HEIGHT
+// = 42px): a building's uniform scale factor is chosen so its door is approximately that tall,
+// as close as the map's fixed geometry allows.
+//  - The church sits in the tall band directly south of the river (row 36). Width is the binding
+//    constraint there -- the plaza path starts at x160, so the widest this strip can ever go is
+//    ~156px before touching it, regardless of the tribunal's position (this is unmovable terrain,
+//    not a building). A 4px left-edge inset (x4) leaves 156px of usable width -- 94x122 native ->
+//    1.660x scale, ~206x202, ~32px door, about 75% of Bernadette's height. That's the ceiling for
+//    this spot; reaching a literal 42px door would need ~206px of width, well past the path.
+//  - The presbytery previously sat in a short band south of the tribunal (only 80px of headroom,
+//    since the tribunal's old position was the thing capping it), landing at just ~19% of
+//    Bernadette's door height even after two rounds of tweaking -- nowhere near "feels
+//    appropriately sized next to the church." Moving the tribunal (see TOWN_BUILDINGS above) frees
+//    the entire south end of this same strip, so the presbytery now uses the *same* ~156px width
+//    ceiling as the church (row 49, right below it) -- 100x80 native -> 1.56x scale, ~156x125,
+//    ~16px door (about 37% of Bernadette's height). Still short of a literal match -- this art's
+//    door is drawn small relative to its own canvas (10px in a 100px-wide texture, versus the
+//    church's ~19px in 94px) -- but now visually reads as matching the church's footprint width,
+//    a real "properly sized building" rather than the previous miniature.
+const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   {
     key: LOURDES_CHURCH_KEY,
     col: 0.25,
     row: 36,
-    widthPx: 154,
-    heightPx: 200,
+    widthPx: 156,
+    heightPx: 202,
     locationId: 'church',
+    footprint: CHURCH_FOOTPRINT,
   },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 21, row: 38, widthPx: 48, heightPx: 40, locationId: 'hospice' },
   {
     key: LOURDES_PRESBYTERY_KEY,
-    col: 0.5,
-    row: 53,
-    widthPx: 91,
-    heightPx: 76,
+    col: 0.25,
+    row: 49,
+    widthPx: 156,
+    heightPx: 125,
     locationId: 'presbytery',
+    footprint: PRESBYTERY_FOOTPRINT,
   },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 22, row: 45, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 5, row: 50, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
 ];
 
 const DECOR: Array<{ key: string; col: number; row: number }> = [
@@ -161,6 +204,13 @@ const DECOR: Array<{ key: string; col: number; row: number }> = [
 ];
 
 const INTERACT_RADIUS = 26;
+
+// The shared NPC ground shadow (`SHADOW_KEY`) is sized for the ~28px-tall procedural character
+// grid (`personTemplate.ts`) every other NpcActor still uses. The sister's real-art frames are
+// SISTER_FRAME_HEIGHT (~36px, 85% of Bernadette's own 42px) tall -- scale her shadow by the same
+// ratio so it keeps the same size-to-character relationship the baseline characters have, instead
+// of reading as too small for her.
+const SISTER_SHADOW_SCALE = SISTER_FRAME_HEIGHT / 28;
 
 type Phase = 'explore' | 'crossing' | 'hush' | 'apparition' | 'praying' | 'ending';
 
@@ -224,7 +274,7 @@ export class OverworldScene extends Phaser.Scene {
     this.buildFirewood();
     this.physics.add.collider(this.player, this.colliderBodies);
 
-    this.sister = new NpcActor(this, cachotDoorPx.x - 16, cachotDoorPx.y + 22, 'sister', 'down');
+    this.sister = new NpcActor(this, cachotDoorPx.x - 16, cachotDoorPx.y + 22, 'sister', 'down', SISTER_SHADOW_SCALE);
     this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
 
@@ -350,31 +400,70 @@ export class OverworldScene extends Phaser.Scene {
     this.colliderBodies.push(createBlocker(this, (bridgeRight + MAP_W) / 2, hRiverY, MAP_W - bridgeRight, hRiverHeight));
   }
 
-  // `resizeVisual` opts a caller into actually rendering the image at `width`x`height` (via
-  // `setDisplaySize`, which just scales the existing texture -- still nearest-neighbor filtered,
-  // no blur) instead of at the texture's own native pixel size. It defaults to off because most
-  // existing callers (decor, the shared procedural TOWN_BUILDING box, Cachot) pass a `width`/
-  // `height` that either already equals the texture's native size, or -- for the decor trees --
-  // has historically been slightly off from native and relied on native-size rendering; forcing
-  // `setDisplaySize` there would silently change their appearance. Only pass `true` for a texture
-  // whose display size is deliberately meant to differ from its native pixels (the real-art church
-  // and presbytery, scaled well above their native size -- see `buildBuildings()`).
-  private addStaticProp(
-    key: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    colliderHeight?: number,
-    resizeVisual = false,
-  ): void {
+  private addStaticProp(key: string, x: number, y: number, width: number, height: number, colliderHeight?: number): void {
     const image = this.add.image(x, y, key).setOrigin(0.5, 1);
-    if (resizeVisual) image.setDisplaySize(width, height);
     image.setDepth(depthForY(y, DEPTH.ACTORS));
     const body = this.physics.add.staticImage(x, y - (colliderHeight ?? height) / 4, key);
     body.setVisible(false);
     body.body.setSize(width * 0.7, (colliderHeight ?? height) * 0.35);
     this.colliderBodies.push(body);
+  }
+
+  /**
+   * Church/presbytery only: renders the building at its full displayed size (unlike
+   * `addStaticProp()`, there's no single collider box scaled off that size) and instead gives it
+   * one small static collider per `footprint` rectangle, so only the building's actual solid
+   * base/trees block movement -- the tall roof/upper-story/canopy area above the footprint has no
+   * collider at all.
+   *
+   * Depth sorting falls out of the existing per-frame `depthForY()` call already used everywhere
+   * else in this file (`Player.update()` recomputes her own depth from her live `y` every frame;
+   * `NpcActor` does the same for the shadow). Setting this building's depth *once*, from `cy` (its
+   * bottom/ground-contact edge, the same anchor the footprint rects are measured against), is
+   * enough: whenever the player's `y` is north of `cy` she's standing "further up the screen" than
+   * the building's own ground line, so `depthForY(player.y, ...)` computes lower than
+   * `depthForY(cy, ...)` and Phaser draws her behind the building; south of `cy`, the inequality
+   * flips and she draws in front. No per-frame work needed on the building's side, and no special
+   * case in Player.ts -- this is the same trick every other static prop in this file already uses
+   * (`addStaticProp()`'s `image.setDepth(depthForY(y, DEPTH.ACTORS))`), just paired with a
+   * footprint-shaped collider instead of one box so the behind/in-front illusion actually has room
+   * to read: the player can get close enough to the upper part of the sprite (roof, tower, tree
+   * canopies) to visually go behind it before hitting anything solid.
+   */
+  private addFootprintBuilding(building: SpecialBuilding): void {
+    const px = this.tileToPixelCenter(building.col, building.row);
+    const cx = px.x + building.widthPx / 2;
+    const cy = px.y + building.heightPx;
+
+    const image = this.add.image(cx, cy, building.key).setOrigin(0.5, 1);
+    image.setDisplaySize(building.widthPx, building.heightPx);
+    image.setDepth(depthForY(cy, DEPTH.ACTORS));
+
+    building.footprint.forEach((r) => {
+      const rw = r.wFrac * building.widthPx;
+      const rh = r.hFrac * building.heightPx;
+      const rx = px.x + r.xFrac * building.widthPx + rw / 2;
+      const ry = px.y + r.yFrac * building.heightPx + rh / 2;
+      this.colliderBodies.push(createBlocker(this, rx, ry, rw, rh));
+    });
+
+    this.add
+      .text(cx, px.y - 6, Localization.t(LOCATIONS[building.locationId].nameKey), textStyle({ fontSize: '9px', color: '#3a3226' }))
+      .setOrigin(0.5)
+      .setDepth(DEPTH.OVERLAY_LOW);
+
+    // Door zone centered on the footprint's main wall/fence rect (the first entry) rather than the
+    // generic proportional formula `addStaticProp()`'s callers use -- that formula assumes the
+    // door sits near the bottom-center of the whole sprite, which is no longer a safe assumption
+    // now the collision footprint (and the real door within it) can sit anywhere in the frame.
+    const doorRect = building.footprint[0];
+    const doorZone = new Phaser.Geom.Rectangle(
+      px.x + doorRect.xFrac * building.widthPx,
+      px.y + doorRect.yFrac * building.heightPx,
+      doorRect.wFrac * building.widthPx,
+      doorRect.hFrac * building.heightPx,
+    );
+    this.buildings.push({ placement: building, doorZone });
   }
 
   private buildBuildings(): void {
@@ -387,26 +476,21 @@ export class OverworldScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(DEPTH.OVERLAY_LOW);
 
+    SPECIAL_BUILDINGS.forEach((building) => this.addFootprintBuilding(building));
+
+    // Hospice, Maison Cénac, and the tribunal -- still the shared procedural TOWN_BUILDING box at
+    // its native 48x40 size, one big collider each via addStaticProp() as before. Only the church
+    // and presbytery (now in SPECIAL_BUILDINGS above) needed the bigger real-art display size and
+    // the footprint-shaped collision.
     TOWN_BUILDINGS.forEach((placement) => {
       const px = this.tileToPixelCenter(placement.col, placement.row);
       const cx = px.x + placement.widthPx / 2;
       const cy = px.y + placement.heightPx;
-      // `resizeVisual: true` -- unlike every other addStaticProp() caller, the church and
-      // presbytery (see assets/buildings/) are deliberately displayed well above their native
-      // texture size (see the scale comments above), so the image must actually be resized to
-      // widthPx/heightPx rather than rendered at native size. For hospice/maisonCenac/tribunal
-      // (still the shared procedural TOWN_BUILDING box, 48x40 native == their widthPx/heightPx
-      // here) this is a no-op -- setDisplaySize(48, 40) on an already-48x40 texture changes nothing.
-      this.addStaticProp(placement.key, cx, cy, placement.widthPx, placement.heightPx, undefined, true);
+      this.addStaticProp(placement.key, cx, cy, placement.widthPx, placement.heightPx);
       this.add
         .text(cx, px.y - 6, Localization.t(LOCATIONS[placement.locationId].nameKey), textStyle({ fontSize: '9px', color: '#3a3226' }))
         .setOrigin(0.5)
         .setDepth(DEPTH.OVERLAY_LOW);
-      // Door interaction zone, sized proportionally to the building instead of a fixed 24x14: that
-      // fixed size was tuned for the old 48-wide placeholder box and would sit lost against the
-      // church/presbytery's much bigger footprint otherwise. Same proportions as the old fixed
-      // values (24/48 of width, 14/40 of height, offset 8/40 of height above cy), so hospice/
-      // maisonCenac/tribunal (still 48x40) get the exact same zone as before.
       const doorZoneWidth = placement.widthPx * 0.5;
       const doorZoneHeight = placement.heightPx * 0.35;
       const doorZoneOffsetY = placement.heightPx * 0.2;

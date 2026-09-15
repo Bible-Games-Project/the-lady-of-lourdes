@@ -23,11 +23,13 @@ import lourdesChurchUrl from './lourdes_church.png';
  * regions.
  *
  * In-game this is displayed well above that native size — see the scale/placement comment above
- * `TOWN_BUILDINGS` in `OverworldScene.ts` for the human-scale-vs-Bernadette math and the
- * resulting position. `addStaticProp(..., resizeVisual: true)` does that resize via
+ * `SPECIAL_BUILDINGS` in `OverworldScene.ts` for the human-scale-vs-Bernadette math and the
+ * resulting position. `addFootprintBuilding()` does that resize via
  * `Phaser.GameObjects.Image#setDisplaySize`, which only scales the existing texture (still
  * nearest-neighbor filtered, since this key is never added to `BootScene`'s LINEAR-filter list) —
- * it never re-samples or blurs the source pixels themselves, so edges stay hard at any size.
+ * it never re-samples or blurs the source pixels themselves, so edges stay hard at any size. That
+ * same function also gives the building a footprint-shaped collider (wall base + tree trunks) and
+ * proper Y-sort depth instead of one big rectangle — see its own doc comment in OverworldScene.ts.
  */
 export const LOURDES_CHURCH_KEY = 'lourdes_church_real';
 /** Native texture pixel size (post-quantization) — not the in-game display size, see above. */
