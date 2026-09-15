@@ -826,10 +826,22 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   in the same narrow strip immediately west of the plaza path) — neither fits there any more
   without overlapping the path or the tribunal building.
 - New layout: church takes the tall band directly south of the river (row 36 down to the
-  tribunal's top edge, 224px of headroom), width-bound at 150px (just shy of the plaza path at
-  x160) → 1.596x scale, ~29px door (68% of Bernadette). Presbytery takes the short band south of
-  the tribunal (tribunal's bottom edge down to the map's bottom edge, only 80px of headroom),
-  height-bound → 1.086x scale, ~8px door (19% of Bernadette).
+  tribunal's top edge, 224px of headroom), width-bound (the plaza path at x160 is the ceiling —
+  currently 154px, using a 4px left-edge inset instead of the original 8px to claw back a few more
+  pixels of scale, see below) → ~1.64x scale, ~31px door (~74% of Bernadette). Presbytery takes the
+  short band south of the tribunal (tribunal's bottom edge down to the map's bottom edge, only 80px
+  of headroom), height-bound → 1.086x scale, ~8px door (19% of Bernadette).
+- **Church art was swapped for a second version** (same subject/composition, lighter
+  whitewashed-stone-and-blue-roof palette instead of the first version's tan/dark-slate one — see
+  `assets/buildings/lourdesChurch.ts`) with a follow-up ask to push the scale further ("Bernadette
+  should no longer look noticeably taller than the door", explicitly *not* requiring an exact 42px
+  match, and explicitly limited to "a very small position adjustment" rather than another big
+  reposition). The new art's door-to-width ratio (~19px door in the 94px-wide native texture) is
+  almost identical to the first version's (~18px), so the same width-vs-plaza-path ceiling applies
+  almost unchanged — squeezed the width ceiling from 150px to 154px (4px left-inset instead of 8px)
+  for a modest gain, landing at ~74% instead of the previous ~68%. If asked to close this gap
+  further, the math above already shows why a small tweak can't do much more — it needs the same
+  kind of full reposition the presbytery got, which this particular ask explicitly ruled out.
 - **The presbytery's door cannot reach anywhere near 42px on this map, full stop** — not a
   judgment call, a hard geometric fact worth not re-deriving if this ever comes up again. Its
   source art draws the door quite small relative to its own canvas (7px door in an 84px-wide

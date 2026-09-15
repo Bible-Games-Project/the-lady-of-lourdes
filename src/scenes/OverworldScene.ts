@@ -95,21 +95,25 @@ interface BuildingPlacement {
 // The church and presbytery are scaled up well beyond their native texture size (94x118 and
 // 84x70) to bring them toward human scale -- the reference is Bernadette's own in-game height
 // (BERNADETTE_FRAME_HEIGHT = 42px): each building's uniform scale factor is chosen so its door is
-// approximately that tall (measured directly on the source art: the church's arched door is ~18
-// native px tall, the presbytery's ~7). That pushes both far past their old ~64x64/48x40
-// footprints, which forced relocating them off their previous spots (both used to sit stacked in
-// the same narrow strip immediately west of the town plaza path) -- neither fits there any more
-// without overlapping the path (starts at col 10 / x160) or the tribunal building (col 5, row 50).
+// approximately that tall. That pushes both far past their old ~64x64/48x40 footprints, which
+// forced relocating them off their previous spots (both used to sit stacked in the same narrow
+// strip immediately west of the town plaza path) -- neither fits there any more without
+// overlapping the path (starts at col 10 / x160) or the tribunal building (col 5, row 50).
 //
-// New layout, still the same west-side strip (x8 to keep an 8px gap off the map's left edge, well
-// clear of the plaza path at x160) but split into the two open bands that strip actually has once
-// the tribunal building is accounted for:
+// New layout, still the same west-side strip but split into the two open bands that strip
+// actually has once the tribunal building is accounted for:
 //  - The church takes the tall band directly south of the river (row 36 down to the tribunal's
-//    top edge at y800, 224px of headroom) -- its width is the binding constraint there (150px,
-//    just shy of the path), giving a 1.596x scale (94x118 -> ~150x188) and a ~29px door, about
-//    68% of Bernadette's height. That's the largest this piece of art can go without crossing into
-//    the plaza -- getting the door to a full 42px would need ~219px of width, well past what's
-//    available before the path.
+//    top edge at y800, 224px of headroom). Width is the binding constraint there -- the plaza
+//    path starts at x160, so the widest this strip can go is ~156px before touching it; a 4px
+//    left-edge inset (x4) keeps a small buffer off the map's own left edge too, leaving 154px of
+//    usable width. **Second version of this art** (see `assets/buildings/lourdesChurch.ts`) has an
+//    18px door in the 94px-wide first version's texture and a ~19px door in this one's 94x122
+//    texture -- close enough that the same width ceiling applies almost unchanged: 154px gives a
+//    1.638x scale (94x122 -> ~154x200) and a ~31px door, about 74% of Bernadette's height. That's
+//    the largest this art can go at this position without crossing into the plaza -- a full 42px
+//    door would need ~206px of width, well past what's available before the path. Closing that
+//    gap further needs a bigger reposition (like the presbytery's, moving to a different band
+//    entirely) rather than a tweak here -- out of scope for a "very small adjustment only" ask.
 //  - The presbytery takes the short-but-still-clear band south of the tribunal (tribunal's bottom
 //    edge at y840 down to the map's bottom edge at y928, 80px of headroom) -- height is the
 //    binding constraint there, giving a 1.086x scale (84x70 -> ~91x76) and a ~8px door. This
@@ -128,10 +132,10 @@ interface BuildingPlacement {
 const TOWN_BUILDINGS: BuildingPlacement[] = [
   {
     key: LOURDES_CHURCH_KEY,
-    col: 0.5,
+    col: 0.25,
     row: 36,
-    widthPx: 150,
-    heightPx: 188,
+    widthPx: 154,
+    heightPx: 200,
     locationId: 'church',
   },
   { key: PROP_KEYS.TOWN_BUILDING, col: 21, row: 38, widthPx: 48, heightPx: 40, locationId: 'hospice' },
