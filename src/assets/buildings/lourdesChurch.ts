@@ -11,15 +11,20 @@ import lourdesChurchUrl from './lourdes_church.png';
  * (1536x1024, transparent background) reads as pixel art but its raw pixel data is not genuinely
  * flat-block — confirmed by run-length sampling, most runs of identical adjacent pixels were only
  * 1px long. So this asset is the source cropped tightly to its opaque content (749x943), downscaled
- * with a single `Image.BOX` pass to 94x118 (chosen to fit the gap between the river and the
- * existing presbytery building without overlap — see the placement comment in
- * `OverworldScene.ts`'s `TOWN_BUILDINGS`), then color-quantized (32 colors, median-cut, no
- * dithering, alpha channel preserved untouched) to force flat, hard-edged color regions. The
- * displayed in-game size is intentionally this texture's exact native size (no further
- * scaling/`setDisplaySize` call) so Phaser's NEAREST texture filtering never has to scale it,
- * keeping every edge pixel-perfect.
+ * with a single `Image.BOX` pass to 94x118 (`LOURDES_CHURCH_WIDTH`/`HEIGHT` below — this is the
+ * texture's *native* pixel size, kept purely for reference/documentation, not the in-game display
+ * size), then color-quantized (32 colors, median-cut, no dithering, alpha channel preserved
+ * untouched) to force flat, hard-edged color regions.
+ *
+ * In-game this is displayed well above that native size — see the scale/placement comment above
+ * `TOWN_BUILDINGS` in `OverworldScene.ts` for the human-scale-vs-Bernadette math and the
+ * resulting position. `addStaticProp(..., resizeVisual: true)` does that resize via
+ * `Phaser.GameObjects.Image#setDisplaySize`, which only scales the existing texture (still
+ * nearest-neighbor filtered, since this key is never added to `BootScene`'s LINEAR-filter list) —
+ * it never re-samples or blurs the source pixels themselves, so edges stay hard at any size.
  */
 export const LOURDES_CHURCH_KEY = 'lourdes_church_real';
+/** Native texture pixel size (post-quantization) — not the in-game display size, see above. */
 export const LOURDES_CHURCH_WIDTH = 94;
 export const LOURDES_CHURCH_HEIGHT = 118;
 

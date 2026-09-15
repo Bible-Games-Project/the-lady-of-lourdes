@@ -816,6 +816,40 @@ bgp-admin at `templates/agent-docs/`, so ask before adding it.
   the church or tribunal, player blocked walking straight into it (collision via the same
   `addStaticProp()` path every other building uses, no bespoke code), Journey/Home unaffected.
 
+### Church/presbytery display scale: human-scale-vs-Bernadette, and its hard ceiling
+
+- `OverworldScene.ts`'s comment above `TOWN_BUILDINGS` has the full math; summary here. Both
+  buildings are displayed well above their native texture size (`addStaticProp(...,
+  resizeVisual: true)` → `Image#setDisplaySize`, still nearest-neighbor filtered, never re-samples
+  the source pixels) using `BERNADETTE_FRAME_HEIGHT` (42px) as the target door height, per an
+  explicit maintainer request. That forced relocating both off their old spots (previously stacked
+  in the same narrow strip immediately west of the plaza path) — neither fits there any more
+  without overlapping the path or the tribunal building.
+- New layout: church takes the tall band directly south of the river (row 36 down to the
+  tribunal's top edge, 224px of headroom), width-bound at 150px (just shy of the plaza path at
+  x160) → 1.596x scale, ~29px door (68% of Bernadette). Presbytery takes the short band south of
+  the tribunal (tribunal's bottom edge down to the map's bottom edge, only 80px of headroom),
+  height-bound → 1.086x scale, ~8px door (19% of Bernadette).
+- **The presbytery's door cannot reach anywhere near 42px on this map, full stop** — not a
+  judgment call, a hard geometric fact worth not re-deriving if this ever comes up again. Its
+  source art draws the door quite small relative to its own canvas (7px door in an 84px-wide
+  texture, vs. the church's 18px door in a 94px-wide texture) — literally matching Bernadette would
+  need ~504px of width, more than the *entire* 416px-wide map, regardless of where it's placed or
+  how much taller the available band is (width is the binding constraint for this particular
+  source image, not height, because of its own native aspect ratio). Getting further than the
+  current 19% would require either moving the tribunal or letting the building overlap the plaza
+  path — both explicitly ruled out. If asked to push this further, that trade-off has to go back to
+  the maintainer; don't just try more repositioning math, it won't find a materially better spot.
+- Both buildings kept an 8px left-edge inset (map edge buffer) and stayed on the same west-side
+  x-column (x8) so they still read as grouped together despite the different row bands.
+- The door interaction zone (`buildBuildings()`'s `doorZone`) is now sized proportionally to each
+  building's `widthPx`/`heightPx` (half width, 0.35×height, 0.2×height offset) instead of a fixed
+  24x14 — for hospice/maisonCenac/tribunal (still 48x40) this computes to the exact same fixed
+  values as before, so nothing changed for them; only church/presbytery's zones actually grew.
+  Collision works the same way: `addStaticProp()`'s collider sizing was already a fraction of
+  whatever `width`/`height` it's given, so passing the new bigger values was enough — no separate
+  collider-scaling code was needed.
+
 ### Art direction: history and current constraint
 
 The maintainer rejected the original procedural pixel-art look
