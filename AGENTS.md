@@ -849,12 +849,14 @@ numbers; this is the summary plus the non-obvious reasoning behind them.
   capped at by the plaza path (row 49, right below the church) — a real, satisfying jump. The
   church's own ceiling is unrelated to the tribunal and didn't move: it was always the plaza path
   (unmovable terrain) that capped its width at ~156px, not any building's position.
-- Current numbers: church ~1.66x (94x122 → ~156x202), ~32px door (~75% of Bernadette). Presbytery
-  ~1.56x (100x80 → ~156x125), ~16px door (~37% of Bernadette) — **still short of a literal
-  Bernadette-height door** even with the extra room, because this source's door is drawn small
-  relative to its own canvas (10px door in a 100px-wide texture, vs. the church's ~19px in 94px) —
-  but now visually reads as matching the church's own width, which is what "feels appropriately
-  sized next to the church" actually meant in practice.
+- Current numbers (post map-resize, see the section below): church still 156x202 (unchanged size,
+  position doubled to col 0.5/row 72). Presbytery is now 312x250 — doubled *again* on top of the
+  map-resize doubling, per an explicit "twice as large" ask — at col 0.2/row 99, nudged down and
+  left from where a plain doubling of its prior spot would have landed (col 0.5/row 98), since the
+  bigger map gave genuine room to choose a spot rather than fight a space ceiling. Its door is
+  still short of a literal Bernadette-height door even at this size, because this source's door is
+  drawn small relative to its own canvas (10px door in a 100px-wide native texture, vs. the
+  church's ~19px in 94px) — reads as matching the church's own scale regardless.
 - **Presbytery art was swapped for a second version** (same lighter whitewashed-stone-and-blue-roof
   palette as the church's own second version, now with a front garden/shed) — see
   `assets/buildings/lourdesPresbytery.ts`. Fully replaced, not edited/blended.
@@ -873,6 +875,91 @@ numbers; this is the summary plus the non-obvious reasoning behind them.
 - The door interaction zone (`buildBuildings()`'s generic `doorZone` for hospice/maisonCenac/
   tribunal) is unaffected by any of this — `addFootprintBuilding()` computes its own door zone from
   the footprint's first (wall/fence) rectangle instead of the generic proportional formula.
+
+### Overworld map resized to 4x area (52x116 tiles) + forest border
+
+The playable Lourdes map was widened from its prior size to 4x the area (COLS 26→52, ROWS 58→116)
+to make room for future missions' locations without everything being compressed together, while
+keeping every character/building's own *visual scale* and the camera's zoom completely unchanged
+(`useLetterboxScale`'s logical resolution stays 480x270; nothing about `Player`/`NpcActor` sizes or
+camera zoom changed).
+
+- **The resize convention: double every position constant, leave every width/thickness constant
+  unchanged.** Doubling `col`/`row`/`GROTTO_X`/`CACHOT_ROW`/etc. while the map itself exactly
+  doubles in both axes preserves everything's *relative* layout (a building at 1/4 of the way down
+  the old map is still at 1/4 of the way down the new one). Widths/thicknesses (building
+  `widthPx`/`heightPx`, river/path tile-width constants, `FORD_ZONE`'s width) are tied to
+  gameplay/visual scale, not map size, so they stay put — doubling them too would have made rivers,
+  paths, and buildings look twice as *big*, not just twice as *far apart*, which is not what "same
+  visual scale" means. When adding new map content, follow this same split rather than doubling
+  everything uniformly.
+- **Forest border is procedural, not hand-placed** (`buildForestBorder()`, called from
+  `buildDecor()`): loops the four map edges in `FOREST_BORDER_SPACING_TILES`-tile steps,
+  `FOREST_BORDER_DEPTH_TILES` deep, placing a tree at each cell — a hand-placed ~336-tile perimeter
+  wasn't worth the entry count. `isRiverOrPathBand()` skips any cell in the river or path's own
+  columns/rows (both reach the map edges by design in this layout, so a naive "edges are always
+  clear ground" assumption would spawn trees in the water or blocking the road). This is what
+  satisfies "the map should be surrounded by forest... do not place houses right at the outer
+  edges" — the border is trees-only and generated after every other static prop, so it never
+  competes with building placement.
+- **`WanderNpc` bounds must be computed from the actual clear gap between the nearest river edge
+  and the forest-border's inner edge**, not guessed — a rectangle that looks reasonable on paper can
+  silently overlap the river's water band or extend past `MAP_W`/`MAP_H` once the map's real
+  dimensions are plugged in. `FAR_BANK_WANDER_BOUNDS` was derived this way (river east edge at
+  `(RIVER_V_END+1)*TILE_SIZE`, forest inner edge at `MAP_W - FOREST_BORDER_DEPTH_TILES*TILE_SIZE`)
+  after a first-draft rectangle turned out to fail exactly that check.
+- Zoom-math gotcha for full-map screenshots: the camera's actual logical resolution is `GAME_WIDTH`
+  x `GAME_HEIGHT` (480x270 in `core/constants.ts`), not the Playwright viewport size —
+  `useLetterboxScale` scales that up (2x at a 960x540 viewport, since both are 16:9). Compute
+  `zoom = min(viewLogicalW / MAP_W, viewLogicalH / MAP_H)` against 480x270 for an accurate full-map
+  overview shot, not against the raw viewport dimensions.
+
+### Apparition-sequence bugs fixed: locked-idle animation, crossing facing, no-vanish wander
+
+Three related bugs in the first-apparition sequence (river crossing → hush → apparition), all in
+`OverworldScene.ts`/`Player.ts` and all now covered by the pattern below rather than one-off fixes:
+
+- **`Player.setLocked(true)` stopped her velocity but not her walk animation.** `body.setVelocity(0,
+  0)` in `Player.update()`'s locked branch stops *movement*, but Phaser's animation system keeps
+  cycling whatever `walk_bernadette_*` clip was already playing at the moment she got locked (e.g.
+  mid-stride) since nothing told it to stop. Fixed by calling
+  `updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true)` every frame while
+  locked (cheap and idempotent, matching how the unlocked branch already re-evaluates every frame)
+  to force the idle pose/texture. If a future locked sequence (a different scripted cutscene) shows
+  the same "frozen in a walk pose" symptom, check whether its own lock path calls this.
+- **The sister's river-crossing walk used the wrong-direction sprite because `updateFollowerPosition`
+  was still running during the scripted crossing tween.** `Follower.ts`'s per-frame follow logic
+  (used while she trails the player during normal `explore` phase) recomputes her facing toward the
+  player's position every frame; it wasn't gated to `explore` only (unlike `this.leader`'s own
+  update, which already had this same guard for Jeanne), so during `beginRiverCrossing()`'s
+  `walkTo()` tween it kept fighting the tween's own facing every frame, pointing her back toward the
+  (now-locked, stationary) player instead of showing her actual direction of travel. Fixed by gating
+  `updateFollowerPosition(this.sister, ...)` to `this.phase === 'explore'` in `update()`, same as the
+  leader. `NpcActor.walkTo()`'s own facing calculation (dominant-axis `dx`/`dy`) was already correct
+  — the bug was something else overriding it every frame, not the tween logic itself. Worth
+  remembering: any new phase-scripted movement for the sister or Jeanne must go through a path this
+  phase-gating already excludes, or it will hit the same fight.
+- **Sister and Jeanne no longer `setVisible(false)` after crossing the river.** They now start
+  wandering near the far bank via `WanderNpc` (new file, `gameplay/WanderNpc.ts`) — pick a random
+  point inside a bounds rect, walk to it (same manual per-frame `actor.x/y +=` stepping and
+  dominant-axis facing rule as `LeaderNpc`/`Follower.ts`, not a tween, so facing/moving/shadow stay
+  in lockstep with position every frame), pause in an idle pose for a random 1.2-3.2s beat, repeat
+  indefinitely. Wired from `beginRiverCrossing()` right after their crossing tweens resolve, and
+  driven unconditionally in `update()` (not phase-gated) so they keep pottering around through
+  hush/apparition/praying/ending rather than freezing the moment the phase changes — there's no
+  scripted moment yet where the story needs them to leave. `Phaser.Geom.Rectangle.Random(rect,
+  outPoint)` is the correct static API for a random point in a rect — there is no `RandomPoint`.
+- **Playwright verification trick for driving straight to this sequence**: `OverworldScene`'s
+  `beginRiverCrossing()` is a TS `private` method, but that's compile-time only — calling
+  `scene.beginRiverCrossing()` directly from `page.evaluate()` (after grabbing the scene via
+  `window.__game.scene.getScene('OverworldScene')`, which requires a temporary debug hook in
+  `main.ts`, see the collision-test note above for the same pattern) skips the entire earlier
+  mission — no need to drive `MissionManager` through firewood-gathering first. One catch: the
+  sister's initial `setVisible()` at scene `create()` is set from
+  `MissionManager.hasReachedObjective(GATHER_FIREWOOD)`, which will be `false` (mission never
+  started) if you skip straight to `beginRiverCrossing()` this way — force
+  `scene.sister.setVisible(true)` first so the test isolates only what the crossing/wander code
+  itself does to her visibility, not an artifact of skipping the objective chain.
 
 ### Real-art secondary characters (mother, sister): same system as Bernadette
 
