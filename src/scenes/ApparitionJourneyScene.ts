@@ -94,8 +94,17 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.input.on('pointerup', () => {
       this.dragStartY = null;
     });
-    this.input.on('wheel', (_p: unknown, _dx: number, dy: number) => {
-      this.scrollTarget = Phaser.Math.Clamp(this.cameras.main.scrollY + dy * 0.5, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+    // Phaser's own 'wheel' event signature is (pointer, currentlyOver, deltaX, deltaY, deltaZ) --
+    // 5 params, not 3. The previous handler here only declared `(_p, _dx, dy)`, which meant its
+    // "dy" was actually bound to Phaser's *deltaX* (horizontal wheel delta), not deltaY. A normal
+    // vertical mouse wheel reports deltaX ~0, so the scroll math below was computing
+    // `scrollY + 0 * 0.5` on every tick -- silently a no-op almost all the time, which is exactly
+    // the "sometimes it is difficult to scroll" symptom (a trackpad's incidental horizontal jitter
+    // during a vertical swipe was the only thing that ever nudged it). Reading the real deltaY
+    // (5th positional param) fixes this at the source, rather than papering over it with an
+    // arbitrary multiplier or offset.
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _currentlyOver: unknown, _deltaX: number, deltaY: number) => {
+      this.scrollTarget = Phaser.Math.Clamp(this.cameras.main.scrollY + deltaY * 0.5, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
       this.cameras.main.scrollY = this.scrollTarget;
     });
   }
