@@ -10,6 +10,7 @@ export type CharacterId =
   | 'mother'
   | 'sister'
   | 'friend'
+  | 'boy'
   | 'lady'
   | 'villagerMale'
   | 'villagerFemale';
@@ -64,6 +65,16 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
       headwear: '#d9cbb0',
       top: '#8a5a4a',
       bottom: '#5a4a42',
+      shoe: '#4a3728',
+    },
+  },
+  boy: {
+    silhouette: 'trousers',
+    colors: {
+      skin: PALETTE.skinMid,
+      headwear: '#6b4a34',
+      top: '#6b7a5a',
+      bottom: '#e6dcc4',
       shoe: '#4a3728',
     },
   },
@@ -161,15 +172,16 @@ export function registerBernadetteShadowTexture(scene: Phaser.Scene): void {
 }
 
 /**
- * Bernadette, her sister, and her mother are excluded from both loops below — they now use the
- * maintainer's own real artwork (`assets/player/bernadetteSprite.ts`, `assets/npc/sisterSprite.ts`,
- * `assets/npc/motherSprite.ts`), registered under these same `textureKeyFor`/`walkAnimKeyFor` keys
- * separately. Registering a procedural version here too would either collide with or (depending on
- * load order) silently pre-empt the real one, since `registerTexture`/`scene.anims.create` both
- * no-op if the key already exists. Every other character (friend, lady, villagers) is unaffected
- * and still procedural.
+ * Bernadette, her sister, her mother, her friend Jeanne, and the random village boy are excluded
+ * from both loops below — they now use the maintainer's own real artwork
+ * (`assets/player/bernadetteSprite.ts`, `assets/npc/sisterSprite.ts`, `assets/npc/motherSprite.ts`,
+ * `assets/npc/jeanneSprite.ts`, `assets/npc/boySprite.ts`), registered under these same
+ * `textureKeyFor`/`walkAnimKeyFor` keys separately. Registering a procedural version here too would
+ * either collide with or (depending on load order) silently pre-empt the real one, since
+ * `registerTexture`/`scene.anims.create` both no-op if the key already exists. Every other
+ * character (lady, villagers) is unaffected and still procedural.
  */
-const REAL_ART_CHARACTER_IDS: CharacterId[] = ['bernadette', 'sister', 'mother'];
+const REAL_ART_CHARACTER_IDS: CharacterId[] = ['bernadette', 'sister', 'mother', 'friend', 'boy'];
 const PROCEDURAL_CHARACTER_IDS = (Object.keys(CHARACTERS) as CharacterId[]).filter(
   (id) => !REAL_ART_CHARACTER_IDS.includes(id),
 );

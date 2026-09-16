@@ -6,6 +6,7 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
   mother: { id: 'mother', nameKey: K.NPC_MOTHER_NAME },
   sister: { id: 'sister', nameKey: K.NPC_SISTER_NAME },
   friend: { id: 'friend', nameKey: K.NPC_FRIEND_NAME },
+  boy: { id: 'boy', nameKey: K.NPC_BOY_NAME },
   lady: { id: 'lady', nameKey: K.NPC_LADY_NAME },
   villagerMale: { id: 'villagerMale', nameKey: '' },
   villagerFemale: { id: 'villagerFemale', nameKey: '' },

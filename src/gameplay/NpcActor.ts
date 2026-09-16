@@ -9,6 +9,9 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
   private facing: Facing;
   private moving = false;
   private shadow: Phaser.GameObjects.Image;
+  private shadowScale: number;
+  private breathingEnabled: boolean;
+  private idle = true;
 
   /**
    * `shadowScale` lets a real-art character's shadow track its own height instead of always
@@ -20,8 +23,24 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
    * rather than a shadow that reads as too small (or too large) for its owner. Defaults to `1`
    * (no scaling) so every existing caller (mother/sister/friend/villagers at their original
    * procedural size) is completely unaffected.
+   *
+   * `breathingEnabled` opts an individual actor into the same idle sine-wave `scaleY` breathing
+   * `Player.ts` uses for Bernadette (see `updateBreathing()` there) — small amplitude, continuous
+   * `Math.sin(time)` rather than a yoyo tween (no loop-boundary jerk), off whenever `moving` is
+   * true. Defaults to `false` so every existing `NpcActor` (mother, sister, villagers) keeps its
+   * exact prior behavior; only Jeanne (`friend`) opts in, per an explicit "same breathing pattern
+   * as Bernadette" ask for her specifically. Driven from `preUpdate()` below rather than needing
+   * the owning scene to call an `update()` method every frame, since nothing else currently does.
    */
-  constructor(scene: Phaser.Scene, x: number, y: number, id: CharacterId, facing: Facing = 'down', shadowScale = 1) {
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    id: CharacterId,
+    facing: Facing = 'down',
+    shadowScale = 1,
+    breathingEnabled = false,
+  ) {
     const textureFacing = facing === 'left' || facing === 'right' ? 'side' : facing;
     super(scene, x, y, textureKeyFor(id, textureFacing, null));
     this.id = id;
@@ -30,9 +49,37 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
     this.setOrigin(0.5, 1);
     scene.add.existing(this);
 
+    this.shadowScale = shadowScale;
+    this.breathingEnabled = breathingEnabled;
     this.shadow = scene.add.image(x, y - 1, SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
     if (shadowScale !== 1) this.shadow.setScale(shadowScale);
+  }
+
+  /** Phaser calls this automatically every frame for any GameObject that overrides it — no wiring
+   * needed from the owning scene's own `update()`. Must chain to `super.preUpdate()` or the sprite's
+   * own walk-cycle animation frames stop advancing. */
+  override preUpdate(time: number, delta: number): void {
+    super.preUpdate(time, delta);
+    if (!this.breathingEnabled) return;
+
+    if (this.moving) {
+      if (!this.idle) return;
+      this.idle = false;
+      this.setScale(1, 1);
+      this.shadow.setScale(this.shadowScale, this.shadowScale);
+      this.shadow.setAlpha(1);
+      return;
+    }
+    this.idle = true;
+    const periodMs = 4200;
+    const amplitude = 0.015;
+    const wave = Math.sin((time / periodMs) * Math.PI * 2);
+    this.setScale(1, 1 + wave * amplitude);
+    // Shadow reacts to the same breath, but only in width/opacity, same as Player.ts's — it must
+    // stay flat on the ground, never lifting or scaling vertically with her.
+    this.shadow.setScale(this.shadowScale * (1 + wave * 0.02), this.shadowScale);
+    this.shadow.setAlpha(0.92 - wave * 0.08);
   }
 
   private currentTextureFacing(): 'down' | 'up' | 'side' {

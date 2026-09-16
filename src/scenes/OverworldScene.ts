@@ -7,6 +7,8 @@ import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lo
 import { LOURDES_CHURCH_KEY } from '../assets/buildings/lourdesChurch';
 import { LOURDES_PRESBYTERY_KEY } from '../assets/buildings/lourdesPresbytery';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
+import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
+import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
 import { PROP_KEYS } from '../pixelart/props';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
@@ -23,6 +25,7 @@ import { LeaderNpc, type Point } from '../gameplay/LeaderNpc';
 import { WanderNpc } from '../gameplay/WanderNpc';
 import { MissionManager } from '../gameplay/MissionManager';
 import { mission01Dialogue, MISSION_01_FIREWOOD_TARGET, MISSION_01_OBJECTIVES } from '../data/missions/mission01';
+import { boyAmbientDialogue } from '../data/dialogue/ambientDialogue';
 import { LOCATIONS, type LocationId } from '../data/world/locations';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
@@ -110,13 +113,21 @@ const JEANNE_RESUME_DISTANCE = 55;
 // Bounded area where the sister and Jeanne wander (`WanderNpc`) once they've crossed the river
 // during Mission 1, "searching for firewood" instead of vanishing -- a rectangle on the far
 // (east) bank, not tied to any specific spot from the original map (this behavior is new). Sized
-// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE = 688,
-// and the forest border's inner edge is 2 tiles in from the map's own right edge (832) = 800, so
-// there's ~112px of open field between them -- this box (700-790) sits centered in that gap with
-// a margin on both sides, keeping the pair visibly close to the crossing point/Massabielle without
-// risking wandering into the water or the tree line.
-const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700, FAR_BANK.y - 60, 90, 120);
+// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE = 688, and
+// the forest border's inner edge is FOREST_BORDER_DEPTH_TILES (3) tiles in from the map's own
+// right edge (832) = 784, so there's ~96px of open field between them -- this box (700-770) sits
+// within that gap with a margin on both sides, keeping the pair visibly close to the crossing
+// point/Massabielle without risking wandering into the water or the tree line.
+const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700, FAR_BANK.y - 60, 70, 120);
 const COMPANION_WANDER_SPEED = 28;
+
+// Wander zone for the ambient village boy (`BOY_WANDER_BOUNDS`) -- a stretch of open plaza grass
+// between the path (cols 31-33) and the hospice/Maison Cénac/tribunal cluster (col 40+), well
+// south of the church/river/field, so he never needs to path around any collider (same "pick
+// bounds that are inherently obstacle-free" approach `FAR_BANK_WANDER_BOUNDS` above already uses,
+// rather than building actual pathfinding/collision-avoidance for `WanderNpc`).
+const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(34 * TILE_SIZE, 80 * TILE_SIZE, 6 * TILE_SIZE, 20 * TILE_SIZE);
+const BOY_WANDER_SPEED = 24;
 
 interface BuildingPlacement {
   key: string;
@@ -187,22 +198,34 @@ const PRESBYTERY_FOOTPRINT: FootprintRect[] = [
   { xFrac: 0.74, yFrac: 0.5, wFrac: 0.22, hFrac: 0.325 }, // right tree/shed cluster
 ];
 
-// The church's own position doubled like everything else (col 0.25/row 36 -> col 0.5/row 72),
-// keeping its *size* unchanged (156x202, ~75% of Bernadette's door height, per the maintainer's
-// prior sign-off that this was the practical ceiling for this art at this scale) — this round's
-// brief didn't ask to touch the church, only the map size and the presbytery.
+// A plain doubling of the church/presbytery's prior positions (col 0.5/0.2) would have landed them
+// flush against the map's own west edge (col 0) — fine on the old 26-wide map where nothing was
+// ever meant to have a forest border, but wrong on this one: "do not place houses/buildings at the
+// outer edges... leave a generous empty/natural area around the edges... concentrate buildings
+// more toward the interior." `WEST_BUFFER_TILES` pushes both buildings inward by the same amount so
+// they keep their prior relative spacing from each other, opening up a genuine countryside gap
+// between them and the forest border (`buildForestBorder()`) instead of a two-tile treeline being
+// the *only* thing separating a building wall from the map edge.
+const WEST_BUFFER_TILES = 7;
+
+// The church's own position doubled like everything else (col 0.25/row 36 -> col 0.5/row 72), then
+// shifted right by WEST_BUFFER_TILES per the edge-buffer reasoning above. Size unchanged (156x202,
+// ~75% of Bernadette's door height, per the maintainer's prior sign-off that this was the practical
+// ceiling for this art at this scale) — this round's brief didn't ask to touch the church itself.
 //
 // The presbytery is a deliberate exception to "keep current visual scale": doubled *again* on top
 // of the map-resize doubling (156x125 -> 312x250, i.e. 2x its current size, per an explicit
-// "twice as large" ask), then nudged further down and left from that doubled-and-enlarged spot —
-// the map resize alone would have put it at col 0.5/row 98 (mirroring the church's own doubling);
-// shifted to col 0.2/row 99 instead. There's now abundant room in this corridor (the plaza path
-// doesn't start until col 26, versus col 10 on the old map), so unlike every prior presbytery
-// change, this is just a placement choice, not another fight against a hard space ceiling.
+// "twice as large" ask), then nudged further down from that doubled-and-enlarged spot — the map
+// resize alone would have put it at col 0.5/row 98 (mirroring the church's own doubling); shifted
+// to row 99 instead, and given the same WEST_BUFFER_TILES shift as the church (keeping its prior
+// -0.3 relative offset from the church's own column). There's abundant room in this corridor (the
+// plaza path doesn't start until col 26, and the buffer still leaves ~15 tiles of clearance before
+// it), so unlike every prior presbytery change, this is just a placement choice, not another fight
+// against a hard space ceiling.
 const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   {
     key: LOURDES_CHURCH_KEY,
-    col: 0.5,
+    col: 0.5 + WEST_BUFFER_TILES,
     row: 72,
     widthPx: 156,
     heightPx: 202,
@@ -211,7 +234,7 @@ const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   },
   {
     key: LOURDES_PRESBYTERY_KEY,
-    col: 0.2,
+    col: 0.2 + WEST_BUFFER_TILES,
     row: 99,
     widthPx: 312,
     heightPx: 250,
@@ -236,7 +259,7 @@ const DECOR: Array<{ key: string; col: number; row: number }> = [
 // 336-tile perimeter would mean hundreds of individual entries; spaced (not a solid wall) for a
 // natural tree-line look rather than a fence, and skips any cell that would land on the river or
 // the path (both of which do reach the map edges) so trees never spawn in water or on the road.
-const FOREST_BORDER_DEPTH_TILES = 2;
+const FOREST_BORDER_DEPTH_TILES = 3;
 const FOREST_BORDER_SPACING_TILES = 3;
 
 const INTERACT_RADIUS = 26;
@@ -247,6 +270,14 @@ const INTERACT_RADIUS = 26;
 // ratio so it keeps the same size-to-character relationship the baseline characters have, instead
 // of reading as too small for her.
 const SISTER_SHADOW_SCALE = SISTER_FRAME_HEIGHT / 28;
+
+// Same reasoning as SISTER_SHADOW_SCALE above, for Jeanne's real-art frames (JEANNE_FRAME_HEIGHT
+// = 42px, full adult scale like Bernadette/the mother -- she's Bernadette's peer, not a younger
+// sibling, so no shrink).
+const FRIEND_SHADOW_SCALE = JEANNE_FRAME_HEIGHT / 28;
+
+// Same reasoning again, for the boy's real-art frames (BOY_FRAME_HEIGHT = 80% of Bernadette).
+const BOY_SHADOW_SCALE = BOY_FRAME_HEIGHT / 28;
 
 type Phase = 'explore' | 'crossing' | 'hush' | 'apparition' | 'praying' | 'ending';
 
@@ -273,6 +304,9 @@ export class OverworldScene extends Phaser.Scene {
   private sisterWander: WanderNpc | null = null;
   private friendWander: WanderNpc | null = null;
 
+  private boy!: NpcActor;
+  private boyWander: WanderNpc | null = null;
+
   private lady!: NpcActor;
   private ladyGlow!: Phaser.GameObjects.Arc;
   private firewoodSprites: Phaser.GameObjects.Image[] = [];
@@ -296,6 +330,7 @@ export class OverworldScene extends Phaser.Scene {
     this.leader = null;
     this.sisterWander = null;
     this.friendWander = null;
+    this.boyWander = null;
     this.colliderBodies = [];
     this.buildings = [];
     this.firewoodSprites = [];
@@ -318,8 +353,16 @@ export class OverworldScene extends Phaser.Scene {
     this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
 
-    this.friend = new NpcActor(this, PATH_CENTER * TILE_SIZE + 18, 44 * TILE_SIZE, 'friend', 'down');
+    this.friend = new NpcActor(this, PATH_CENTER * TILE_SIZE + 18, 44 * TILE_SIZE, 'friend', 'down', FRIEND_SHADOW_SCALE, true);
     this.friend.setDepth(depthForY(this.friend.y, DEPTH.ACTORS));
+
+    const boyStart = Phaser.Geom.Rectangle.Random(BOY_WANDER_BOUNDS, new Phaser.Geom.Point());
+    this.boy = new NpcActor(this, boyStart.x, boyStart.y, 'boy', 'down', BOY_SHADOW_SCALE, true);
+    this.boy.setDepth(depthForY(this.boy.y, DEPTH.ACTORS));
+    // Unlike the sister/friend (whose wandering only starts once the river-crossing cutscene
+    // triggers it), the boy is pure ambient flavor with no mission tie-in at all -- he wanders from
+    // the moment the scene loads.
+    this.boyWander = new WanderNpc(this.boy, BOY_WANDER_BOUNDS, BOY_WANDER_SPEED);
 
     const ladyDepth = DEPTH.ACTORS + 0.5;
     this.lady = new NpcActor(this, NICHE_X, NICHE_Y, 'lady', 'down');
@@ -630,6 +673,7 @@ export class OverworldScene extends Phaser.Scene {
     // through the hush/apparition/praying/ending phases too, not freeze the moment the phase changes.
     this.sisterWander?.update(delta, DEPTH.ACTORS);
     this.friendWander?.update(delta, DEPTH.ACTORS);
+    this.boyWander?.update(delta, DEPTH.ACTORS);
 
     if (uiBlocked) {
       this.interactionPrompt.hide();
@@ -662,6 +706,14 @@ export class OverworldScene extends Phaser.Scene {
 
     if (!this.friendMet && isNear(player, this.friend, INTERACT_RADIUS)) {
       this.interactionPrompt.showAt(this.friend.x, this.friend.y - 26, Localization.t(K.INTERACT_TALK));
+      return;
+    }
+
+    // Ambient chat, always available (no mission gating, no one-time flag) -- checked ahead of the
+    // Cachot door/building prompts below only because it's the more specific/closer target when both
+    // happen to be in range at once; in practice the two are far enough apart that this rarely matters.
+    if (isNear(player, this.boy, INTERACT_RADIUS)) {
+      this.interactionPrompt.showAt(this.boy.x, this.boy.y - 20, Localization.t(K.INTERACT_TALK));
       return;
     }
 
@@ -710,6 +762,13 @@ export class OverworldScene extends Phaser.Scene {
         MissionManager.advanceObjective();
         this.tasksPanel.notifyNewObjective();
       });
+      return;
+    }
+
+    if (isNear(player, this.boy, INTERACT_RADIUS)) {
+      // Purely ambient -- no MissionManager call, no one-time flag, no side effect on him at all
+      // (he stays put, keeps wandering once the box closes). Repeatable on every interaction.
+      this.dialogueBox.start(boyAmbientDialogue);
       return;
     }
 

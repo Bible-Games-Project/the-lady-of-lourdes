@@ -22,8 +22,11 @@ import { JOURNEY_MAP_KEY, preloadJourneyMap } from '../assets/journey/journeyMap
 import { preloadBernadetteSprite, registerBernadetteSprite } from '../assets/player/bernadetteSprite';
 import { preloadSisterSprite, registerSisterSprite } from '../assets/npc/sisterSprite';
 import { preloadMotherSprite, registerMotherSprite } from '../assets/npc/motherSprite';
+import { preloadJeanneSprite, registerJeanneSprite } from '../assets/npc/jeanneSprite';
+import { preloadBoySprite, registerBoySprite } from '../assets/npc/boySprite';
 import { preloadBernadettePortrait } from '../assets/portraits/bernadettePortrait';
 import { preloadJeannePortrait } from '../assets/portraits/jeannePortrait';
+import { preloadBoyPortrait } from '../assets/portraits/boyPortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
 import { preloadLourdesChurch } from '../assets/buildings/lourdesChurch';
 import { preloadLourdesPresbytery } from '../assets/buildings/lourdesPresbytery';
@@ -39,8 +42,11 @@ export class BootScene extends Phaser.Scene {
     preloadBernadetteSprite(this);
     preloadSisterSprite(this);
     preloadMotherSprite(this);
+    preloadJeanneSprite(this);
+    preloadBoySprite(this);
     preloadBernadettePortrait(this);
     preloadJeannePortrait(this);
+    preloadBoyPortrait(this);
     preloadLourdesGrass(this);
     preloadLourdesChurch(this);
     preloadLourdesPresbytery(this);
@@ -52,6 +58,8 @@ export class BootScene extends Phaser.Scene {
     registerBernadetteSprite(this);
     registerSisterSprite(this);
     registerMotherSprite(this);
+    registerJeanneSprite(this);
+    registerBoySprite(this);
     registerBernadetteShadowTexture(this);
     registerPortraitTextures(this);
     registerTileset(this);

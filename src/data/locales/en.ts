@@ -56,6 +56,7 @@ export const en: LocaleDict = {
   [K.NPC_SISTER_NAME]: 'Toinette',
   [K.NPC_FRIEND_NAME]: 'Jeanne',
   [K.NPC_LADY_NAME]: 'The Lady',
+  [K.NPC_BOY_NAME]: 'Antoine',
 
   [K.LOCATION_CACHOT]: 'Le Cachot',
   [K.LOCATION_GROTTO]: 'Grotto of Massabielle',
@@ -89,6 +90,12 @@ export const en: LocaleDict = {
   [K.DIALOGUE_BERNADETTE_M1_1]: 'Yes, Mother. We will go.',
   [K.DIALOGUE_FRIEND_M1_1]: 'There you are! I know where we can find firewood, near Massabielle. Follow me.',
   [K.DIALOGUE_SISTER_M1_1]: "I'm coming too!",
+
+  [K.DIALOGUE_BOY_AMBIENT_1]: 'Hello, Bernadette! Are you off to Massabielle?',
+  [K.DIALOGUE_BERNADETTE_BOY_AMBIENT_1]: "Yes. I need to go there for a moment.",
+  [K.DIALOGUE_BOY_AMBIENT_2]: "I've been playing by the river. It's quite cold today!",
+  [K.DIALOGUE_BERNADETTE_BOY_AMBIENT_2]: "Yes, you had better be careful.",
+  [K.DIALOGUE_BOY_AMBIENT_3]: 'See you later, Bernadette!',
   [K.DIALOGUE_BERNADETTE_M1_2]: 'Lead the way.',
 
   [K.NARRATION_CACHOT_INTRO]: 'Le Cachot, Lourdes. Winter, 1858.',

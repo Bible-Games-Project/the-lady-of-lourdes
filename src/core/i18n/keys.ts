@@ -53,6 +53,7 @@ export const K = {
   NPC_SISTER_NAME: 'npc.sister.name',
   NPC_FRIEND_NAME: 'npc.friend.name',
   NPC_LADY_NAME: 'npc.lady.name',
+  NPC_BOY_NAME: 'npc.boy.name',
 
   LOCATION_CACHOT: 'location.cachot',
   LOCATION_GROTTO: 'location.grotto',
@@ -87,6 +88,14 @@ export const K = {
   DIALOGUE_FRIEND_M1_1: 'dialogue.friend.m1.1',
   DIALOGUE_BERNADETTE_M1_2: 'dialogue.bernadette.m1.2',
   DIALOGUE_SISTER_M1_1: 'dialogue.sister.m1.1',
+
+  // Ambient (non-mission) chat with the village boy encountered wandering Lourdes -- repeatable,
+  // never advances any objective.
+  DIALOGUE_BOY_AMBIENT_1: 'dialogue.boy.ambient.1',
+  DIALOGUE_BERNADETTE_BOY_AMBIENT_1: 'dialogue.bernadette.boy.ambient.1',
+  DIALOGUE_BOY_AMBIENT_2: 'dialogue.boy.ambient.2',
+  DIALOGUE_BERNADETTE_BOY_AMBIENT_2: 'dialogue.bernadette.boy.ambient.2',
+  DIALOGUE_BOY_AMBIENT_3: 'dialogue.boy.ambient.3',
 
   NARRATION_CACHOT_INTRO: 'narration.cachotIntro',
   NARRATION_RIVER_STAY_BEHIND: 'narration.riverStayBehind',
