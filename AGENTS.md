@@ -1013,6 +1013,118 @@ Three related bugs in the first-apparition sequence (river crossing → hush →
     what keeps the character's feet the same distance from the frame's bottom edge as the idle
     frame, so facing switches between idle/walk don't visibly bob her.
 
+### Apparition Journey scrollbox: the wheel-event signature bug
+
+`ApparitionJourneyScene.ts`'s 18-mission scroll list was reported as "sometimes difficult to scroll
+with the mouse wheel." The actual bug was much simpler and much worse than "sometimes": Phaser's own
+`'wheel'` event signature is `(pointer, currentlyOver, deltaX, deltaY, deltaZ)` — 5 positional
+params — but the handler here was written as `(_p, _dx, dy) => { ... dy * 0.5 }`, only 3 params. JS
+doesn't care about the declared names; it binds positionally, so this handler's `dy` was actually
+receiving Phaser's *deltaX* (horizontal wheel delta), not deltaY. A normal vertical mouse wheel
+reports `deltaX ~= 0`, so the scroll math was computing `scrollY + 0 * 0.5` on almost every real
+tick — a near-total no-op, not an occasional one. The "sometimes it worked a little" the report
+described was really just a trackpad's incidental horizontal jitter during an otherwise-vertical
+swipe gesture occasionally producing a nonzero deltaX. Fixed by reading the real 5th positional
+param (`deltaY`). Confirmed via Playwright (`page.mouse.wheel(0, dy)` + polling `scrollY`) both
+before (frozen at the same value across 50+ wheel events, up or down, any magnitude) and after
+(smooth, monotonic, clamps correctly at both the first and last mission). If a future scroll
+regression turns up on any other `this.input.on('wheel', ...)` handler in this codebase, check the
+positional-argument count *first* — this exact mistake is easy to reintroduce by "simplifying" the
+handler's signature.
+
+### Overworld map: edge buffer widened, buildings pulled off the west edge
+
+A later round asked for the same map (see "Overworld map resized to 4x area" above — that resize
+itself was already live in code from the previous round, it just hadn't been rebuilt/redeployed to
+what the maintainer was actually looking at when this round's brief called it "still too small")
+to leave a **generous** open buffer around the edges for a future forest, with buildings
+"concentrated more toward the interior" — stricter than the prior round's plain treeline ask.
+Auditing actual placements found the church/presbytery (`SPECIAL_BUILDINGS`) sitting almost flush
+against the map's west edge (`col 0.5`/`col 0.2`, i.e. ~3-8px from `col 0`) — a plain position-
+doubling artifact from the earlier resize, never actually a problem until this stricter buffer
+requirement existed. Fixed with a single `WEST_BUFFER_TILES = 7` constant added to both buildings'
+`col`, preserving their prior relative offset from each other rather than an independent per-
+building fudge. `FOREST_BORDER_DEPTH_TILES` was also bumped 2 -> 3 for a fuller tree line at this
+map's scale. `TOWN_BUILDINGS`/`CACHOT`/the grotto were all audited too and already had comfortable
+edge clearance (6-18 tiles) — only the west-edge church/presbytery needed the fix. `DECOR`'s
+scattered single trees/rocks near edges were left alone on purpose: they're not "buildings" under
+this rule, and a stray tree near the edge only reinforces the forest-transition feel.
+
+### Jeanne (`friend`) and a new ambient boy NPC: real-art sprites, portraits, idle breathing
+
+Two more `CharacterId`s went from the shared procedural paper-doll system to real art, following
+the exact same pipeline as `sisterSprite.ts`/`motherSprite.ts` (see "Real-art secondary characters"
+above for the full write-up of that pipeline — cutout-puppet walk-cycle deformation, alpha-bbox
+source crops, idle = plain resize, NEAREST-only textures, etc.):
+
+- **`assets/npc/jeanneSprite.ts`** replaces Jeanne's old procedural placeholder with real art, at
+  the *same* `BERNADETTE_FRAME_HEIGHT`-equivalent 42px height as Bernadette/the mother (she's a
+  peer, not a younger sibling — that distinction stays the sister's alone, at 85%).
+- **`assets/npc/boySprite.ts`** adds a brand-new ambient `CharacterId: 'boy'` (not a previously-
+  procedural placeholder being upgraded — this one never existed before), sized at 80% of
+  Bernadette's height (`BOY_FRAME_HEIGHT = round(42 * 0.8)` = 34px) per an explicit "~20% smaller
+  than the player" ask.
+- **Both sources' hands hang separately at the sides** (not clasped/interlocked the way the
+  sister's/mother's source art was), so both use two independently-shifted hand regions for the
+  walk cycle's counter-swing — the same technique Bernadette's own front/back frames already use —
+  rather than the sister/mother recipe's single shifting hand-clasp unit. Still single-direction
+  (not mirrored) skirt/tunic shear for every view on both, same reasoning as the sister: mirrored
+  shear opened a visible transparent seam at the center on a frame this narrow (10-16px final
+  width) — confirmed by generating a first draft with mirrored shear and visually catching the gap
+  before ever wiring it in, then regenerating with single-direction shear.
+- **New generic `NpcActor` capability: opt-in idle breathing.** Neither the sister, the mother, nor
+  any other `NpcActor` had ever gotten Bernadette's idle sine-wave `scaleY` breathing
+  (`Player.ts#updateBreathing()`) — only Jeanne and the boy were explicitly asked for it this round.
+  Rather than forking a parallel system, `NpcActor` gained an opt-in `breathingEnabled` constructor
+  param (default `false`, so mother/sister/villagers are completely unaffected) driven from a new
+  `override preUpdate(time, delta)` — Phaser calls this automatically every frame for any
+  `GameObject` that defines it, so no wiring into the owning scene's own `update()` was needed. Must
+  chain `super.preUpdate(time, delta)` first or the sprite's own walk-cycle animation stops
+  advancing. Same amplitude/period/no-yoyo-tween reasoning as `Player.ts`; the shadow reacts the
+  same way too (width/alpha only, via the existing `shadowScale` field, never vertical scale).
+- **Portraits** (`assets/portraits/jeannePortrait.ts` had already shipped; `boyPortrait.ts` is new)
+  use the same derived-from-one-pose technique as Bernadette's second portrait: only a neutral
+  (eyes open, mouth closed) image was supplied, so `blink`/`talk`/`talkBlink` are generated by
+  editing that source, not separately drawn. Two things worth not re-discovering if this technique
+  is reused again:
+  - **Sample the eye-closing skin fill from a fixed row safely *outside* the eye's bounding box**,
+    never from "below the mask but still inside the box." An initial attempt sampled column-by-
+    column from just below each column's own masked region *within* the eye's own box — but the
+    mask blob (real iris/sclera pixels, found via the same `red - blue` content-based separation
+    Jeanne's own portrait doc comment describes) reaches close to the box's bottom edge in several
+    columns, so that fallback kept reading back other eye-colored pixels as if they were "skin,"
+    producing a blotchy grey patch instead of a clean closed eye. Fixed by sampling a fixed row
+    ~25px below the box (guaranteed clear cheek skin) for every column, independent of the mask.
+  - **A square/near-square supplied reference must be center-cropped to the game's own 58:67
+    portrait aspect ratio *before* the final resize**, not resized non-uniformly to fit — every
+    existing portrait in this game (`bernadette_portrait_neutral.png`, `jeanne_portrait_neutral.png`)
+    fills its 58x67 canvas exactly edge-to-edge with zero transparent padding, meaning their source
+    crops were already shaped to that ratio. The boy's supplied portrait was a ~1:1 square; resizing
+    it directly to 58x67 would have squeezed his face narrower and stretched it taller (visible
+    proportion distortion). Fixed with a plain centered crop to the 58:67 ratio at full source
+    resolution first, then the usual single LANCZOS resize to final size — no distortion, and the
+    result now matches every other character's portrait framing convention.
+- **The boy is pure ambient flavor, not mission content**: `data/dialogue/ambientDialogue.ts` holds
+  his one repeatable exchange (`boyAmbientDialogue`), triggered through the *exact* same
+  `DialogueBox`/`isNear`/`INTERACT_RADIUS`/E-or-tap `tryInteract()` path every other interactable
+  in `OverworldScene.ts` already uses — no parallel interaction system. Deliberately makes zero
+  `MissionManager` calls and sets no one-time-triggered flag on him, so talking to him is exactly as
+  repeatable as walking up and pressing E again; he never leaves, never gets hidden, never gates
+  anything. He wanders his own small `BOY_WANDER_BOUNDS` (a strip of open plaza grass between the
+  path and the hospice/Maison Cénac/tribunal cluster) via the same `WanderNpc` the sister/Jeanne use
+  post-river-crossing — bounds chosen to be inherently free of any collider (same approach
+  `FAR_BANK_WANDER_BOUNDS` uses), rather than building actual pathfinding/collision-avoidance for
+  `WanderNpc`. Unlike the sister/friend (whose wandering only starts once the crossing cutscene
+  triggers it), his wander starts the instant the scene loads — he has no mission gate at all.
+- **Playwright gotcha worth not re-discovering**: `page.keyboard.press('e')` to trigger a fresh
+  E-interact can flake when the target NPC is actively wandering — by the time the synthetic
+  keydown/keyup round-trip actually lands, a few hundred ms may have passed and a slow-wandering NPC
+  can drift just outside `INTERACT_RADIUS` from wherever the test teleported the player. Calling the
+  scene's own `tryInteract()`/`dialogueBox.advance()` methods directly via `page.evaluate()` (they're
+  TS `private`, but that's compile-time only) sidesteps the timing entirely and is what actually
+  confirmed this system works — don't conclude a real bug from a `keyboard.press()` timing miss
+  against a moving target without corroborating via a direct method call first.
+
 ### Art direction: history and current constraint
 
 The maintainer rejected the original procedural pixel-art look
