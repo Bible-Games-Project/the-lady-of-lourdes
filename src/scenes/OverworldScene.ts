@@ -20,6 +20,7 @@ import { Caption } from '../gameplay/Caption';
 import { RosaryUI } from '../gameplay/RosaryUI';
 import { updateFollowerPosition } from '../gameplay/Follower';
 import { LeaderNpc, type Point } from '../gameplay/LeaderNpc';
+import { WanderNpc } from '../gameplay/WanderNpc';
 import { MissionManager } from '../gameplay/MissionManager';
 import { mission01Dialogue, MISSION_01_FIREWOOD_TARGET, MISSION_01_OBJECTIVES } from '../data/missions/mission01';
 import { LOCATIONS, type LocationId } from '../data/world/locations';
@@ -32,57 +33,90 @@ import { useLetterboxScale } from '../core/scaleMode';
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
 // northern edge (crossable only via the bridge), and Le Cachot + the town sit south of that.
-// Kept deliberately compact — walking distance over geographic realism.
-const COLS = 26;
-const ROWS = 58;
+//
+// **4x the area of the original map** (COLS/ROWS both doubled — 26x58 -> 52x116), per an explicit
+// maintainer request for more breathing room: "not simply zoom the camera out... keep the current
+// visual scale of the characters and environment... do not simply stretch the existing map."
+// `TILE_SIZE` and every character's own display size are untouched, so this is purely more world
+// to walk around in, not a rescale. The transformation used throughout this file, consistently:
+// every POSITION constant (where a road/river/building/landmark sits) is doubled, which — because
+// the map's own dimensions are also exactly doubled — exactly preserves each feature's fractional
+// position on the map (its relative layout), satisfying "preserve current relative positions of
+// landmarks." Every WIDTH/THICKNESS constant (path width, river width, building footprint sizes)
+// is deliberately left unchanged, not doubled — those are visual/gameplay-scale properties tied to
+// character size, not to overall map size, so doubling them too would make paths and rivers look
+// oversized relative to Bernadette rather than just giving the town more room to breathe. The net
+// effect is exactly what was asked for: the same relative town layout, the same-sized roads/river/
+// buildings, just with much more open ground between and around everything.
+const COLS = 52;
+const ROWS = 116;
 const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
 
-const PATH_CENTER = 16;
+const PATH_CENTER = 32;
 const PATH_HALF_WIDTH = 1;
 
 // Vertical arm of the river, beside the grotto. Fully blocks the player — the only crossing is
 // the scripted ford cutscene, where the companions wade across and Bernadette stays behind.
-const RIVER_V_START = 19;
-const RIVER_V_END = 22;
+// Width kept at 4 tiles (unchanged from the original map) — only its center moved (doubled) to
+// keep the same relative position; see the file-level comment above for why width doesn't scale.
+const RIVER_V_START = 39;
+const RIVER_V_END = 42;
 
-// Horizontal arm, the town's river boundary. Only passable through the bridge at the path.
-const RIVER_H_TOP = 30;
-const RIVER_H_BOTTOM = 33;
+// Horizontal arm, the town's river boundary. Only passable through the bridge at the path. Same
+// width-unchanged, center-doubled treatment as the vertical arm above.
+const RIVER_H_TOP = 61;
+const RIVER_H_BOTTOM = 64;
 
-const FIELD_PATH_START_ROW = 9;
-const TOWN_PLAZA_ROW_START = 36;
+const FIELD_PATH_START_ROW = 18;
+const TOWN_PLAZA_ROW_START = 72;
 
-const CACHOT_ROW = 54;
-const CACHOT_COL = 13;
+const CACHOT_ROW = 108;
+const CACHOT_COL = 26;
 
-// Kept well clear of the map edges so the screen-pinned HUD never covers it.
-const GROTTO_X = 128;
-const GROTTO_Y = 144;
+// Kept well clear of the map edges (now with a full forest border beyond them too — see
+// `buildForestBorder()`) so the screen-pinned HUD never covers it.
+const GROTTO_X = 256;
+const GROTTO_Y = 288;
 const NICHE_X = GROTTO_X + 62;
 const NICHE_Y = GROTTO_Y + 19;
 
 const FIREWOOD_SPOTS = [
-  { x: 96, y: 320 },
-  { x: 176, y: 384 },
-  { x: 256, y: 288 },
+  { x: 192, y: 640 },
+  { x: 352, y: 768 },
+  { x: 512, y: 576 },
 ];
 
-const FORD_ZONE = new Phaser.Geom.Rectangle(240, 136, RIVER_V_START * TILE_SIZE - 240, 140);
-const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 272 };
+// Width (4 tiles) and the GROTTO_Y-relative anchor are unchanged from the original map's own
+// proportions — only repositioned to track the doubled RIVER_V_START/GROTTO_Y.
+const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
+const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
 // Jeanne leads Bernadette from the town, across the bridge, and up to the ford — where she
 // naturally stops, well short of the grotto so she doesn't upstage the apparition.
 const JEANNE_WAYPOINTS: Point[] = [
-  { x: PATH_CENTER * TILE_SIZE, y: 44 * TILE_SIZE },
+  { x: PATH_CENTER * TILE_SIZE, y: 88 * TILE_SIZE },
   { x: PATH_CENTER * TILE_SIZE, y: (RIVER_H_BOTTOM + 1) * TILE_SIZE + 8 },
   { x: PATH_CENTER * TILE_SIZE, y: (RIVER_H_TOP - 1) * TILE_SIZE - 8 },
-  { x: PATH_CENTER * TILE_SIZE, y: 200 },
-  { x: 250, y: 150 },
+  { x: PATH_CENTER * TILE_SIZE, y: 400 },
+  { x: 500, y: 300 },
 ];
+// Speed and distance thresholds are gameplay feel, not spatial layout -- deliberately left
+// unchanged (she still walks at the same visual pace; the bigger map just means a longer walk).
 const JEANNE_SPEED = 48;
 const JEANNE_MAX_DISTANCE = 110;
 const JEANNE_RESUME_DISTANCE = 55;
+
+// Bounded area where the sister and Jeanne wander (`WanderNpc`) once they've crossed the river
+// during Mission 1, "searching for firewood" instead of vanishing -- a rectangle on the far
+// (east) bank, not tied to any specific spot from the original map (this behavior is new). Sized
+// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE = 688,
+// and the forest border's inner edge is 2 tiles in from the map's own right edge (832) = 800, so
+// there's ~112px of open field between them -- this box (700-790) sits centered in that gap with
+// a margin on both sides, keeping the pair visibly close to the crossing point/Massabielle without
+// risking wandering into the water or the tree line.
+const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700, FAR_BANK.y - 60, 90, 120);
+const COMPANION_WANDER_SPEED = 28;
 
 interface BuildingPlacement {
   key: string;
@@ -93,15 +127,15 @@ interface BuildingPlacement {
   locationId: LocationId;
 }
 
-// The tribunal moved from its original col 5 / row 50 (immediately south of the church/presbytery
-// strip) to this spot on the east side, south of Maison Cénac -- freeing the whole south end of
-// the west strip for the presbytery below, since that spot was otherwise the only thing capping
-// how big the presbytery could get (see SPECIAL_BUILDINGS below). Unrelated to the church, which
-// is capped by the plaza path itself (unmovable terrain), not by the tribunal.
+// Positions doubled along with the rest of the map (see the file-level comment above) to keep
+// the same relative layout -- sizes (48x40, the shared procedural TOWN_BUILDING box) intentionally
+// unchanged. The tribunal previously moved from col 5 / row 50 to here (east side, south of Maison
+// Cénac) to free room for the presbytery below the church; that reasoning is unaffected by the map
+// resize, so it kept the same relative spot, just doubled like everything else.
 const TOWN_BUILDINGS: BuildingPlacement[] = [
-  { key: PROP_KEYS.TOWN_BUILDING, col: 21, row: 38, widthPx: 48, heightPx: 40, locationId: 'hospice' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 22, row: 45, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 20, row: 55, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 42, row: 76, widthPx: 48, heightPx: 40, locationId: 'hospice' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 44, row: 90, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 40, row: 110, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
 ];
 
 /**
@@ -153,31 +187,23 @@ const PRESBYTERY_FOOTPRINT: FootprintRect[] = [
   { xFrac: 0.74, yFrac: 0.5, wFrac: 0.22, hFrac: 0.325 }, // right tree/shed cluster
 ];
 
-// The church and presbytery are scaled up well beyond their native texture size to bring them
-// toward human scale -- the reference is Bernadette's own in-game height (BERNADETTE_FRAME_HEIGHT
-// = 42px): a building's uniform scale factor is chosen so its door is approximately that tall,
-// as close as the map's fixed geometry allows.
-//  - The church sits in the tall band directly south of the river (row 36). Width is the binding
-//    constraint there -- the plaza path starts at x160, so the widest this strip can ever go is
-//    ~156px before touching it, regardless of the tribunal's position (this is unmovable terrain,
-//    not a building). A 4px left-edge inset (x4) leaves 156px of usable width -- 94x122 native ->
-//    1.660x scale, ~206x202, ~32px door, about 75% of Bernadette's height. That's the ceiling for
-//    this spot; reaching a literal 42px door would need ~206px of width, well past the path.
-//  - The presbytery previously sat in a short band south of the tribunal (only 80px of headroom,
-//    since the tribunal's old position was the thing capping it), landing at just ~19% of
-//    Bernadette's door height even after two rounds of tweaking -- nowhere near "feels
-//    appropriately sized next to the church." Moving the tribunal (see TOWN_BUILDINGS above) frees
-//    the entire south end of this same strip, so the presbytery now uses the *same* ~156px width
-//    ceiling as the church (row 49, right below it) -- 100x80 native -> 1.56x scale, ~156x125,
-//    ~16px door (about 37% of Bernadette's height). Still short of a literal match -- this art's
-//    door is drawn small relative to its own canvas (10px in a 100px-wide texture, versus the
-//    church's ~19px in 94px) -- but now visually reads as matching the church's footprint width,
-//    a real "properly sized building" rather than the previous miniature.
+// The church's own position doubled like everything else (col 0.25/row 36 -> col 0.5/row 72),
+// keeping its *size* unchanged (156x202, ~75% of Bernadette's door height, per the maintainer's
+// prior sign-off that this was the practical ceiling for this art at this scale) — this round's
+// brief didn't ask to touch the church, only the map size and the presbytery.
+//
+// The presbytery is a deliberate exception to "keep current visual scale": doubled *again* on top
+// of the map-resize doubling (156x125 -> 312x250, i.e. 2x its current size, per an explicit
+// "twice as large" ask), then nudged further down and left from that doubled-and-enlarged spot —
+// the map resize alone would have put it at col 0.5/row 98 (mirroring the church's own doubling);
+// shifted to col 0.2/row 99 instead. There's now abundant room in this corridor (the plaza path
+// doesn't start until col 26, versus col 10 on the old map), so unlike every prior presbytery
+// change, this is just a placement choice, not another fight against a hard space ceiling.
 const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   {
     key: LOURDES_CHURCH_KEY,
-    col: 0.25,
-    row: 36,
+    col: 0.5,
+    row: 72,
     widthPx: 156,
     heightPx: 202,
     locationId: 'church',
@@ -185,23 +211,33 @@ const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   },
   {
     key: LOURDES_PRESBYTERY_KEY,
-    col: 0.25,
-    row: 49,
-    widthPx: 156,
-    heightPx: 125,
+    col: 0.2,
+    row: 99,
+    widthPx: 312,
+    heightPx: 250,
     locationId: 'presbytery',
     footprint: PRESBYTERY_FOOTPRINT,
   },
 ];
 
+// Positions doubled with the rest of the map; unchanged sizes (see the file-level comment above).
 const DECOR: Array<{ key: string; col: number; row: number }> = [
-  { key: PROP_KEYS.TREE, col: 2, row: 3 },
-  { key: PROP_KEYS.TREE, col: 24, row: 6 },
-  { key: PROP_KEYS.ROCK, col: 6, row: 22 },
-  { key: PROP_KEYS.TREE, col: 3, row: 40 },
-  { key: PROP_KEYS.ROCK, col: 23, row: 42 },
-  { key: PROP_KEYS.TREE, col: 10, row: 56 },
+  { key: PROP_KEYS.TREE, col: 4, row: 6 },
+  { key: PROP_KEYS.TREE, col: 48, row: 12 },
+  { key: PROP_KEYS.ROCK, col: 12, row: 44 },
+  { key: PROP_KEYS.TREE, col: 6, row: 80 },
+  { key: PROP_KEYS.ROCK, col: 46, row: 84 },
+  { key: PROP_KEYS.TREE, col: 20, row: 112 },
 ];
+
+// A ring of trees a few tiles deep around all four map edges, so the town never backs directly
+// onto empty air — "the map should be surrounded by forest... the outermost areas should feel
+// like the countryside/forest surrounding Lourdes." Generated (not hand-placed) since a solid
+// 336-tile perimeter would mean hundreds of individual entries; spaced (not a solid wall) for a
+// natural tree-line look rather than a fence, and skips any cell that would land on the river or
+// the path (both of which do reach the map edges) so trees never spawn in water or on the road.
+const FOREST_BORDER_DEPTH_TILES = 2;
+const FOREST_BORDER_SPACING_TILES = 3;
 
 const INTERACT_RADIUS = 26;
 
@@ -234,6 +270,8 @@ export class OverworldScene extends Phaser.Scene {
   private friendMet = false;
   private leader: LeaderNpc | null = null;
   private fieldEntered = false;
+  private sisterWander: WanderNpc | null = null;
+  private friendWander: WanderNpc | null = null;
 
   private lady!: NpcActor;
   private ladyGlow!: Phaser.GameObjects.Arc;
@@ -256,6 +294,8 @@ export class OverworldScene extends Phaser.Scene {
     this.friendMet = false;
     this.fieldEntered = false;
     this.leader = null;
+    this.sisterWander = null;
+    this.friendWander = null;
     this.colliderBodies = [];
     this.buildings = [];
     this.firewoodSprites = [];
@@ -509,6 +549,45 @@ export class OverworldScene extends Phaser.Scene {
       const px = this.tileToPixelCenter(col, row);
       this.addStaticProp(key, px.x, px.y, TILE_SIZE, TILE_SIZE * 1.5);
     });
+    this.buildForestBorder();
+  }
+
+  /** A cell counts as "river or path" for forest-border purposes if it falls in the river's own
+   * column band (the vertical arm), the river's own row band (the horizontal arm — which, like
+   * the vertical arm, reaches every map edge), or the path's column band (which also reaches the
+   * top and bottom edges) — each with a 1-tile buffer so trees don't spawn touching the water/road
+   * either. Deliberately approximate (matches the *bands* these features occupy, not their exact
+   * cell-by-cell shape) since this only needs to keep decor off the water/road, not be pixel-exact. */
+  private isRiverOrPathBand(col: number, row: number): boolean {
+    const inVerticalRiver = col >= RIVER_V_START - 1 && col <= RIVER_V_END + 1;
+    const inHorizontalRiver = row >= RIVER_H_TOP - 1 && row <= RIVER_H_BOTTOM + 1;
+    const inPathColumn = col >= PATH_CENTER - PATH_HALF_WIDTH - 1 && col <= PATH_CENTER + PATH_HALF_WIDTH + 1;
+    return inVerticalRiver || inHorizontalRiver || inPathColumn;
+  }
+
+  private buildForestBorder(): void {
+    const placed = new Set<string>();
+    const tryPlace = (col: number, row: number) => {
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+      const key = `${col},${row}`;
+      if (placed.has(key) || this.isRiverOrPathBand(col, row)) return;
+      placed.add(key);
+      const px = this.tileToPixelCenter(col, row);
+      this.addStaticProp(PROP_KEYS.TREE, px.x, px.y, TILE_SIZE, TILE_SIZE * 1.5);
+    };
+
+    for (let c = 0; c < COLS; c += FOREST_BORDER_SPACING_TILES) {
+      for (let d = 0; d < FOREST_BORDER_DEPTH_TILES; d++) {
+        tryPlace(c, d);
+        tryPlace(c, ROWS - 1 - d);
+      }
+    }
+    for (let r = 0; r < ROWS; r += FOREST_BORDER_SPACING_TILES) {
+      for (let d = 0; d < FOREST_BORDER_DEPTH_TILES; d++) {
+        tryPlace(d, r);
+        tryPlace(COLS - 1 - d, r);
+      }
+    }
   }
 
   private buildGrotto(): void {
@@ -534,10 +613,23 @@ export class OverworldScene extends Phaser.Scene {
     this.player.setLocked(!exploring);
     this.player.update(time);
 
-    updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, time, DEPTH.ACTORS);
+    // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it
+    // kept easing the sister toward the (now-locked) player position and re-setting her facing
+    // *during* the scripted river-crossing tween below, fighting that tween's own position/facing
+    // every frame and producing the wrong-direction walk animation the crossing was supposed to
+    // show. `this.leader` (Jeanne's own leader-follow logic) already had this same guard; the
+    // sister's follower update just hadn't been given it.
+    if (this.phase === 'explore') {
+      updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, time, DEPTH.ACTORS);
+    }
     if (this.friendMet && this.phase === 'explore' && this.leader) {
       this.leader.update(this.player, delta, DEPTH.ACTORS);
     }
+    // Runs regardless of phase (unlike the follower/leader above) -- once the sister and Jeanne
+    // start wandering near the far riverbank after the crossing, they should keep pottering around
+    // through the hush/apparition/praying/ending phases too, not freeze the moment the phase changes.
+    this.sisterWander?.update(delta, DEPTH.ACTORS);
+    this.friendWander?.update(delta, DEPTH.ACTORS);
 
     if (uiBlocked) {
       this.interactionPrompt.hide();
@@ -677,8 +769,12 @@ export class OverworldScene extends Phaser.Scene {
       this.friend.walkTo(FAR_BANK.friendX, FAR_BANK.y, 1600),
       wait(this, 250).then(() => this.sister.walkTo(FAR_BANK.sisterX, FAR_BANK.y, 1600)),
     ]);
-    this.sister.setVisible(false);
-    this.friend.setVisible(false);
+    // They stay visible and start ambling around the far bank "searching for firewood" instead of
+    // vanishing (`setVisible(false)`, the old behavior) -- see WanderNpc's own doc comment. Kept
+    // running for the rest of the sequence (`update()` drives these unconditionally, not gated by
+    // phase) since there's no scripted moment yet where the story needs them to leave.
+    this.sisterWander = new WanderNpc(this.sister, FAR_BANK_WANDER_BOUNDS, COMPANION_WANDER_SPEED);
+    this.friendWander = new WanderNpc(this.friend, FAR_BANK_WANDER_BOUNDS, COMPANION_WANDER_SPEED);
 
     MissionManager.advanceObjective();
     this.tasksPanel.notifyNewObjective();

@@ -65,6 +65,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const body = this.body as Phaser.Physics.Arcade.Body;
     if (this.locked) {
       body.setVelocity(0, 0);
+      // Force the idle pose/texture and stop any walk-cycle animation that was still playing at
+      // the moment she got locked (e.g. mid-stride when the apparition sequence takes over) --
+      // without this, `setVelocity(0, 0)` above stops her *moving* but Phaser's own animation
+      // system keeps cycling whatever walk_bernadette_* animation was already playing, since
+      // nothing else here ever tells it to stop. Every frame while locked is fine (cheap,
+      // idempotent) rather than only once, matching how the unlocked branch below re-evaluates
+      // moving/not-moving every frame too.
+      updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
       this.updateBreathing(true, time);
       this.syncShadow();
       return;
