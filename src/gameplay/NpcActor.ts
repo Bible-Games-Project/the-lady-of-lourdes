@@ -1,10 +1,28 @@
 import Phaser from 'phaser';
+import { DEPTH } from '../core/constants';
 import type { CharacterId } from '../pixelart/characters';
 import { SHADOW_KEY, textureKeyFor, walkAnimKeyFor } from '../pixelart/characters';
 import type { Facing } from './spriteFacing';
+import { depthForY } from './utils';
+
+/**
+ * Feet-box proportions every `NpcActor` derives its physical collider from, as fractions of the
+ * character's own frame height — mirrors `Player.ts`'s own hand-tuned Bernadette collider
+ * (`body.setSize(7, 11); body.setOffset(4, 30)` on her 42px-tall frame: 7/42, 11/42, 30/42) so
+ * every character in the game — Bernadette included — collides through a small box near the
+ * feet/legs only, never the head/torso, letting characters visually overlap vertically the way a
+ * top-down game expects (see the "character collision" rule in AGENTS.md). Horizontal centering
+ * uses `(this.width - bodyWidth) / 2` instead of Bernadette's own fixed `offsetX = 4`, since an
+ * `NpcActor`'s frame *width* genuinely varies by facing (side views are narrower than front/back)
+ * and centering per-instance at construction time is more correct than one fixed offset — though
+ * per `Player.ts`'s own comment, this precision has never actually mattered for gameplay feel.
+ */
+const FEET_WIDTH_FRAC = 7 / 42;
+const FEET_HEIGHT_FRAC = 11 / 42;
+const FEET_OFFSET_Y_FRAC = 30 / 42;
 
 /** A simple scripted actor: stands, faces a direction, or walks to a point for a cutscene beat. */
-export class NpcActor extends Phaser.GameObjects.Sprite {
+export class NpcActor extends Phaser.Physics.Arcade.Sprite {
   readonly id: CharacterId;
   private facing: Facing;
   private moving = false;
@@ -12,6 +30,8 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
   private shadowScale: number;
   private breathingEnabled: boolean;
   private idle = true;
+  private depthBase: number;
+  private autoDepthEnabled: boolean;
 
   /**
    * `shadowScale` lets a real-art character's shadow track its own height instead of always
@@ -31,6 +51,21 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
    * exact prior behavior; only Jeanne (`friend`) opts in, per an explicit "same breathing pattern
    * as Bernadette" ask for her specifically. Driven from `preUpdate()` below rather than needing
    * the owning scene to call an `update()` method every frame, since nothing else currently does.
+   *
+   * `depthBase` is the Y-sort base every `NpcActor` now recomputes its own depth from, every
+   * frame, in `preUpdate()` below — see that method's own comment for why this needed to become
+   * automatic rather than left to whichever mover (`WanderNpc`/`LeaderNpc`/`Follower`) happens to
+   * be driving a given instance. Defaults to `DEPTH.ACTORS`, the same base `Player.ts` already
+   * uses for its own per-frame `depthForY()` call, so a `NpcActor` and the player sort correctly
+   * against each other without either side needing to know about the other.
+   *
+   * `autoDepthEnabled` is the escape hatch from that same automatic Y-sorting, for the one
+   * character in this game that must *not* spatially sort against the player: `OverworldScene.ts`'s
+   * `lady` (the apparition) is deliberately given a fixed depth just above `DEPTH.ACTORS` so she
+   * always renders in front of Bernadette regardless of either one's position — she's a vision, not
+   * a physically-present character standing "behind" or "in front of" anyone. Defaults to `true` so
+   * every other `NpcActor` gets the normal dynamic behavior; `OverworldScene.ts` passes `false` for
+   * her alone and manages her depth itself, exactly as before this system existed.
    */
   constructor(
     scene: Phaser.Scene,
@@ -40,6 +75,8 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
     facing: Facing = 'down',
     shadowScale = 1,
     breathingEnabled = false,
+    depthBase: number = DEPTH.ACTORS,
+    autoDepthEnabled = true,
   ) {
     const textureFacing = facing === 'left' || facing === 'right' ? 'side' : facing;
     super(scene, x, y, textureKeyFor(id, textureFacing, null));
@@ -48,19 +85,55 @@ export class NpcActor extends Phaser.GameObjects.Sprite {
     this.setFlipX(facing === 'left');
     this.setOrigin(0.5, 1);
     scene.add.existing(this);
+    scene.physics.add.existing(this);
+
+    // Feet-only collider (see FEET_*_FRAC above) sized from this instance's own initial frame —
+    // every real-art character is pre-sized to a stable height across all its own facings (the
+    // whole point of the "crop each panel to the same final height" pipeline every sprite in this
+    // game already follows), so computing this once here, rather than re-deriving it on every
+    // `setTexture()` facing swap, is safe.
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const feetWidth = Math.max(1, Math.round(this.height * FEET_WIDTH_FRAC));
+    const feetHeight = Math.max(1, Math.round(this.height * FEET_HEIGHT_FRAC));
+    body.setSize(feetWidth, feetHeight);
+    body.setOffset(Math.round((this.width - feetWidth) / 2), Math.round(this.height * FEET_OFFSET_Y_FRAC));
+    // Immovable: the player (and any other NpcActor) colliding with this one gets stopped/pushed
+    // back, but this actor itself never gets shoved aside — walking into an NPC should feel like
+    // meeting something solid, not gently nudging it out of the way. (Two immovable NpcActors
+    // colliding with each other simply don't separate on overlap, but in practice NPCs in this
+    // game keep to their own separate wander zones, so that almost never comes up.)
+    body.setImmovable(true);
 
     this.shadowScale = shadowScale;
     this.breathingEnabled = breathingEnabled;
+    this.depthBase = depthBase;
+    this.autoDepthEnabled = autoDepthEnabled;
     this.shadow = scene.add.image(x, y - 1, SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
     if (shadowScale !== 1) this.shadow.setScale(shadowScale);
   }
 
   /** Phaser calls this automatically every frame for any GameObject that overrides it — no wiring
-   * needed from the owning scene's own `update()`. Must chain to `super.preUpdate()` or the sprite's
-   * own walk-cycle animation frames stop advancing. */
+   * needed from the owning scene's own `update()`. Must chain to `super.preUpdate()` or the
+   * sprite's own walk-cycle animation frames (and the physics body's position sync) stop advancing.
+   *
+   * Y-sort depth used to be the responsibility of whichever mover was driving a given instance —
+   * `WanderNpc.update()`/`LeaderNpc.update()`/`Follower.updateFollowerPosition()` each called
+   * `actor.setDepth(depthForY(actor.y, ...))` themselves after moving it. That left a gap: an
+   * `NpcActor` with no mover at all (a scene just standing one somewhere, e.g. `CachotScene`'s
+   * mother) never got a *dynamic* depth — `CachotScene.ts` set hers to one fixed `DEPTH.ACTORS`
+   * value and never touched it again, so she could never correctly sort against a player who
+   * walked below her. Recomputing depth here instead, unconditionally, every frame, for every
+   * `NpcActor` regardless of what (if anything) is moving it, closes that gap generically — the
+   * "general character-system rule" the maintainer asked for — without needing every current and
+   * future mover to remember to do it themselves. Those movers' own `setDepth()` calls are now
+   * redundant but harmless (same value, computed twice); left in place rather than churning three
+   * other files to delete them.
+   */
   override preUpdate(time: number, delta: number): void {
     super.preUpdate(time, delta);
+    if (this.autoDepthEnabled) this.setDepth(depthForY(this.y, this.depthBase));
+
     if (!this.breathingEnabled) return;
 
     if (this.moving) {

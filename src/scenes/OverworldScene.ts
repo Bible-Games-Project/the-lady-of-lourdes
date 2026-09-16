@@ -6,6 +6,11 @@ import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
 import { LOURDES_CHURCH_KEY } from '../assets/buildings/lourdesChurch';
 import { LOURDES_PRESBYTERY_KEY } from '../assets/buildings/lourdesPresbytery';
+import {
+  CACHOT_EXTERIOR_UNIT_KEYS,
+  CACHOT_EXTERIOR_UNIT_WIDTHS,
+  CACHOT_EXTERIOR_CACHOT_UNIT_INDEX,
+} from '../assets/buildings/lourdesCachotExterior';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -74,8 +79,33 @@ const RIVER_H_BOTTOM = 64;
 const FIELD_PATH_START_ROW = 18;
 const TOWN_PLAZA_ROW_START = 72;
 
+// Still used for the stone-plaza patch `buildTerrain()` draws (rows TOWN_PLAZA_ROW_START to
+// CACHOT_ROW-2) — a town-square paving area, independent of exactly where the Cachot building
+// itself sits. The building's own placement is CACHOT_BUILDING_LEFT_X/TOP_Y below, not this.
 const CACHOT_ROW = 108;
-const CACHOT_COL = 26;
+
+// The Cachot exterior building's own placement (see `assets/buildings/lourdesCachotExterior.ts`).
+// Deliberately *not* derived from CACHOT_ROW above: the old 48x40 placeholder sat right
+// at presbytery's own south-east corner (barely clipping it, invisible at that tiny scale) — the
+// real 5-unit terrace (241x144, roughly 5x wider) needs far more clear width than that spot has
+// available between the presbytery/path/forest border. Placed instead in the open ground between
+// the river's southern bank and the hospice, east of the path — the widest genuinely clear gap
+// left on the map at this building's scale. `CACHOT_DOOR_X/Y` (Le Cachot's own door, the middle
+// unit) is what actually drives the player-spawn/sister-spawn reference point and the walkable
+// door zone below, replacing the old `cachotDoorPx` derived from CACHOT_ROW/COL.
+const CACHOT_BUILDING_LEFT_X = 545;
+const CACHOT_BUILDING_TOP_Y = 1060;
+// Le Cachot's own door sits within the middle unit (index CACHOT_EXTERIOR_CACHOT_UNIT_INDEX),
+// measured by eye against a grid-overlay crop of the source art (same technique as every other
+// footprint in this file) — local to that unit's own top-left, then offset by the cumulative width
+// of the units before it and CACHOT_BUILDING_LEFT_X/TOP_Y to land in world space.
+const CACHOT_DOOR_LOCAL_X = 40; // within the middle unit's own 45px width
+const CACHOT_DOOR_LOCAL_Y = 101; // within the building's shared 144px height
+const CACHOT_DOOR_X =
+  CACHOT_BUILDING_LEFT_X +
+  CACHOT_EXTERIOR_UNIT_WIDTHS.slice(0, CACHOT_EXTERIOR_CACHOT_UNIT_INDEX).reduce((a, b) => a + b, 0) +
+  CACHOT_DOOR_LOCAL_X;
+const CACHOT_DOOR_Y = CACHOT_BUILDING_TOP_Y + CACHOT_DOOR_LOCAL_Y;
 
 // Kept well clear of the map edges (now with a full forest border beyond them too — see
 // `buildForestBorder()`) so the screen-pinned HUD never covers it.
@@ -339,7 +369,7 @@ export class OverworldScene extends Phaser.Scene {
 
     this.touch = new TouchControls(this);
 
-    const cachotDoorPx = this.tileToPixelCenter(CACHOT_COL + 1.5, CACHOT_ROW + 2.5);
+    const cachotDoorPx = { x: CACHOT_DOOR_X, y: CACHOT_DOOR_Y };
     const startY = data.fromCachot ? cachotDoorPx.y - 20 : cachotDoorPx.y + 26;
     this.player = new Player(this, cachotDoorPx.x, startY, this.touch);
 
@@ -365,12 +395,31 @@ export class OverworldScene extends Phaser.Scene {
     this.boyWander = new WanderNpc(this.boy, BOY_WANDER_BOUNDS, BOY_WANDER_SPEED);
 
     const ladyDepth = DEPTH.ACTORS + 0.5;
-    this.lady = new NpcActor(this, NICHE_X, NICHE_Y, 'lady', 'down');
+    // autoDepthEnabled=false: she's a vision, not a physically-present character subject to normal
+    // spatial Y-sorting -- always renders in front of Bernadette regardless of either one's
+    // position (see NpcActor's own doc comment on autoDepthEnabled). Also deliberately left out of
+    // the physics collision group below -- nothing about approaching/standing near her should be
+    // physically blocked.
+    this.lady = new NpcActor(this, NICHE_X, NICHE_Y, 'lady', 'down', 1, false, DEPTH.ACTORS, false);
     this.lady.setDepth(ladyDepth);
     this.lady.setAlpha(0);
     this.ladyGlow = this.add.circle(NICHE_X, NICHE_Y - 8, 22, 0xfff3cf, 0.28);
     this.ladyGlow.setDepth(ladyDepth - 0.001);
     this.ladyGlow.setAlpha(0);
+
+    // General character-vs-character collision: feet-only bodies (see NpcActor's own doc comment
+    // on FEET_*_FRAC), player against every NPC and every NPC against every other NPC -- so
+    // Bernadette can't walk through Jeanne/the sister/the boy, and they can't walk through each
+    // other, while still visually overlapping vertically the normal top-down way. The lady is
+    // deliberately left out (see her own creation comment above).
+    // A plain array, not `physics.add.group()` -- a Group re-applies its own default body config
+    // (including `immovable: false`) to every member it's given, silently undoing the
+    // `body.setImmovable(true)` each NpcActor already set on itself in its own constructor.
+    // `collider()` accepts arrays directly and colliding an array against itself still does
+    // correct pairwise (not self-vs-self) checks, so no Group is needed here at all.
+    const npcs = [this.sister, this.friend, this.boy];
+    this.physics.add.collider(this.player, npcs);
+    this.physics.add.collider(npcs, npcs);
 
     this.cameras.main.setBounds(0, 0, MAP_W, MAP_H);
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
@@ -549,15 +598,65 @@ export class OverworldScene extends Phaser.Scene {
     this.buildings.push({ placement: building, doorZone });
   }
 
-  private buildBuildings(): void {
-    const cachot = this.tileToPixelCenter(CACHOT_COL, CACHOT_ROW);
-    this.addStaticProp(PROP_KEYS.CACHOT_EXTERIOR, cachot.x + 24, cachot.y + 40, 48, 40);
-    this.cachotDoorZone = new Phaser.Geom.Rectangle(cachot.x + 12, cachot.y + 40, 24, 14);
+  /**
+   * Le Cachot's map building: 5 separate images (one per row-house unit, see
+   * `assets/buildings/lourdesCachotExterior.ts`'s own doc comment for why it's sliced rather than
+   * one image), placed edge-to-edge so they read as a single terrace row. Each unit gets its own
+   * Y-sort depth (their own wall/ground line sits at meaningfully different screen-Y per unit, this
+   * being a much wider building than church/presbytery) and its own footprint colliders, following
+   * the same `depthForY(groundLine, DEPTH.ACTORS)` + `createBlocker()` pattern
+   * `addFootprintBuilding()` uses for those, just applied per-unit instead of once for the whole
+   * building. Only the middle unit is Le Cachot: its own footprint gets a gap at the door (so it's
+   * walkable) and drives `this.cachotDoorZone` (unchanged downstream — `update()`/`tryInteract()`
+   * still just check that one rectangle, exactly as before this building was replaced). The other 4
+   * units are solid background architecture only: footprint-collided and depth-sorted like the
+   * middle one, but no label, no door gap, no interaction.
+   */
+  private buildCachotExterior(): void {
+    // Each unit's own wall/ground line, measured by eye against the source art (a grid-overlay
+    // crop, same technique as every other footprint in this file) -- the whole row recedes upward
+    // in screen-Y from left to right in this isometric art, so this can't be one shared value the
+    // way it can for the much-narrower church/presbytery.
+    const groundLineY = [98, 90, 82, 73, 65];
+    const bandHalfHeight = 7;
 
-    this.add
-      .text(cachot.x + 24, cachot.y - 4, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '10px', color: '#3a3226' }))
-      .setOrigin(0.5)
-      .setDepth(DEPTH.OVERLAY_LOW);
+    let cumulativeX = CACHOT_BUILDING_LEFT_X;
+    CACHOT_EXTERIOR_UNIT_KEYS.forEach((key, i) => {
+      const unitW = CACHOT_EXTERIOR_UNIT_WIDTHS[i];
+      const unitX = cumulativeX;
+      const unitY = CACHOT_BUILDING_TOP_Y;
+      const groundY = unitY + groundLineY[i];
+
+      this.add.image(unitX, unitY, key).setOrigin(0, 0).setDepth(depthForY(groundY, DEPTH.ACTORS));
+
+      if (i === CACHOT_EXTERIOR_CACHOT_UNIT_INDEX) {
+        // Split the wall collider around the door gap instead of one solid band across the unit.
+        const doorLeft = unitX + CACHOT_DOOR_LOCAL_X - 4;
+        const doorRight = unitX + CACHOT_DOOR_LOCAL_X + 4;
+        if (doorLeft > unitX) {
+          const w = doorLeft - unitX;
+          this.colliderBodies.push(createBlocker(this, unitX + w / 2, groundY, w, bandHalfHeight * 2));
+        }
+        if (unitX + unitW > doorRight) {
+          const w = unitX + unitW - doorRight;
+          this.colliderBodies.push(createBlocker(this, doorRight + w / 2, groundY, w, bandHalfHeight * 2));
+        }
+
+        this.cachotDoorZone = new Phaser.Geom.Rectangle(doorLeft, groundY - bandHalfHeight, doorRight - doorLeft, bandHalfHeight * 2 + 20);
+        this.add
+          .text(unitX + unitW / 2, unitY - 6, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
+          .setOrigin(0.5)
+          .setDepth(DEPTH.OVERLAY_LOW);
+      } else {
+        this.colliderBodies.push(createBlocker(this, unitX + unitW / 2, groundY, unitW, bandHalfHeight * 2));
+      }
+
+      cumulativeX += unitW;
+    });
+  }
+
+  private buildBuildings(): void {
+    this.buildCachotExterior();
 
     SPECIAL_BUILDINGS.forEach((building) => this.addFootprintBuilding(building));
 
