@@ -1125,6 +1125,138 @@ source crops, idle = plain resize, NEAREST-only textures, etc.):
   confirmed this system works — don't conclude a real bug from a `keyboard.press()` timing miss
   against a moving target without corroborating via a direct method call first.
 
+### Le Cachot: real-art interior + real-art exterior, walk-behind wall, general collision/depth
+
+This round replaced both of Le Cachot's visuals (the interior room `CachotScene.ts` builds and the
+map building `OverworldScene.ts` places) with the maintainer's own artwork, and introduced two
+systems every character in the game now goes through generically rather than per-scene:
+feet-only character-vs-character collision, and automatic Y-sort depth. Read this section rather
+than reconstructing the reasoning from the diff if any of this needs to change.
+
+- **`CachotScene.ts`'s room is now one real-art image, not procedural tiles + `Graphics` walls +
+  individually-placed `INTERIOR_PROP_KEYS` furniture.** `assets/interiors/lourdesCachotInterior.ts`
+  holds two textures: `CACHOT_ROOM_KEY` (the full room, permanent backdrop) and
+  `CACHOT_FRONT_WALL_KEY` (a second copy of just the bottom strip — low stone wall, door, lantern,
+  window — for the walk-behind effect, see below). **Deliberately not color-quantized** the way
+  `lourdesChurch.ts`/`lourdesPresbytery.ts` are — those are small map-scale sprites meant to read as
+  flat pixel-art blocks at building scale; this room was the explicit subject of a "do not change
+  the colors... preserve the pixel-art style" instruction, and quantizing would measurably alter
+  its colors. Instead: one quality (`Image.LANCZOS`) resize straight to final display size offline
+  (290x236 — chosen to fit the 480x270 canvas with a small top margin for the narration caption),
+  never touched again at runtime, same "resize once, never blur at runtime" rule the character
+  sprites already follow. Confirmed via a rendered screenshot that this reads cleanly at native
+  size with zero visible softening from the downscale.
+  - **The supplied image had a soft/blotchy "torn paper" vignette baked into its alpha border**,
+    not a clean silhouette — some pixels right at the edge were nearly-opaque near-black scattered
+    among mostly-transparent ones, so a simple `alpha < threshold` crop or connected-component flood
+    fill from the border kept leaving black flecks in the corners. Fixed by thresholding on alpha
+    (`< 200`, not color), flood-filling the border-connected region at 8-connectivity, then
+    dilating that mask by a few px to swallow the isolated opaque flecks sitting just inside it —
+    color-based thresholding alone couldn't tell "border vignette" apart from genuinely dark
+    in-room pixels (the hearth's own dark interior, shadow under furniture). **Also worth
+    remembering**: the artifact-preview/Read-tool image viewer appears to composite transparent PNG
+    regions onto a dark canvas — a masked image can look like it *still* has black corners in that
+    viewer while the actual alpha data is correct. Composite onto a plain white background yourself
+    (`Image.alpha_composite`) and inspect *that* before concluding a mask attempt failed.
+  - **Furniture/wall colliders**: 15 furniture footprints + 5 wall segments + 2 front-wall segments
+    (flanking the door gap), each a small `createBlocker()` zone sized/positioned from a `FracRect`
+    (fraction of the room's own native 1071x871 source dimensions, converted to world pixels via the
+    room's actual display position/size) — measured by eye against a grid-overlay crop of the source
+    art, the same technique this file already documents for every other footprint in this codebase.
+    Reasonably tight per-object boxes, not one room-sized box, so Bernadette can walk the open floor
+    freely and is only stopped by the objects themselves.
+  - **The "walk behind the front wall" effect reuses the exact same trick
+    `OverworldScene.ts#addFootprintBuilding()` already uses for the church/presbytery** — a second
+    copy of the strip, pinned exactly on top of where it already appears in the backdrop, given one
+    fixed depth from its own ground line (`depthForY(anchorY, DEPTH.ACTORS)`). Bernadette's own
+    per-frame `depthForY(this.y, DEPTH.ACTORS)` (already computed every frame in
+    `Player.ts#update()`) then naturally sorts above or below it as she moves — no new occlusion
+    system, no per-frame work on the wall's own side. Since the front-wall colliders sit right at
+    that same anchor line, she can only get a few px past it before hitting solid wall on either
+    side of the door; inside the door gap itself she keeps walking through, and for those few steps
+    the copy renders in front of her — confirmed via a screenshot showing her lower body/legs
+    correctly hidden behind the door frame while her upper body stays visible above it.
+  - **The door zone auto-triggers the exit** (no E-press needed, gated behind `motherTalkedTo`) —
+    unchanged behavior from the old procedural room, just recomputed for the new room's geometry.
+- **The map building (`assets/buildings/lourdesCachotExterior.ts`) is a 5-unit stone row-house
+  terrace, with Le Cachot as the middle (3rd) unit** — its own door sits right beside a barred
+  ground-floor window, a detail that reads as intentional (Le Cachot was a former town jail cell
+  before the Soubirous family rented it) and is what actually identified which unit was "Le Cachot"
+  when the brief's own two criteria ("middle," "darkest") didn't cleanly agree on pixel inspection.
+  - **Sliced into 5 separate images at exact pixel boundaries, not used as one flat image.** This
+    building is wide enough that its own front wall sits at meaningfully different screen-Y per
+    unit (the row recedes upward toward the right in this isometric art) — a single fixed Y-sort
+    depth for the whole thing (the same trick used for the much-narrower church/presbytery) would be
+    visibly wrong for whichever units sit far from that one anchor line. Slicing lets each unit get
+    its own depth anchor (`groundLineY[i]` in `buildCachotExterior()`) and its own footprint
+    colliders, while still reassembling edge-to-edge with zero gap/overlap since the cuts are exact.
+  - **Only the middle unit is interactive.** Its footprint collider has a gap at the door (so it's
+    walkable) and drives `this.cachotDoorZone` — unchanged downstream, `update()`/`tryInteract()`
+    still just check that one rectangle exactly as before this building was replaced, entering
+    Cachot still needs an E-press/tap while standing in the zone (confirmed live — walking into the
+    zone and just waiting does *not* auto-enter; only `tryInteract()` does). The other 4 units are
+    solid background architecture only: footprint-collided and depth-sorted like the middle one, but
+    no label, no door gap, no interaction.
+  - **Relocated away from the old `CACHOT_ROW`/`CACHOT_COL` tile position** (`CACHOT_BUILDING_LEFT_X`/
+    `TOP_Y`, new dedicated constants) — the old 48x40 procedural placeholder sat right at
+    presbytery's own south-east corner, invisible at that tiny scale but nowhere near enough clear
+    width for a building ~5x wider. Placed instead in the open ground between the river's southern
+    bank and the hospice, east of the path — the widest genuinely clear gap at this building's scale
+    given how much of the town's width the church/presbytery corridor and the hospice/Maison
+    Cénac/tribunal cluster already claim. `CACHOT_ROW`/`CACHOT_COL` still exist and are still used,
+    but now *only* for the unrelated stone-plaza patch `buildTerrain()` draws — don't repurpose them
+    for the building's own position again; that was tried and rejected (see the failed first
+    attempt in git history/session transcript) because it broke the plaza's own row range.
+    Player-spawn/sister-spawn (`cachotDoorPx`, still the same variable name) and `cachotDoorZone` now
+    derive from `CACHOT_DOOR_X`/`Y` (the middle unit's actual door position) instead.
+
+**New general character-system rules, in `NpcActor.ts`, not scene-specific code:**
+
+- **Feet-only physical collision.** `NpcActor` now extends `Phaser.Physics.Arcade.Sprite` (was a
+  plain `Phaser.GameObjects.Sprite` — no physics body of any kind before this round, so no
+  character could ever physically block another). The body is sized/offset from
+  `FEET_WIDTH_FRAC`/`HEIGHT_FRAC`/`OFFSET_Y_FRAC` constants mirroring Bernadette's own hand-tuned
+  collider in `Player.ts` (`setSize(7, 11); setOffset(4, 30)` on her 42px frame — 7/42, 11/42,
+  30/42), computed once at construction from that instance's own initial frame height/width so it
+  self-scales to whatever character (the sister, Jeanne, the boy, future NPCs) is using it.
+  Horizontal centering is `(this.width - feetWidth) / 2` rather than Bernadette's fixed offset,
+  since real-art NPC frame width genuinely varies by facing. **Every `NpcActor` body is
+  `setImmovable(true)`** — colliding with it stops/pushes back whatever hit it (the player, another
+  NPC), but it never gets shoved aside itself; without this, Arcade's default 50/50 separation reads
+  as "gently nudge the NPC out of the way" rather than "walk into something solid" (confirmed by
+  disabling it and watching an NPC drift 40+px from a single player approach in a live test).
+  Wiring: `physics.add.collider(player, [npc, npc, ...])` plus `physics.add.collider([npc, ...],
+  [npc, ...])` (the same array reference on both sides — colliding an array/group with itself still
+  does correct pairwise checks, not self-vs-self) in each scene that has NPCs, once, after every NPC
+  in that scene is created. **Use a plain array, not `physics.add.group()`** — a Group silently
+  re-applies its own default body config (`immovable: false` among it) to every member it's handed,
+  even members that already had a physics body with different settings; this was hit live (bodies
+  read back `immovable: false` despite the constructor's own `setImmovable(true)` call, traced to
+  the group wrapping) and switching to plain arrays (which `collider()` accepts directly) fixed it
+  with no other change.
+- **Automatic per-frame Y-sort depth**, via a new `override preUpdate(time, delta)` — Phaser calls
+  this automatically for any `GameObject` that defines it, no wiring from the owning scene's own
+  `update()` needed. Previously, depth was the responsibility of whichever mover was driving a given
+  instance (`WanderNpc`/`LeaderNpc`/`Follower` each called `actor.setDepth(depthForY(...))`
+  themselves after moving it) — which left a real gap: an `NpcActor` with *no* mover at all (just
+  standing somewhere, e.g. `CachotScene`'s mother) never got a dynamic depth; she was set once to a
+  fixed `DEPTH.ACTORS` value and could never correctly sort against a player who walked below her.
+  Recomputing depth unconditionally every frame for every `NpcActor` regardless of what (if
+  anything) is moving it closes that gap generically. Confirmed live: sampling `player.depth` vs
+  `friend.depth` every frame while walking the player across Jeanne's own Y shows the "which one
+  renders in front" comparison flip exactly at the crossing point, every time. The movers' own
+  `setDepth()` calls are now redundant (same value, computed twice) but harmless — left in place
+  rather than churning three other files to delete them.
+  - **One opt-out**: `autoDepthEnabled` (constructor param, default `true`). `OverworldScene.ts`'s
+    `lady` (the apparition) passes `false` — she's deliberately given a fixed depth just above
+    `DEPTH.ACTORS` so she always renders in front of Bernadette regardless of either one's position
+    (a vision, not a physically-present character subject to normal spatial occlusion). She's also
+    deliberately left out of the physics collision group — nothing about approaching her should be
+    physically blocked.
+  - Both new constructor params (`depthBase`, then `autoDepthEnabled`) are appended after the
+    existing `breathingEnabled` param, defaults matching every prior caller's actual behavior, so no
+    other `new NpcActor(...)` call site in the codebase needed to change.
+
 ### Art direction: history and current constraint
 
 The maintainer rejected the original procedural pixel-art look
