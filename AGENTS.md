@@ -1406,3 +1406,97 @@ touching anything, per usual practice.
 
 All four reverified in the actual running game (not just by reading the
 collider code) after the fixes, per the maintainer's explicit ask.
+
+### Toinette/mother real-art portraits, NPC-stops-while-talking, Toinette's collider, and a second (correct) Le Cachot collider pass
+
+The maintainer reported the previous Le Cachot collider pass (immediately above) as *still* wrong
+-- the upper chair still blocked the space behind it, and the lower wall's occlusion still read as
+the floor, not the beam, covering Bernadette. Alongside that, four other asks: real-art portraits
+for Toinette (young, matching the game's existing sister character) and the mother, NPCs (the boy
+specifically) must stop moving and idle while talking to Bernadette, and Toinette's own collider
+must not block Bernadette while Toinette is following her in Mission 1.
+
+1. **New portraits, same system, zero new plumbing.** `assets/portraits/sisterPortrait.ts` and
+   `motherPortrait.ts` (new files, mirroring `boyPortrait.ts`'s own pattern) derive blink/talk/
+   talkBlink frames from a single neutral reference the same way `boyPortrait.ts` does (skin-tone
+   eye fill + thin eyelid-crease line for blink; a dark elliptical mouth shape, not a rectangle --
+   rectangles read as blocky at this resolution -- for talk), cropped/resized to the game's
+   standard 58x67 portrait box. `REAL_ART_PORTRAIT_IDS` in `pixelart/portraits.ts` now includes
+   `'sister'`/`'mother'` so `registerPortraitTextures()` skips generating procedural portraits for
+   them, and `BootScene.preload()` calls the two new `preload*Portrait()` functions. `PortraitAnimator`
+   and `DialogueBox` needed **zero changes** -- they already address a portrait purely through
+   `portraitKeyFor(characterId, expression)`, which resolves to whichever texture got registered
+   under that key regardless of source. Verified live: triggered `friendMeet` (Toinette's line) and
+   `motherIntro`, screenshotted mid-typing -- both new portraits render correctly with independent
+   blink/mouth animation.
+
+2. **NPCs stopping while talking was already built, just needed wiring to a second caller.** The
+   `uiBlocked` branch in `OverworldScene.update()` already froze `sister`/`friend`/`boy` wander
+   updates and forced `setMoving(false)` the instant a dialogue opened (added in an earlier pass --
+   see the "boy NPC" bullet elsewhere in this file). Nothing here needed changing; this request was
+   effectively already satisfied by that existing mechanism, reused rather than duplicated. Verified
+   live by force-setting `boy.setMoving(true)` (simulating mid-stride) immediately before opening his
+   ambient dialogue, then asserting `boy.moving === false` and his `x`/`y` frozen for the whole time
+   the dialogue box stayed open, and that he resumes wandering (position changes again) once it closes.
+
+3. **Toinette's collider while following: `NpcActor.setCollisionEnabled(enabled)`** (new method,
+   `gameplay/NpcActor.ts`) toggles just `(this.body as Phaser.Physics.Arcade.Body).enable`, which
+   makes Arcade Physics skip that body entirely in every `collider()` check (both directions:
+   Bernadette can't be blocked by her, and she can't be blocked by Bernadette) while leaving manual
+   position updates (`walkTo`, `WanderNpc`, `updateFollowerPosition`) completely unaffected, since
+   those assign `x`/`y` directly rather than going through the physics body -- so she keeps
+   following, animating, and Y-sorting exactly as before, she just stops being solid. Called with
+   `false` right where `friendMeet`'s `onComplete` starts her following (`OverworldScene.ts`), and
+   back to `true` at the top of `beginRiverCrossing()`, once she's walking her own scripted route
+   instead of trailing Bernadette. Verified live: `sister.body.enable` reads `false` immediately
+   after `friendMeet` completes, and `true` again once `beginRiverCrossing()` starts; confirmed the
+   general character-collision system is untouched for every other NPC (unaffected by this change,
+   since `setCollisionEnabled` is only ever called on the sister instance).
+
+4. **Le Cachot collider re-pass: the previous measurements were the actual bug.** The first pass
+   (immediately above in this file) measured colliders against the *native source art* (1071x871)
+   and converted through `frac()`. That conversion was subtly, consistently wrong -- re-measuring
+   directly off the *rendered game* (a screenshot at `camera.setZoom(1); camera.setScroll(0,0)` and
+   viewport `{480,270}` exactly matches the game's logical resolution with no letterboxing, so
+   screenshot pixels == world pixels, with no scale-conversion arithmetic to get wrong) found the
+   previous fireplace-bottom/chair-top gap had been closed by an overlap that didn't exist in the
+   art (true gap: fireplace bottom ~y107, chair back starts ~y118, an 11px real walkable strip), and
+   the wall/beam anchor was off by enough that the crop backing it (`cachot_frontwall.png`,
+   `cachot_chair_north.png`) needed to be regenerated from different native-art crop coordinates,
+   not just have its anchor number tweaked. Introduced `worldFrac(x0,y0,x1,y1)` alongside the
+   existing native-pixel `frac()` (renamed `nativeFrac()` for clarity) in `CachotScene.ts` -- takes
+   the same *world*-space coordinates the screenshot technique above produces directly, subtracting
+   `ROOM_OFFSET_X/Y` internally, and is now what every furniture/door/wall-band rect uses;
+   `nativeFrac()` is kept only for the handful of rects (back/left/right walls, spawns) never
+   reported wrong. `grow()`'s margin also switched from native to world pixels (`MARGIN` 8 native ->
+   2 world, the same real-world size, just expressed in the units actually being worked in now) to
+   avoid mixing unit systems across the same file. **This is the methodological fix, not just a
+   numeric one**: any future collider work on this room (or a similarly real-art scene) should
+   measure off the rendered game directly with `worldFrac()`, not off the source crop with a
+   px-scale conversion formula -- the latter is exactly how both this bug and the previous pass's
+   bug happened.
+   - `buildFrontWallBand()`'s anchor is now just `depthForY(196, DEPTH.ACTORS)` -- the beam's own
+     verified world-space bottom edge -- replacing a stale formula that converted a *different*
+     anchor (native y630) through the *old* crop's now-wrong height, left over from the first pass
+     and never updated when the crop was regenerated. No crop-relative math is needed at all once
+     the anchor is expressed directly in world space, since that's the same space `depthForY()`
+     already consumes.
+   - Verified live (not just by depth-value comparison, though that was checked too: player depth
+     vs. overlay depth on both sides of each anchor): walked Bernadette through the fireplace/chair
+     gap via real key input (poking `body.setVelocity()` directly does *not* work for this kind of
+     test -- `Player.update()` reads keyboard/touch state every frame and overwrites any velocity
+     set from outside it on the very next frame; only actual `page.keyboard.down/up()` simulation
+     drives her), confirmed she's blocked by the chair's own footprint but not by the walkable gap
+     beside it, confirmed the dining table (`grow(worldFrac(191,126,230,175), MARGIN)`) still stops
+     her, confirmed `DOOR_STOPPER` still stops her from reaching the black area south of the room's
+     own art before talking to the mother, and confirmed the doorway itself still exits to
+     `OverworldScene` normally once she has.
+   - One test-methodology trap worth flagging so it isn't rediscovered: placing the player directly
+     *inside* a collider's footprint via `player.body.reset(x, y)` (to stage a "walk behind X" shot)
+     gets her immediately shoved out by Arcade Physics' own overlap-separation on the very next
+     physics step, landing her somewhere unexpected in the very next screenshot -- stage walk-behind
+     screenshots in the actual walkable gap next to an object, never on top of its own collider.
+
+Also reverted this pass's own temporary debug scaffolding before committing: the `window.__game`
+hook in `main.ts` and the `playwright` devDependency, both added earlier in the session purely to
+drive this kind of live verification, same as every previous audit in this file.

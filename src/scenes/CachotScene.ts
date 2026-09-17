@@ -8,7 +8,6 @@ import {
   CACHOT_CHAIR_NORTH_KEY,
   CACHOT_ROOM_WIDTH,
   CACHOT_ROOM_HEIGHT,
-  CACHOT_FRONT_WALL_HEIGHT,
   CACHOT_FRONT_WALL_LOCAL_Y,
   CACHOT_CHAIR_NORTH_HEIGHT,
   CACHOT_CHAIR_NORTH_LOCAL_X,
@@ -43,12 +42,20 @@ const ROOM_OFFSET_X = Math.round((GAME_WIDTH - CACHOT_ROOM_WIDTH) / 2);
 const ROOM_OFFSET_Y = 22;
 
 /**
- * A collision/interaction rectangle measured against the room backdrop's own *native* pixel
- * coordinates (the pre-crop source, 1071x871 -- see `lourdesCachotInterior.ts`), stored here as
- * fractions of that native size so the numbers read directly off a grid-overlay crop of the
- * source art rather than needing to be pre-multiplied by hand. `toWorldRect()` below converts a
- * fraction rect to actual world pixels using the room's own *displayed* size/position, so this
- * stays correct if the display size is ever retuned.
+ * A collision/interaction rectangle, stored as a fraction of the room backdrop's own *displayed*
+ * size so it stays correct if that display size is ever retuned. Two ways to build one below:
+ * `nativeFrac()` for rectangles measured against the source art's own pre-crop pixel coordinates
+ * (1071x871), and `worldFrac()` for rectangles measured directly against the *rendered game* (a
+ * screenshot taken at camera zoom 1, scroll (0,0), where screen pixels equal world pixels 1:1).
+ *
+ * **Why two.** The furniture/wall/door numbers below were originally all `nativeFrac()`, measured
+ * by eye off grid-overlay crops of the source art. That turned out to be unreliable for tightly
+ * spaced objects: the table+chairs collider undershot the actual table width, and the front-wall
+ * anchor and the fireplace/north-chair boundary were each off by enough to cause visible bugs (see
+ * AGENTS.md for the full account of re-measuring each one). Every rectangle below that participates
+ * in one of those bugs is now `worldFrac()`, cross-checked against a live screenshot rather than
+ * the source crop; the ones that were never reported wrong (the room's own four walls, the two
+ * spawn points) are left as the original `nativeFrac()` values.
  */
 interface FracRect {
   xFrac: number;
@@ -60,93 +67,115 @@ interface FracRect {
 const NATIVE_W = 1071;
 const NATIVE_H = 871;
 
-function frac(x0: number, y0: number, x1: number, y1: number): FracRect {
+function nativeFrac(x0: number, y0: number, x1: number, y1: number): FracRect {
   return { xFrac: x0 / NATIVE_W, yFrac: y0 / NATIVE_H, wFrac: (x1 - x0) / NATIVE_W, hFrac: (y1 - y0) / NATIVE_H };
 }
 
-/** Grows a FracRect outward by `nativePx` native pixels on every side -- the "small safety margin"
+/** `x0,y0,x1,y1` here are *world* pixels (i.e. what a ruler against a screenshot of the actual
+ * running game would read), not native source pixels -- see the doc comment above. */
+function worldFrac(x0: number, y0: number, x1: number, y1: number): FracRect {
+  return {
+    xFrac: (x0 - ROOM_OFFSET_X) / CACHOT_ROOM_WIDTH,
+    yFrac: (y0 - ROOM_OFFSET_Y) / CACHOT_ROOM_HEIGHT,
+    wFrac: (x1 - x0) / CACHOT_ROOM_WIDTH,
+    hFrac: (y1 - y0) / CACHOT_ROOM_HEIGHT,
+  };
+}
+
+/** Grows a FracRect outward by `worldPx` world pixels on every side -- the "small safety margin"
  * the maintainer asked for on solid furniture, so Bernadette reads as clearly stopped short of an
  * object rather than looking like she can stand exactly on its edge. Deliberately small (the
  * maintainer was explicit that colliders don't need to be pixel-perfect, just not flush with the
- * artwork), and applied uniformly rather than re-measuring every item by hand. */
-function grow(r: FracRect, nativePx: number): FracRect {
-  const dx = nativePx / NATIVE_W;
-  const dy = nativePx / NATIVE_H;
+ * artwork), and applied uniformly rather than re-measuring the margin for every item by hand. */
+function grow(r: FracRect, worldPx: number): FracRect {
+  const dx = worldPx / CACHOT_ROOM_WIDTH;
+  const dy = worldPx / CACHOT_ROOM_HEIGHT;
   return { xFrac: r.xFrac - dx, yFrac: r.yFrac - dy, wFrac: r.wFrac + dx * 2, hFrac: r.hFrac + dy * 2 };
 }
 
-const MARGIN = 8;
+const MARGIN = 2;
 
 /**
- * Every solid piece of furniture in the room, measured by eye against a grid-overlay crop of the
- * source art (same technique used throughout this codebase's real-art asset work -- see
- * AGENTS.md). Each becomes its own small `createBlocker()` zone rather than one room-sized box, so
- * Bernadette can walk freely through the open floor and is only actually stopped by the objects
- * themselves -- "reasonably follow the position and shape... without unnecessarily large blocked
- * areas," per the maintainer's own brief. Re-measured against the actual rendered game (not just
- * the source art) after the maintainer reported walking onto the table and the upper chair
- * blocking a walk-behind area that should have been open -- see AGENTS.md for the full account.
+ * Every solid piece of furniture in the room. Each becomes its own small `createBlocker()` zone
+ * rather than one room-sized box, so Bernadette can walk freely through the open floor and is only
+ * actually stopped by the objects themselves -- "reasonably follow the position and shape...
+ * without unnecessarily large blocked areas," per the maintainer's own brief. All measured with
+ * `worldFrac()` against the rendered game -- see the FracRect doc comment above for why.
  */
 const FURNITURE_FOOTPRINTS: FracRect[] = [
-  grow(frac(355, 225, 480, 330), MARGIN), // hearth/fireplace base
-  grow(frac(220, 220, 330, 300), MARGIN), // dresser
-  grow(frac(500, 185, 650, 300), MARGIN), // chest (widened -- the old box undershot its right edge)
-  grow(frac(715, 225, 905, 380), MARGIN), // bed
-  grow(frac(655, 295, 710, 345), MARGIN), // small stool, left of bed
-  grow(frac(838, 355, 905, 425), MARGIN), // stool/nightstand, foot of bed
-  frac(368, 378, 518, 545), // dining table + the south (front) chair -- solid, own margin baked in
-  grow(frac(150, 325, 225, 450), MARGIN), // bench/bedroll under the left window
-  grow(frac(60, 495, 165, 590), MARGIN), // barrel
-  grow(frac(168, 535, 222, 590), MARGIN), // bucket
-  grow(frac(670, 495, 705, 650), MARGIN), // wood support pillar
-  grow(frac(735, 565, 795, 625), MARGIN), // stool near the pillar
-  grow(frac(765, 430, 955, 530), MARGIN), // stairs/railing structure
-  grow(frac(865, 465, 960, 560), MARGIN), // spinning wheel
-  grow(frac(862, 565, 955, 650), MARGIN), // basket of towels
+  worldFrac(186, 40, 230, 107), // hearth/fireplace -- bottom edge deliberately NOT grown; it faces
+  // the north chair below and the real gap there is only ~11 world px (see NORTH_CHAIR_FOOTPRINT)
+  grow(worldFrac(147, 46, 191, 103), MARGIN), // dresser
+  grow(worldFrac(223, 73, 268, 109), MARGIN), // chest
+  grow(worldFrac(274, 70, 349, 140), MARGIN), // bed
+  grow(worldFrac(240, 97, 265, 121), MARGIN), // small stool, left of bed
+  grow(worldFrac(315, 132, 348, 163), MARGIN), // stool/nightstand, foot of bed
+  grow(worldFrac(191, 126, 230, 175), MARGIN), // dining table + the south (front) chair, merged
+  grow(worldFrac(124, 109, 155, 153), MARGIN), // bench/bedroll under the left window
+  grow(worldFrac(90, 147, 136, 186), MARGIN), // barrel
+  grow(worldFrac(129, 157, 155, 188), MARGIN), // bucket
+  grow(worldFrac(265, 152, 288, 201), MARGIN), // wood support pillar
+  grow(worldFrac(319, 150, 346, 173), MARGIN), // stool near the pillar
+  grow(worldFrac(372, 139, 433, 168), MARGIN), // stairs/railing structure
+  grow(worldFrac(326, 140, 364, 197), MARGIN), // spinning wheel
+  grow(worldFrac(320, 170, 359, 201), MARGIN), // basket of towels
 ];
 
 /**
  * The north (upper, back) dining chair gets its own small footprint instead of being lumped into
  * the table cluster above: the maintainer specifically wants to be able to walk in the space
  * behind/above this one chair (between it and the hearth), which a big merged collider covering
- * that whole area would prevent. Deliberately snug (not `grow()`-ed) since it's paired with its
- * own walk-behind visual overlay (`buildNorthChairOverlay()`) rather than relying on margin alone
- * to avoid an "on top of the chair" look. */
-const NORTH_CHAIR_FOOTPRINT: FracRect = frac(398, 325, 485, 378);
+ * that whole area would prevent. There genuinely is a walkable gap there in the artwork -- the
+ * fireplace's own base ends at world y~107 and the chair's back doesn't start until y~118, an
+ * ~11px-tall strip that the previous (native-measured) colliders had closed off entirely because
+ * both were mis-measured by enough to overlap. Deliberately snug on top (not `grow()`-ed there) to
+ * keep that gap open; paired with its own walk-behind visual overlay
+ * (`buildNorthChairOverlay()`) rather than relying on margin alone to avoid an "on top of the
+ * chair" look. */
+const NORTH_CHAIR_FOOTPRINT: FracRect = worldFrac(200, 115, 225, 131);
 
 /** The room's four walls -- back, left, right, and the front (with a gap left open for the door;
- * see FRONT_WALL_GAP_X below and buildFrontWallBand()). Each wall is one or two rectangles
+ * see FRONT_WALL_LEFT/RIGHT below and buildFrontWallBand()). Each wall is one or two rectangles
  * following its own footprint rather than a single room-perimeter box, since (like the buildings
  * in OverworldScene.ts) the tall angled roof/upper wall above these bands should remain
- * walk-behind-only, not solid. */
+ * walk-behind-only, not solid. Never reported wrong, so left as the original native-measured
+ * values. */
 const WALL_FOOTPRINTS: FracRect[] = [
-  frac(175, 50, 935, 172), // back wall (behind hearth/dresser/chest/bed)
-  frac(0, 50, 215, 310), // left wall, upper diagonal
-  frac(0, 300, 65, 655), // left wall, lower vertical
-  frac(860, 50, 1071, 310), // right wall, upper diagonal
-  frac(1000, 300, 1071, 655), // right wall, lower vertical
+  nativeFrac(175, 50, 935, 172), // back wall (behind hearth/dresser/chest/bed)
+  nativeFrac(0, 50, 215, 310), // left wall, upper diagonal
+  nativeFrac(0, 300, 65, 655), // left wall, lower vertical
+  nativeFrac(860, 50, 1071, 310), // right wall, upper diagonal
+  nativeFrac(1000, 300, 1071, 655), // right wall, lower vertical
 ];
 
-// The front wall's door gap (native x 420-580) is left out of the solid colliders below so
-// Bernadette can walk through it to exit -- see FRONT_WALL_GAP_X and buildFrontWallBand().
-const FRONT_WALL_LEFT: FracRect = frac(0, 598, 420, 660);
-const FRONT_WALL_RIGHT: FracRect = frac(580, 598, 1071, 660);
+/**
+ * The front (south) wall, door, and threshold -- all `worldFrac()`, measured directly off the
+ * rendered game after the maintainer reported both the wall's occlusion boundary and the door's
+ * black-area leak as still wrong. The wooden beam capping this low wall (the actual visual
+ * boundary Bernadette should disappear behind -- see buildFrontWallBand()) sits at world y182-196;
+ * the stone wall/door frame below it runs from there down to the steps at the bottom of the room's
+ * own artwork, world y~240.
+ */
+// Solid sides flanking the door gap (world x220-243 is the walkable opening).
+const FRONT_WALL_LEFT: FracRect = worldFrac(95, 182, 220, 265);
+const FRONT_WALL_RIGHT: FracRect = worldFrac(243, 182, 385, 265);
 
 /** The exit trigger -- walking into this band (with the mother already spoken to) leaves for the
- * Overworld, same as the door zone the old procedural room used. */
-const DOOR_ZONE = frac(420, 590, 580, 630);
+ * Overworld, same as the door zone the old procedural room used. Sits right at the doorway/steps,
+ * well north of DOOR_STOPPER below. */
+const DOOR_ZONE = worldFrac(220, 196, 243, 210);
 
-/** A stopper spanning the door gap itself, placed just south of DOOR_ZONE's own bottom edge (native
- * y630) rather than inside it, so it never blocks the doorway/threshold or the exit trigger. Without
- * this, the gap between FRONT_WALL_LEFT/RIGHT has no collider at all, and until the mother has been
- * spoken to (the only thing that makes DOOR_ZONE actually fire exitToOverworld()), Bernadette could
- * keep walking straight through the doorway into the unused black area outside the room's own
- * artwork -- see AGENTS.md. Once she's allowed to leave, she never reaches this: the exit fires the
- * moment she enters DOOR_ZONE, well north of this stopper. */
-const DOOR_STOPPER: FracRect = frac(420, 630, 580, 665);
+/** A stopper spanning the door gap itself, placed south of the steps (world y~240) rather than
+ * inside DOOR_ZONE, so it never blocks the doorway/threshold or the exit trigger. Without this, the
+ * gap between FRONT_WALL_LEFT/RIGHT has no collider at all, and until the mother has been spoken to
+ * (the only thing that makes DOOR_ZONE actually fire exitToOverworld()), Bernadette could keep
+ * walking straight through the doorway into the unused black area outside the room's own artwork --
+ * see AGENTS.md. Once she's allowed to leave, she never reaches this: the exit fires the moment she
+ * enters DOOR_ZONE, well north of this stopper. */
+const DOOR_STOPPER: FracRect = worldFrac(220, 240, 243, 270);
 
-const PLAYER_SPAWN = frac(490, 550, 510, 570); // just inside the door, facing into the room
-const MOTHER_SPAWN = frac(590, 410, 610, 430); // open floor between the chest and the bed
+const PLAYER_SPAWN = nativeFrac(490, 550, 510, 570); // just inside the door, facing into the room
+const MOTHER_SPAWN = nativeFrac(590, 410, 610, 430); // open floor between the chest and the bed
 
 function fracCenter(r: FracRect): { x: number; y: number } {
   return { x: ROOM_OFFSET_X + (r.xFrac + r.wFrac / 2) * CACHOT_ROOM_WIDTH, y: ROOM_OFFSET_Y + (r.yFrac + r.hFrac / 2) * CACHOT_ROOM_HEIGHT };
@@ -241,27 +270,23 @@ export class CachotScene extends Phaser.Scene {
    * moves -- the exact same trick `OverworldScene.ts#addFootprintBuilding()` already uses for the
    * church/presbytery, reused here rather than inventing a new occlusion system.
    *
-   * **Anchor, 2nd pass.** The maintainer reported the occlusion reading as tied to the floor
-   * instead of the wooden beam capping the low wall. Measured directly against the *rendered game*
-   * (not just the source crop -- see AGENTS.md for why that matters here): the beam sits at native
-   * y~613-646, and the original anchor (native y610) was already almost exactly at the beam's own
-   * top edge. The real bug was the crop itself: at the old height (76 world px, cropped from native
-   * y590) there were only ~5px of crop above the anchor line, so Bernadette's 42px-tall sprite
-   * almost never geometrically overlapped the wall image at all while she was north of the anchor --
-   * the comparison was correct but had nothing to actually hide. `lourdesCachotInterior.ts` now
-   * crops from native y550 instead (see its own doc comment), giving enough headroom for a real,
-   * visible chunk of her sprite to be covered once she's behind the beam, while staying south of
-   * the table/chairs so it can never affect sorting anywhere else in the room.
-   *
-   * Anchor: native y630 (mid-beam), mapped into the *new, taller* crop's local display space.
+   * **Anchor, 3rd pass (world-pixel measured).** The first two passes both measured off the
+   * *native source art* and converted through a crop-relative formula -- and both were wrong, by
+   * enough to make the occlusion read as the floor covering Bernadette instead of the wooden beam
+   * (see AGENTS.md). This pass abandons that conversion entirely: the anchor is now the beam's own
+   * verified *world*-space bottom edge, y196 (screenshotted directly off the live-rendered game at
+   * camera zoom=1/scroll=(0,0), where screenshot pixels equal world pixels exactly -- see
+   * `lourdesCachotInterior.ts`'s own doc comment and FRONT_WALL_LEFT/RIGHT above, which were
+   * re-measured the same way and agree: the beam spans world y182-196). No crop-height math is
+   * needed any more because the anchor is expressed directly in the same world-coordinate space
+   * `depthForY()` already consumes -- the crop's own local geometry is irrelevant to where the
+   * *comparison* happens, only to what pixels get shown once it wins.
    */
   private buildFrontWallBand(): void {
     const wallX = ROOM_OFFSET_X;
     const wallY = ROOM_OFFSET_Y + CACHOT_FRONT_WALL_LOCAL_Y;
-    const cropNativeTop = 550;
-    const cropNativeHeight = NATIVE_H - cropNativeTop;
-    const anchorLocalY = ((630 - cropNativeTop) / cropNativeHeight) * CACHOT_FRONT_WALL_HEIGHT;
-    this.add.image(wallX, wallY, CACHOT_FRONT_WALL_KEY).setOrigin(0, 0).setDepth(depthForY(wallY + anchorLocalY, DEPTH.ACTORS));
+    const beamBottomWorldY = 196;
+    this.add.image(wallX, wallY, CACHOT_FRONT_WALL_KEY).setOrigin(0, 0).setDepth(depthForY(beamBottomWorldY, DEPTH.ACTORS));
   }
 
   /**

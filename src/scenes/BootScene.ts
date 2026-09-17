@@ -27,6 +27,8 @@ import { preloadBoySprite, registerBoySprite } from '../assets/npc/boySprite';
 import { preloadBernadettePortrait } from '../assets/portraits/bernadettePortrait';
 import { preloadJeannePortrait } from '../assets/portraits/jeannePortrait';
 import { preloadBoyPortrait } from '../assets/portraits/boyPortrait';
+import { preloadSisterPortrait } from '../assets/portraits/sisterPortrait';
+import { preloadMotherPortrait } from '../assets/portraits/motherPortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
 import { preloadLourdesChurch } from '../assets/buildings/lourdesChurch';
 import { preloadLourdesPresbytery } from '../assets/buildings/lourdesPresbytery';
@@ -49,6 +51,8 @@ export class BootScene extends Phaser.Scene {
     preloadBernadettePortrait(this);
     preloadJeannePortrait(this);
     preloadBoyPortrait(this);
+    preloadSisterPortrait(this);
+    preloadMotherPortrait(this);
     preloadLourdesGrass(this);
     preloadLourdesChurch(this);
     preloadLourdesPresbytery(this);

@@ -772,9 +772,22 @@ export class OverworldScene extends Phaser.Scene {
     // Runs regardless of phase (unlike the follower/leader above) -- once the sister and Jeanne
     // start wandering near the far riverbank after the crossing, they should keep pottering around
     // through the hush/apparition/praying/ending phases too, not freeze the moment the phase changes.
-    this.sisterWander?.update(delta, DEPTH.ACTORS);
-    this.friendWander?.update(delta, DEPTH.ACTORS);
-    this.boyWander?.update(delta, DEPTH.ACTORS);
+    // Paused specifically while a dialogue is on screen, though: an NPC mid-conversation with
+    // Bernadette (the boy's ambient chat is the reachable case today, but this covers any future
+    // wander-driven NPC the same way) shouldn't keep ambling off and playing its walk animation
+    // behind the dialogue box. `setMoving(false)` is called every blocked frame rather than once,
+    // so an NPC that was mid-stride the instant dialogue opened drops into its idle pose immediately
+    // instead of finishing that step; `WanderNpc` itself is simply not ticked, so its own idle/walk
+    // timer and target are exactly where they left off once the dialogue closes and updates resume.
+    if (uiBlocked) {
+      this.sister.setMoving(false);
+      this.friend.setMoving(false);
+      this.boy.setMoving(false);
+    } else {
+      this.sisterWander?.update(delta, DEPTH.ACTORS);
+      this.friendWander?.update(delta, DEPTH.ACTORS);
+      this.boyWander?.update(delta, DEPTH.ACTORS);
+    }
 
     if (uiBlocked) {
       this.interactionPrompt.hide();
@@ -873,6 +886,11 @@ export class OverworldScene extends Phaser.Scene {
       this.dialogueBox.start(mission01Dialogue.friendMeet, () => {
         this.friendMet = true;
         this.sister.setVisible(true);
+        // She's about to start following close behind Bernadette (see the `updateFollowerPosition`
+        // call in update()) -- her own collider would otherwise be able to block Bernadette's path
+        // whenever she trails into it. Turned back on in beginRiverCrossing(), once she's walking
+        // her own scripted route instead of tracking Bernadette.
+        this.sister.setCollisionEnabled(false);
         this.leader = new LeaderNpc(this.friend, JEANNE_WAYPOINTS, JEANNE_SPEED, JEANNE_MAX_DISTANCE, JEANNE_RESUME_DISTANCE);
         MissionManager.advanceObjective();
         this.tasksPanel.notifyNewObjective();
@@ -941,6 +959,9 @@ export class OverworldScene extends Phaser.Scene {
     this.phase = 'crossing';
     this.player.setLocked(true);
     this.interactionPrompt.hide();
+    // She's no longer following Bernadette from here on (a scripted walk, then wandering the far
+    // bank), so the general character-collision system applies to her again.
+    this.sister.setCollisionEnabled(true);
 
     await Promise.all([
       this.friend.walkTo(FAR_BANK.friendX, FAR_BANK.y, 1600),

@@ -191,6 +191,21 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
     this.shadow.setDepth(this.depth - 0.0005);
   }
 
+  /**
+   * Turns this actor's own physics body on/off for collision purposes, without touching its
+   * position, visibility, or animation. `body.enable = false` makes Arcade Physics skip this body
+   * entirely in every `collider()` check it's part of (both "Bernadette can't walk through her" and
+   * "other NPCs can't walk through her"), while manual position updates (`walkTo`, `WanderNpc`,
+   * `updateFollowerPosition`) keep working exactly as before since those just assign `x`/`y`
+   * directly rather than going through the physics body. Used for Toinette specifically: while
+   * she's following close behind Bernadette during Mission 1, her own collider could otherwise
+   * block Bernadette's path (see `OverworldScene.ts`) -- turned back on once she's no longer
+   * following, so the general character-collision system still applies to her the rest of the time.
+   */
+  setCollisionEnabled(enabled: boolean): void {
+    (this.body as Phaser.Physics.Arcade.Body).enable = enabled;
+  }
+
   walkTo(x: number, y: number, duration: number): Promise<void> {
     const dx = x - this.x;
     const dy = y - this.y;

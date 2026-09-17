@@ -46,25 +46,29 @@ export const CACHOT_ROOM_HEIGHT = 236;
  * i.e. relative to the room image's top-left) where it must be placed so it lines up exactly with
  * the matching strip already drawn in the room backdrop.
  *
- * Re-cropped (2nd pass) starting further up the floor (native y550 instead of the original y590)
- * so the copy has enough vertical headroom for Bernadette's own sprite height to actually overlap
- * it before she reaches the wooden beam — the original 76px-tall crop started so close to the beam
- * that the occlusion comparison almost never had any pixels to actually hide (see AGENTS.md). Still
- * the same source pixels at the same scale, just a taller slice of them; the extra floor at the top
- * is pixel-identical to what's already drawn there in the room backdrop, so there's still no seam. */
+ * Re-cropped (3rd pass) starting at native y584 (world-space local y158) — far enough up the floor
+ * to give Bernadette's own sprite height real room to overlap this copy before she reaches the
+ * wooden beam (a too-short crop was the original bug: the occlusion comparison was correct but had
+ * almost no pixels to actually hide against — see AGENTS.md), but still south of the dining table's
+ * own footprint (measured directly off the *rendered game*, not the source crop, after that same
+ * measuring mistake was found to have also mis-placed the table/chair colliders — see AGENTS.md),
+ * so this copy can never affect sorting anywhere else in the room. Same source pixels, same scale,
+ * just a taller slice of them; the extra floor at the top is pixel-identical to what's already
+ * drawn there in the room backdrop, so there's still no seam. */
 export const CACHOT_FRONT_WALL_WIDTH = 290;
-export const CACHOT_FRONT_WALL_HEIGHT = 87;
-export const CACHOT_FRONT_WALL_LOCAL_Y = 149;
+export const CACHOT_FRONT_WALL_HEIGHT = 78;
+export const CACHOT_FRONT_WALL_LOCAL_Y = 158;
 
 /** A small walk-behind overlay for just the north (upper) dining chair — same technique as the
  * front wall above (a second copy of the same pixels, Y-sorted against the player), sized to that
  * one chair plus a little surrounding floor rather than the whole room, so it only affects the
  * player's sort order right around the chair itself. Local coordinates work the same way as
- * `CACHOT_FRONT_WALL_LOCAL_Y` above (relative to the room backdrop's own top-left). */
-export const CACHOT_CHAIR_NORTH_WIDTH = 34;
-export const CACHOT_CHAIR_NORTH_HEIGHT = 22;
-export const CACHOT_CHAIR_NORTH_LOCAL_X = 103;
-export const CACHOT_CHAIR_NORTH_LOCAL_Y = 83;
+ * `CACHOT_FRONT_WALL_LOCAL_Y` above (relative to the room backdrop's own top-left) — measured, like
+ * the wall crop above, directly off the rendered game rather than the source art. */
+export const CACHOT_CHAIR_NORTH_WIDTH = 55;
+export const CACHOT_CHAIR_NORTH_HEIGHT = 46;
+export const CACHOT_CHAIR_NORTH_LOCAL_X = 90;
+export const CACHOT_CHAIR_NORTH_LOCAL_Y = 78;
 
 export function preloadLourdesCachotInterior(scene: Phaser.Scene): void {
   scene.load.image(CACHOT_ROOM_KEY, cachotRoomUrl);

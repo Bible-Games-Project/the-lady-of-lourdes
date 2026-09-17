@@ -21,14 +21,15 @@ export function portraitKeyFor(id: CharacterId, expression: Expression = 'neutra
   return `portrait_${id}_${expression}`;
 }
 
-const REAL_ART_PORTRAIT_IDS: CharacterId[] = ['bernadette', 'friend'];
+const REAL_ART_PORTRAIT_IDS: CharacterId[] = ['bernadette', 'friend', 'boy', 'sister', 'mother'];
 
 /**
- * Bernadette and Jeanne (`'friend'`) are excluded here for the same reason Bernadette is excluded
- * from `characters.ts#registerCharacterTextures()` — they use the maintainer's own portrait
- * artwork (`assets/portraits/bernadettePortrait.ts` / `jeannePortrait.ts`), preloaded under these
- * same `portraitKeyFor()` keys. Registering a procedural bust here too would collide with (or,
- * depending on load order, pre-empt) the real one. Every other character (mother, sister, lady,
+ * Bernadette, Jeanne (`'friend'`), the boy, Toinette (`'sister'`), and the mother are excluded
+ * here for the same reason Bernadette is excluded from `characters.ts#registerCharacterTextures()`
+ * — they use the maintainer's own portrait artwork (`assets/portraits/bernadettePortrait.ts` /
+ * `jeannePortrait.ts` / `boyPortrait.ts` / `sisterPortrait.ts` / `motherPortrait.ts`), preloaded
+ * under these same `portraitKeyFor()` keys. Registering a procedural bust here too would collide
+ * with (or, depending on load order, pre-empt) the real one. Every other character (lady,
  * villagers) is unaffected and still procedural.
  */
 export function registerPortraitTextures(scene: Phaser.Scene): void {
