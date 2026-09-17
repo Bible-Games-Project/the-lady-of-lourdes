@@ -1337,3 +1337,72 @@ Fixed narrowly in `OverworldScene.ts` with a one-frame
 and consumed at the top of `tryInteract()` — scoped to the boy interaction
 only, not a change to `DialogueBox` or the mother/Jeanne flows (both keep
 working exactly as before, reverified live after the fix).
+
+### Le Cachot interior: real collision/depth bugs found by actually walking the room
+
+The maintainer tested the interior directly and reported four specific
+bugs; all four were reproduced live (position-sweeps + screenshots via a
+temporary `window.__game` hook, same pattern as the earlier audits) before
+touching anything, per usual practice.
+
+1. **Table.** The old `FURNITURE_FOOTPRINTS` entry merged the table *and
+   both* chairs into one native-pixel rect (`frac(378, 350, 508, 545)`)
+   measured off the small source crop by eye. Re-measured against the
+   *rendered game itself* (screenshot pixels == world pixels at zoom 1,
+   scroll (0,0) — far more reliable than eyeballing a separately-cropped
+   static image) and it undershot the table's real width on both sides.
+   Split into two rects: `frac(368, 378, 518, 545)` for the table + south
+   (front) chair, still one solid merged block since nothing needs to walk
+   behind that one, and a separate small `NORTH_CHAIR_FOOTPRINT` for the
+   other chair (see #2). A new `grow()` helper adds an 8-native-px margin
+   (~2 display px) to every `FURNITURE_FOOTPRINTS` entry except the two
+   that already have deliberately-fitted bounds, per the "small safety
+   margin, not pixel-perfect" ask.
+2. **Upper (north) chair.** Previously part of the same merged table+chairs
+   box, so the whole area around it -- including the open floor beside it
+   -- was solid. Given its own small `NORTH_CHAIR_FOOTPRINT` and a
+   walk-behind visual overlay (`buildNorthChairOverlay()`, `cachot_chair_
+   north.png`, same Y-sort-against-one-fixed-depth technique as the front
+   wall) so it no longer over-blocks and renders in front of her correctly
+   when she's near it. **One real constraint surfaced during verification,
+   worth flagging rather than glossing over**: in the source art this chair
+   sits flush against the fireplace's own stone hearth base -- their
+   collider footprints touch with ~0px gap on every side (confirmed against
+   the art, not just the numbers). There is no walkable gap directly behind
+   this specific chair to open up without shrinking the fireplace's own
+   collider into its visibly-solid bricks, which the maintainer's "do not
+   change the artwork or room layout" instruction rules out. The chair no
+   longer over-blocks the floor beside/around it (the actual bug), and the
+   depth-sort is correct wherever she can actually reach.
+3. **Lower wall / wooden beam.** Reproduced by sweeping `player.y` from
+   150-230 and screenshotting every step at zoom 1, scroll (0,0): with the
+   old crop, she was **fully visible at every single position**, including
+   standing right at the door's stone steps -- the occlusion effect was
+   not just mistimed, it never visibly fired at all under normal movement.
+   Root cause: the old front-wall crop (`cachot_frontwall.png`, native
+   y590-871, 76 display px tall) started so close to its own anchor
+   (native y610, chosen correctly -- right at the beam) that Bernadette's
+   42px-tall sprite had almost no room to geometrically overlap the wall
+   image while she was still "behind" it; the depth comparison was right,
+   there was just nothing to actually hide. Re-cropped the same source
+   pixels starting further up the floor (native y550 instead of 590 --
+   still comfortably south of the table/chairs so it can never affect
+   sorting anywhere else in the room), giving real headroom for the
+   occlusion to be visible, and moved the anchor to native y630 (mid-beam,
+   measured directly off the rendered game rather than the source crop).
+   Reswept after the fix: she now disappears fully north of the beam and
+   reappears progressively as she crosses it, confirmed via screenshots.
+4. **Door / black area.** Confirmed live: with `motherTalkedTo` false (the
+   only thing that makes the door zone actually fire `exitToOverworld()`),
+   nothing stopped her walking straight through the door gap and off the
+   south edge of the room's own artwork into the unused black area behind
+   it -- `FRONT_WALL_LEFT`/`RIGHT` only cover the two sides flanking the
+   gap, never the gap itself. Added `DOOR_STOPPER`
+   (`frac(420, 630, 580, 665)`), positioned south of `DOOR_ZONE`'s own
+   bottom edge so it never blocks the doorway or the exit trigger itself.
+   Reverified both directions: with `motherTalkedTo` false she now stops
+   well short of the void; with it true, walking the same path still exits
+   to `OverworldScene` exactly as before (no regression).
+
+All four reverified in the actual running game (not just by reading the
+collider code) after the fixes, per the maintainer's explicit ask.

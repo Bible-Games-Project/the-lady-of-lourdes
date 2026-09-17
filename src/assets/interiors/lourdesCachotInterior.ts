@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import cachotRoomUrl from './cachot_room.png';
 import cachotFrontWallUrl from './cachot_frontwall.png';
+import cachotChairNorthUrl from './cachot_chair_north.png';
 
 /**
  * The maintainer's own artwork for Le Cachot's interior (isometric room: hearth, bed, dining
@@ -34,6 +35,7 @@ import cachotFrontWallUrl from './cachot_frontwall.png';
  */
 export const CACHOT_ROOM_KEY = 'lourdes_cachot_room';
 export const CACHOT_FRONT_WALL_KEY = 'lourdes_cachot_front_wall';
+export const CACHOT_CHAIR_NORTH_KEY = 'lourdes_cachot_chair_north';
 
 /** Native/display pixel size of the room backdrop (pre-sized to this exact size offline, so no
  * runtime scaling is needed at all — avoids any nearest-neighbor downscale aliasing). */
@@ -42,12 +44,30 @@ export const CACHOT_ROOM_HEIGHT = 236;
 
 /** The front-wall crop's own size, and the Y (in the *room backdrop's own local coordinates*,
  * i.e. relative to the room image's top-left) where it must be placed so it lines up exactly with
- * the matching strip already drawn in the room backdrop. */
+ * the matching strip already drawn in the room backdrop.
+ *
+ * Re-cropped (2nd pass) starting further up the floor (native y550 instead of the original y590)
+ * so the copy has enough vertical headroom for Bernadette's own sprite height to actually overlap
+ * it before she reaches the wooden beam — the original 76px-tall crop started so close to the beam
+ * that the occlusion comparison almost never had any pixels to actually hide (see AGENTS.md). Still
+ * the same source pixels at the same scale, just a taller slice of them; the extra floor at the top
+ * is pixel-identical to what's already drawn there in the room backdrop, so there's still no seam. */
 export const CACHOT_FRONT_WALL_WIDTH = 290;
-export const CACHOT_FRONT_WALL_HEIGHT = 76;
-export const CACHOT_FRONT_WALL_LOCAL_Y = 160;
+export const CACHOT_FRONT_WALL_HEIGHT = 87;
+export const CACHOT_FRONT_WALL_LOCAL_Y = 149;
+
+/** A small walk-behind overlay for just the north (upper) dining chair — same technique as the
+ * front wall above (a second copy of the same pixels, Y-sorted against the player), sized to that
+ * one chair plus a little surrounding floor rather than the whole room, so it only affects the
+ * player's sort order right around the chair itself. Local coordinates work the same way as
+ * `CACHOT_FRONT_WALL_LOCAL_Y` above (relative to the room backdrop's own top-left). */
+export const CACHOT_CHAIR_NORTH_WIDTH = 34;
+export const CACHOT_CHAIR_NORTH_HEIGHT = 22;
+export const CACHOT_CHAIR_NORTH_LOCAL_X = 103;
+export const CACHOT_CHAIR_NORTH_LOCAL_Y = 83;
 
 export function preloadLourdesCachotInterior(scene: Phaser.Scene): void {
   scene.load.image(CACHOT_ROOM_KEY, cachotRoomUrl);
   scene.load.image(CACHOT_FRONT_WALL_KEY, cachotFrontWallUrl);
+  scene.load.image(CACHOT_CHAIR_NORTH_KEY, cachotChairNorthUrl);
 }
