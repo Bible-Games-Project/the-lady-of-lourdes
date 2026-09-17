@@ -2,17 +2,7 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, GAME_WIDTH, DEPTH } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import {
-  CACHOT_ROOM_KEY,
-  CACHOT_FRONT_WALL_KEY,
-  CACHOT_CHAIR_NORTH_KEY,
-  CACHOT_ROOM_WIDTH,
-  CACHOT_ROOM_HEIGHT,
-  CACHOT_FRONT_WALL_LOCAL_Y,
-  CACHOT_CHAIR_NORTH_HEIGHT,
-  CACHOT_CHAIR_NORTH_LOCAL_X,
-  CACHOT_CHAIR_NORTH_LOCAL_Y,
-} from '../assets/interiors/lourdesCachotInterior';
+import { CACHOT_ROOM_KEY, CACHOT_ROOM_WIDTH, CACHOT_ROOM_HEIGHT } from '../assets/interiors/lourdesCachotInterior';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { MOTHER_FRAME_HEIGHT } from '../assets/npc/motherSprite';
@@ -50,12 +40,11 @@ const ROOM_OFFSET_Y = 22;
  *
  * **Why two.** The furniture/wall/door numbers below were originally all `nativeFrac()`, measured
  * by eye off grid-overlay crops of the source art. That turned out to be unreliable for tightly
- * spaced objects: the table+chairs collider undershot the actual table width, and the front-wall
- * anchor and the fireplace/north-chair boundary were each off by enough to cause visible bugs (see
- * AGENTS.md for the full account of re-measuring each one). Every rectangle below that participates
- * in one of those bugs is now `worldFrac()`, cross-checked against a live screenshot rather than
- * the source crop; the ones that were never reported wrong (the room's own four walls, the two
- * spawn points) are left as the original `nativeFrac()` values.
+ * spaced objects and fine door/step geometry (see AGENTS.md for the full account of re-measuring
+ * each one that was reported wrong). Every rectangle below that participates in one of those bugs
+ * is now `worldFrac()`, cross-checked against a live screenshot rather than the source crop; the
+ * ones that were never reported wrong (the room's own four walls, the two spawn points) are left
+ * as the original `nativeFrac()` values.
  */
 interface FracRect {
   xFrac: number;
@@ -103,8 +92,9 @@ const MARGIN = 2;
  * `worldFrac()` against the rendered game -- see the FracRect doc comment above for why.
  */
 const FURNITURE_FOOTPRINTS: FracRect[] = [
-  worldFrac(186, 40, 230, 107), // hearth/fireplace -- bottom edge deliberately NOT grown; it faces
-  // the north chair below and the real gap there is only ~11 world px (see NORTH_CHAIR_FOOTPRINT)
+  worldFrac(186, 40, 230, 107), // hearth/fireplace -- bottom edge deliberately not grown, leaving
+  // the open floor south of it (where the upper dining chair used to stand -- now removed from the
+  // artwork entirely, see lourdesCachotInterior.ts) as unobstructed as possible
   grow(worldFrac(147, 46, 191, 103), MARGIN), // dresser
   grow(worldFrac(223, 73, 268, 109), MARGIN), // chest
   grow(worldFrac(274, 70, 349, 140), MARGIN), // bed
@@ -121,25 +111,11 @@ const FURNITURE_FOOTPRINTS: FracRect[] = [
   grow(worldFrac(320, 170, 359, 201), MARGIN), // basket of towels
 ];
 
-/**
- * The north (upper, back) dining chair gets its own small footprint instead of being lumped into
- * the table cluster above: the maintainer specifically wants to be able to walk in the space
- * behind/above this one chair (between it and the hearth), which a big merged collider covering
- * that whole area would prevent. There genuinely is a walkable gap there in the artwork -- the
- * fireplace's own base ends at world y~107 and the chair's back doesn't start until y~118, an
- * ~11px-tall strip that the previous (native-measured) colliders had closed off entirely because
- * both were mis-measured by enough to overlap. Deliberately snug on top (not `grow()`-ed there) to
- * keep that gap open; paired with its own walk-behind visual overlay
- * (`buildNorthChairOverlay()`) rather than relying on margin alone to avoid an "on top of the
- * chair" look. */
-const NORTH_CHAIR_FOOTPRINT: FracRect = worldFrac(200, 115, 225, 131);
-
 /** The room's four walls -- back, left, right, and the front (with a gap left open for the door;
- * see FRONT_WALL_LEFT/RIGHT below and buildFrontWallBand()). Each wall is one or two rectangles
- * following its own footprint rather than a single room-perimeter box, since (like the buildings
- * in OverworldScene.ts) the tall angled roof/upper wall above these bands should remain
- * walk-behind-only, not solid. Never reported wrong, so left as the original native-measured
- * values. */
+ * see FRONT_WALL_LEFT/RIGHT below). Each wall is one or two rectangles following its own footprint
+ * rather than a single room-perimeter box, since (like the buildings in OverworldScene.ts) the
+ * tall angled roof/upper wall above these bands should remain walk-behind-only, not solid. Never
+ * reported wrong, so left as the original native-measured values. */
 const WALL_FOOTPRINTS: FracRect[] = [
   nativeFrac(175, 50, 935, 172), // back wall (behind hearth/dresser/chest/bed)
   nativeFrac(0, 50, 215, 310), // left wall, upper diagonal
@@ -149,30 +125,46 @@ const WALL_FOOTPRINTS: FracRect[] = [
 ];
 
 /**
- * The front (south) wall, door, and threshold -- all `worldFrac()`, measured directly off the
- * rendered game after the maintainer reported both the wall's occlusion boundary and the door's
- * black-area leak as still wrong. The wooden beam capping this low wall (the actual visual
- * boundary Bernadette should disappear behind -- see buildFrontWallBand()) sits at world y182-196;
- * the stone wall/door frame below it runs from there down to the steps at the bottom of the room's
- * own artwork, world y~240.
+ * The front (south) wall, half-open door, and steps -- all `worldFrac()`, measured directly off
+ * the rendered game (grid-overlay crops at camera zoom 1/scroll (0,0), where screenshot pixels
+ * equal world pixels 1:1). The maintainer asked for two changes here: the wall no longer has any
+ * walk-behind/occlusion effect at all -- it is now a plain solid boundary Bernadette simply cannot
+ * pass, the same as every other piece of furniture in the room -- and the door's own collision must
+ * follow its actual half-open shape (solid where the door leaf and its frame post are, open where
+ * the artwork shows a real gap with steps visible beyond it), not one rectangle spanning the whole
+ * doorway.
+ *
+ * Reading the doorway left to right at these world coordinates: a stone jamb/door-leaf-in-shadow
+ * block from x208 to x228 (the left frame post at 208-213 and the door leaf itself, swung ajar,
+ * merge into one continuous dark shape with no daylight between them -- so one solid rect covers
+ * both), then a genuine open gap from x228 to x248 where the stone steps are directly visible
+ * through the doorway, then the right frame post, solid again, from x248 onward. Vertically the low
+ * wall/door band runs from world y182 (its own top edge) down to y265 (past the steps, into the
+ * room art's own black margin) -- FRONT_WALL_LEFT/RIGHT both simply span that whole height now
+ * (no more splitting off a "walk-behind" strip), since a solid boundary doesn't need to stop short
+ * of anything the way the old occlusion overlay did.
  */
-// Solid sides flanking the door gap (world x220-243 is the walkable opening).
-const FRONT_WALL_LEFT: FracRect = worldFrac(95, 182, 220, 265);
-const FRONT_WALL_RIGHT: FracRect = worldFrac(243, 182, 385, 265);
+const FRONT_WALL_LEFT: FracRect = worldFrac(95, 182, 228, 265);
+const FRONT_WALL_RIGHT: FracRect = worldFrac(248, 182, 385, 265);
 
-/** The exit trigger -- walking into this band (with the mother already spoken to) leaves for the
- * Overworld, same as the door zone the old procedural room used. Sits right at the doorway/steps,
- * well north of DOOR_STOPPER below. */
-const DOOR_ZONE = worldFrac(220, 196, 243, 210);
+/**
+ * The steps visible through the open gap, read directly off the same grid-overlay crop: a first
+ * (upper, nearer the door) tread from world y222-232, and a second (lower, nearer the black area
+ * beyond the room's own art) tread from y232-242. The maintainer asked for the exit teleport to
+ * fire specifically when Bernadette reaches the *second* step, not the first -- so this trigger
+ * (checked the same way the old DOOR_ZONE was, a plain Rectangle.Contains against her feet
+ * position, gated on `motherTalkedTo`) is deliberately the second tread's own footprint, not the
+ * whole staircase.
+ */
+const SECOND_STEP_ZONE: FracRect = worldFrac(228, 232, 248, 242);
 
-/** A stopper spanning the door gap itself, placed south of the steps (world y~240) rather than
- * inside DOOR_ZONE, so it never blocks the doorway/threshold or the exit trigger. Without this, the
- * gap between FRONT_WALL_LEFT/RIGHT has no collider at all, and until the mother has been spoken to
- * (the only thing that makes DOOR_ZONE actually fire exitToOverworld()), Bernadette could keep
- * walking straight through the doorway into the unused black area outside the room's own artwork --
- * see AGENTS.md. Once she's allowed to leave, she never reaches this: the exit fires the moment she
- * enters DOOR_ZONE, well north of this stopper. */
-const DOOR_STOPPER: FracRect = worldFrac(220, 240, 243, 270);
+/** A physical stopper south of the second step (y242 down into the room art's own black margin,
+ * y270), so that even before the mother has been spoken to (the only thing that makes
+ * SECOND_STEP_ZONE actually fire exitToOverworld()) Bernadette can never walk past the steps into
+ * the unused black area outside the room's own artwork -- see AGENTS.md. Once she's allowed to
+ * leave, she never reaches this: the exit fires the moment she enters SECOND_STEP_ZONE, well north
+ * of this stopper. */
+const DOOR_STOPPER: FracRect = worldFrac(228, 242, 248, 270);
 
 const PLAYER_SPAWN = nativeFrac(490, 550, 510, 570); // just inside the door, facing into the room
 const MOTHER_SPAWN = nativeFrac(590, 410, 610, 430); // open floor between the chest and the bed
@@ -191,7 +183,7 @@ export class CachotScene extends Phaser.Scene {
   private mother!: NpcActor;
   private motherTalkedTo = false;
   private keyE!: Phaser.Input.Keyboard.Key;
-  private doorZone!: Phaser.Geom.Rectangle;
+  private secondStepZone!: Phaser.Geom.Rectangle;
   private colliderBodies: (Phaser.Types.Physics.Arcade.ImageWithStaticBody | Phaser.GameObjects.Zone)[] = [];
 
   constructor() {
@@ -228,9 +220,6 @@ export class CachotScene extends Phaser.Scene {
     this.physics.add.collider(this.player, npcs);
     this.physics.add.collider(npcs, npcs);
 
-    this.buildFrontWallBand();
-    this.buildNorthChairOverlay();
-
     this.dialogueBox = new DialogueBox(this);
     this.tasksPanel = new TasksPanel(this);
     this.topBar = new GameplayTopBar(this);
@@ -239,72 +228,27 @@ export class CachotScene extends Phaser.Scene {
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
 
-    const doorRect = DOOR_ZONE;
-    this.doorZone = new Phaser.Geom.Rectangle(
-      ROOM_OFFSET_X + doorRect.xFrac * CACHOT_ROOM_WIDTH,
-      ROOM_OFFSET_Y + doorRect.yFrac * CACHOT_ROOM_HEIGHT,
-      doorRect.wFrac * CACHOT_ROOM_WIDTH,
-      doorRect.hFrac * CACHOT_ROOM_HEIGHT,
+    const stepRect = SECOND_STEP_ZONE;
+    this.secondStepZone = new Phaser.Geom.Rectangle(
+      ROOM_OFFSET_X + stepRect.xFrac * CACHOT_ROOM_WIDTH,
+      ROOM_OFFSET_Y + stepRect.yFrac * CACHOT_ROOM_HEIGHT,
+      stepRect.wFrac * CACHOT_ROOM_WIDTH,
+      stepRect.hFrac * CACHOT_ROOM_HEIGHT,
     );
   }
 
-  /** The maintainer's own room artwork, used as the permanent backdrop, plus invisible colliders
-   * matching its actual furniture/walls -- see the FURNITURE_FOOTPRINTS/WALL_FOOTPRINTS doc
-   * comments above for the full reasoning. */
+  /** The maintainer's own room artwork, used as the permanent backdrop (the upper dining chair has
+   * been removed from this same artwork -- see `lourdesCachotInterior.ts`'s doc comment), plus
+   * invisible colliders matching its actual furniture/walls -- see the FURNITURE_FOOTPRINTS/
+   * WALL_FOOTPRINTS doc comments above for the full reasoning. */
   private buildRoom(): void {
     this.add.image(ROOM_OFFSET_X, ROOM_OFFSET_Y, CACHOT_ROOM_KEY).setOrigin(0, 0).setDepth(DEPTH.GROUND);
 
-    [...FURNITURE_FOOTPRINTS, NORTH_CHAIR_FOOTPRINT, ...WALL_FOOTPRINTS, FRONT_WALL_LEFT, FRONT_WALL_RIGHT, DOOR_STOPPER].forEach((r) => {
+    [...FURNITURE_FOOTPRINTS, ...WALL_FOOTPRINTS, FRONT_WALL_LEFT, FRONT_WALL_RIGHT, DOOR_STOPPER].forEach((r) => {
       const cx = ROOM_OFFSET_X + (r.xFrac + r.wFrac / 2) * CACHOT_ROOM_WIDTH;
       const cy = ROOM_OFFSET_Y + (r.yFrac + r.hFrac / 2) * CACHOT_ROOM_HEIGHT;
       this.colliderBodies.push(createBlocker(this, cx, cy, r.wFrac * CACHOT_ROOM_WIDTH, r.hFrac * CACHOT_ROOM_HEIGHT));
     });
-  }
-
-  /**
-   * The "walk behind the front wall" effect: a second copy of the room's own bottom strip (low
-   * stone wall, door, lantern, window -- see `lourdesCachotInterior.ts`'s doc comment), pinned
-   * exactly on top of where that same strip already appears in the backdrop, given ONE fixed depth
-   * from its own ground line. Bernadette's own per-frame `depthForY(this.y, DEPTH.ACTORS)` (already
-   * computed every frame in `Player.ts#update()`) then naturally sorts above or below it as she
-   * moves -- the exact same trick `OverworldScene.ts#addFootprintBuilding()` already uses for the
-   * church/presbytery, reused here rather than inventing a new occlusion system.
-   *
-   * **Anchor, 3rd pass (world-pixel measured).** The first two passes both measured off the
-   * *native source art* and converted through a crop-relative formula -- and both were wrong, by
-   * enough to make the occlusion read as the floor covering Bernadette instead of the wooden beam
-   * (see AGENTS.md). This pass abandons that conversion entirely: the anchor is now the beam's own
-   * verified *world*-space bottom edge, y196 (screenshotted directly off the live-rendered game at
-   * camera zoom=1/scroll=(0,0), where screenshot pixels equal world pixels exactly -- see
-   * `lourdesCachotInterior.ts`'s own doc comment and FRONT_WALL_LEFT/RIGHT above, which were
-   * re-measured the same way and agree: the beam spans world y182-196). No crop-height math is
-   * needed any more because the anchor is expressed directly in the same world-coordinate space
-   * `depthForY()` already consumes -- the crop's own local geometry is irrelevant to where the
-   * *comparison* happens, only to what pixels get shown once it wins.
-   */
-  private buildFrontWallBand(): void {
-    const wallX = ROOM_OFFSET_X;
-    const wallY = ROOM_OFFSET_Y + CACHOT_FRONT_WALL_LOCAL_Y;
-    const beamBottomWorldY = 196;
-    this.add.image(wallX, wallY, CACHOT_FRONT_WALL_KEY).setOrigin(0, 0).setDepth(depthForY(beamBottomWorldY, DEPTH.ACTORS));
-  }
-
-  /**
-   * The same walk-behind technique as `buildFrontWallBand()` above, applied to just the north
-   * (upper) dining chair: a second copy of the chair (plus a little surrounding floor) pinned on
-   * top of where it's already drawn in the room backdrop, Y-sorted against the player from ONE
-   * fixed depth at the chair's own base. Unlike the front wall, this is a small object entirely
-   * surrounded by open, walkable floor, so its collider (`NORTH_CHAIR_FOOTPRINT`) only blocks the
-   * chair itself -- walking in the space between the chair and the hearth is allowed, and this
-   * overlay is what makes that read correctly (chair renders in front of her there) instead of her
-   * sprite simply floating on top of the chair's own pixels, since the room backdrop is one flat
-   * image always behind every actor.
-   */
-  private buildNorthChairOverlay(): void {
-    const chairX = ROOM_OFFSET_X + CACHOT_CHAIR_NORTH_LOCAL_X;
-    const chairY = ROOM_OFFSET_Y + CACHOT_CHAIR_NORTH_LOCAL_Y;
-    const groundLine = chairY + CACHOT_CHAIR_NORTH_HEIGHT;
-    this.add.image(chairX, chairY, CACHOT_CHAIR_NORTH_KEY).setOrigin(0, 0).setDepth(depthForY(groundLine, DEPTH.ACTORS));
   }
 
   private buildNarration(): void {
@@ -325,11 +269,11 @@ export class CachotScene extends Phaser.Scene {
     }
 
     const nearMother = !this.motherTalkedTo && isNear(this.player, this.mother, INTERACT_RADIUS);
-    const atDoor = this.motherTalkedTo && Phaser.Geom.Rectangle.Contains(this.doorZone, this.player.x, this.player.y);
+    const onSecondStep = this.motherTalkedTo && Phaser.Geom.Rectangle.Contains(this.secondStepZone, this.player.x, this.player.y);
 
     if (nearMother) {
       this.interactionPrompt.showAt(this.mother.x, this.mother.y - 26, Localization.t(K.INTERACT_TALK));
-    } else if (atDoor) {
+    } else if (onSecondStep) {
       this.interactionPrompt.showAt(this.player.x, this.player.y - 24, Localization.t(K.INTERACT_EXIT));
     } else {
       this.interactionPrompt.hide();
@@ -339,7 +283,7 @@ export class CachotScene extends Phaser.Scene {
       this.tryInteract();
     }
 
-    if (atDoor) {
+    if (onSecondStep) {
       this.exitToOverworld();
     }
   }

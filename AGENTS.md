@@ -1500,3 +1500,70 @@ must not block Bernadette while Toinette is following her in Mission 1.
 Also reverted this pass's own temporary debug scaffolding before committing: the `window.__game`
 hook in `main.ts` and the `playwright` devDependency, both added earlier in the session purely to
 drive this kind of live verification, same as every previous audit in this file.
+
+### Le Cachot: chair removed from the art, lower wall simplified to a plain solid boundary, half-open door given real geometry
+
+A third request on this same room, after the two collider-measurement passes above got the numbers
+right but the maintainer wanted the *design* simplified rather than continuing to tune it: remove
+the upper chair entirely (not just stop it from over-blocking), drop the lower wall's walk-behind/
+occlusion trick altogether in favor of a plain solid boundary, and give the half-open door real
+solid/open geometry instead of one rectangle spanning the whole doorway gap. Also added: an exit
+teleport keyed specifically to the *second* step of the two visible outside the door, not the first.
+
+- **The chair had to be removed from the actual pixel art, not just hidden by code.** Unlike the
+  walk-behind chair *overlay* removed here too, the chair itself is baked into the single flat
+  `cachot_room.png` backdrop every other piece of room art also lives on — there's no separate
+  "chair layer" to toggle off. Fixed with a clone-stamp: sampled a same-sized patch of the room's
+  own clean floor from directly beside the chair (world x60-85, y93-109 -- verified clear of the
+  bench/rug/other furniture that clutters most of the surrounding area at that height) and pasted
+  it directly over the chair's own footprint (x98-123, y93-109) in `cachot_room.png` with plain
+  PIL, before any of the Phaser-side code changes. Same "never redraw, only crop/paste/resize the
+  maintainer's own pixels" discipline every other real-art edit in this file follows — no new pixels
+  invented, just floor pixels relocated over the old chair's silhouette. `NORTH_CHAIR_FOOTPRINT`
+  (the collider) and `buildNorthChairOverlay()`/`CACHOT_CHAIR_NORTH_KEY` (the walk-behind visual
+  trick) are deleted outright, along with the now-orphaned `cachot_chair_north.png` asset file —
+  nothing left to toggle since there's no chair there to sort against any more.
+- **The lower wall's walk-behind occlusion system (`buildFrontWallBand()`, `CACHOT_FRONT_WALL_KEY`,
+  `cachot_frontwall.png`) is deleted outright**, not merely disconnected — the maintainer was
+  explicit that this room doesn't want depth/occlusion complexity here at all: "the wall simply
+  acts as a physical boundary." `FRONT_WALL_LEFT`/`FRONT_WALL_RIGHT` are now the *only* thing
+  representing this wall in code, each spanning the wall's full visual height (world y182-265, same
+  as before) with no split-off "walk-behind strip." Bernadette was already never meant to be *south*
+  of this wall anyway (there's nothing there but the room art's own black margin), so a plain solid
+  boundary loses nothing gameplay-wise versus the deleted occlusion trick.
+- **The half-open door's collision now actually follows the artwork's own half-open shape**,
+  re-measured the same `worldFrac()`-against-a-live-screenshot way as everything else in this file:
+  reading the doorway left to right at world y182-242, there's a solid dark block from x208 to x228
+  (the left frame post and the door leaf itself, swung ajar, read as one continuous dark shape with
+  no daylight visible between them -- confirmed by sampling actual pixel luminance across that
+  span, not just eyeballing it, since the door's diagonal swung-open edge is subtle enough at this
+  resolution to misjudge by eye alone), then a genuine open gap from x228 to x248 where the stone
+  steps are directly visible through the doorway, then the right frame post, solid again, from
+  x248 on. `FRONT_WALL_LEFT` now simply extends to x228 and `FRONT_WALL_RIGHT` now starts at x248 --
+  merging "wall" and "solid door" into the same two rects rather than adding a third, since they're
+  contiguous with no gap between them and nothing about the game needs them distinguished at
+  runtime. The previous pass's door boundary (x220/x243) undershot this on both sides.
+- **New: an exit trigger keyed to the second of two visible steps, not the whole staircase.** The
+  steps below the door read as two distinct treads once measured precisely: a first (upper) one at
+  world y222-232 and a second (lower) one at y232-242. `SECOND_STEP_ZONE` (renamed from the old
+  generic `DOOR_ZONE`, same `Phaser.Geom.Rectangle.Contains()`-against-her-feet check, same
+  `motherTalkedTo` gate, same `exitToOverworld()` call -- nothing about *how* the trigger fires
+  changed, only *where*) is deliberately just the second tread's own footprint, `worldFrac(228, 232,
+  248, 242)`, not the first step or the whole gap. `DOOR_STOPPER` (the physical fallback that keeps
+  her out of the black area before she's allowed to leave) moved with it, now sitting immediately
+  south of the second step (y242-270) instead of south of the old, wider door zone.
+- **A second test-methodology trap worth flagging, distinct from the "started embedded in a
+  collider" one already documented above**: this room's playable canvas is only `GAME_HEIGHT` (270)
+  tall, and the lower wall's own bottom edge sits at world y265 -- only 5px of clearance before the
+  world's own physics bounds. Trying to stage a "walk up into the wall from below" test by placing
+  the player south of the wall (e.g. `player.y = 285`) doesn't raise an out-of-bounds error; Arcade
+  Physics silently clamps the position back within `physics.world.bounds` (which defaults to the
+  canvas size, never explicitly set larger in this scene), landing her — invisibly, from the test's
+  perspective — a few pixels *embedded in* the wall instead of clear south of it, which then
+  triggers the exact same instant-overlap-separation artifact as the already-documented trap, just
+  arrived at differently. The fix was the same one used for the chair/wall-behind screenshots two
+  passes ago: never approach a boundary-collision test from the cramped/out-of-bounds side when a
+  clear approach from the open-room side is available. Every wall/door test in this pass instead
+  starts from open floor well inside the room and walks *toward* the boundary, which has the added
+  benefit of matching how the maintainer's own bug reports are actually phrased ("walk behind the
+  wall" implies approaching from inside the room, not spawning behind it).

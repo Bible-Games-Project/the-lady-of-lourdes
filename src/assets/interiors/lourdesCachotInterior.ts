@@ -1,27 +1,20 @@
 import Phaser from 'phaser';
 import cachotRoomUrl from './cachot_room.png';
-import cachotFrontWallUrl from './cachot_frontwall.png';
-import cachotChairNorthUrl from './cachot_chair_north.png';
 
 /**
  * The maintainer's own artwork for Le Cachot's interior (isometric room: hearth, bed, dining
- * table, dresser, chest, spinning wheel, front door), replacing the previous procedural tile
- * floor + `Graphics`-drawn walls + a handful of `INTERIOR_PROP_KEYS` furniture images that
- * `CachotScene.ts` used to build by hand. Recovered byte-for-byte from the conversation that
- * supplied it, then only cropped and resized — never redrawn, recolored, or altered — per an
- * explicit "preserve it faithfully" ask.
+ * table, dresser, chest, spinning wheel, front door), used as the permanent backdrop.
+ * Recovered byte-for-byte from the conversation that supplied it, then only cropped and
+ * resized — never redrawn, recolored, or altered — per an explicit "preserve it faithfully" ask.
+ * The one exception is the small patch over the upper dining chair (see `CachotScene.ts`'s own
+ * doc comment on chair removal for why and how), still done as a pixel clone from this same
+ * artwork's own floor rather than a redraw.
  *
- * **Two images, not one**, for the "walk behind the front wall" effect `CachotScene.ts` needs:
- * `CACHOT_ROOM_KEY` is the full room (used as the permanent backdrop, always behind the player),
- * and `CACHOT_FRONT_WALL_KEY` is a second copy of just the bottom strip (the low stone wall, door,
- * lantern, and window nearest the camera) cropped from the *same* source pixels at the *same*
- * scale. The front-wall copy is positioned to sit exactly on top of where that same strip already
- * appears in the room backdrop, then Y-sorted against the player every frame the same way
- * `OverworldScene.ts#addFootprintBuilding()` already sorts the church/presbytery against her: one
- * depth value fixed from the wall's own ground line, compared each frame against
- * `depthForY(player.y, ...)`. Since the wall copy is pixel-identical to what's already drawn
- * beneath it, there's no seam — it only adds the occlusion capability the single flat backdrop
- * can't provide on its own. See `CachotScene.ts` for the actual placement/depth math.
+ * **No longer two images.** This used to also ship `CACHOT_FRONT_WALL_KEY`/`CACHOT_CHAIR_NORTH_KEY`,
+ * second copies of the lower wall and the north chair Y-sorted against the player every frame to
+ * let her walk visually "behind" them. The maintainer asked to remove that entirely: the lower
+ * wall is now a plain solid collider (see `CachotScene.ts`), and the chair itself is gone from the
+ * art, so neither walk-behind copy has anything left to do. Deleted rather than left unused.
  *
  * **Why not color-quantized like `lourdesChurch.ts`/`lourdesPresbytery.ts`**: those assets
  * deliberately quantize to a small flat-color palette because they're small map-scale sprites
@@ -34,44 +27,12 @@ import cachotChairNorthUrl from './cachot_chair_north.png';
  * below for why no `setFilter(LINEAR)` call happens either.
  */
 export const CACHOT_ROOM_KEY = 'lourdes_cachot_room';
-export const CACHOT_FRONT_WALL_KEY = 'lourdes_cachot_front_wall';
-export const CACHOT_CHAIR_NORTH_KEY = 'lourdes_cachot_chair_north';
 
 /** Native/display pixel size of the room backdrop (pre-sized to this exact size offline, so no
  * runtime scaling is needed at all — avoids any nearest-neighbor downscale aliasing). */
 export const CACHOT_ROOM_WIDTH = 290;
 export const CACHOT_ROOM_HEIGHT = 236;
 
-/** The front-wall crop's own size, and the Y (in the *room backdrop's own local coordinates*,
- * i.e. relative to the room image's top-left) where it must be placed so it lines up exactly with
- * the matching strip already drawn in the room backdrop.
- *
- * Re-cropped (3rd pass) starting at native y584 (world-space local y158) — far enough up the floor
- * to give Bernadette's own sprite height real room to overlap this copy before she reaches the
- * wooden beam (a too-short crop was the original bug: the occlusion comparison was correct but had
- * almost no pixels to actually hide against — see AGENTS.md), but still south of the dining table's
- * own footprint (measured directly off the *rendered game*, not the source crop, after that same
- * measuring mistake was found to have also mis-placed the table/chair colliders — see AGENTS.md),
- * so this copy can never affect sorting anywhere else in the room. Same source pixels, same scale,
- * just a taller slice of them; the extra floor at the top is pixel-identical to what's already
- * drawn there in the room backdrop, so there's still no seam. */
-export const CACHOT_FRONT_WALL_WIDTH = 290;
-export const CACHOT_FRONT_WALL_HEIGHT = 78;
-export const CACHOT_FRONT_WALL_LOCAL_Y = 158;
-
-/** A small walk-behind overlay for just the north (upper) dining chair — same technique as the
- * front wall above (a second copy of the same pixels, Y-sorted against the player), sized to that
- * one chair plus a little surrounding floor rather than the whole room, so it only affects the
- * player's sort order right around the chair itself. Local coordinates work the same way as
- * `CACHOT_FRONT_WALL_LOCAL_Y` above (relative to the room backdrop's own top-left) — measured, like
- * the wall crop above, directly off the rendered game rather than the source art. */
-export const CACHOT_CHAIR_NORTH_WIDTH = 55;
-export const CACHOT_CHAIR_NORTH_HEIGHT = 46;
-export const CACHOT_CHAIR_NORTH_LOCAL_X = 90;
-export const CACHOT_CHAIR_NORTH_LOCAL_Y = 78;
-
 export function preloadLourdesCachotInterior(scene: Phaser.Scene): void {
   scene.load.image(CACHOT_ROOM_KEY, cachotRoomUrl);
-  scene.load.image(CACHOT_FRONT_WALL_KEY, cachotFrontWallUrl);
-  scene.load.image(CACHOT_CHAIR_NORTH_KEY, cachotChairNorthUrl);
 }
