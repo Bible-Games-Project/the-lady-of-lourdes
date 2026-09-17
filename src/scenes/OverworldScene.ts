@@ -336,6 +336,7 @@ export class OverworldScene extends Phaser.Scene {
 
   private boy!: NpcActor;
   private boyWander: WanderNpc | null = null;
+  private boyDialogueJustClosed = false;
 
   private lady!: NpcActor;
   private ladyGlow!: Phaser.GameObjects.Arc;
@@ -361,6 +362,7 @@ export class OverworldScene extends Phaser.Scene {
     this.sisterWander = null;
     this.friendWander = null;
     this.boyWander = null;
+    this.boyDialogueJustClosed = false;
     this.colliderBodies = [];
     this.buildings = [];
     this.firewoodSprites = [];
@@ -849,6 +851,20 @@ export class OverworldScene extends Phaser.Scene {
       this.rosary.advance();
       return;
     }
+    // DialogueBox binds its own permanent 'keydown-E' listener (to advance/close the box) *in
+    // addition* to this scene's own JustDown(keyE) polling below (to *open* an interaction). Both
+    // fire off the same physical keypress: on the line that closes a dialogue, DialogueBox's own
+    // listener runs first (synchronously, as part of Phaser's input-event dispatch) and closes the
+    // box, then this same frame's update() sees dialogueBox.isActive() already false and would
+    // immediately reopen it if the player is still standing in range -- an infinite same-key
+    // close/reopen loop. The mother/friend dialogues below are accidentally immune (their
+    // one-time flags are set inside that same synchronous close(), so the guard just above already
+    // blocks the reopen), but the boy's flagless, deliberately-repeatable ambient chat has no such
+    // flag, so it needs one for exactly one frame after it closes.
+    if (this.boyDialogueJustClosed) {
+      this.boyDialogueJustClosed = false;
+      return;
+    }
     if (this.phase !== 'explore' || this.dialogueBox.isActive()) return;
 
     const player = this.player;
@@ -866,8 +882,11 @@ export class OverworldScene extends Phaser.Scene {
 
     if (isNear(player, this.boy, INTERACT_RADIUS)) {
       // Purely ambient -- no MissionManager call, no one-time flag, no side effect on him at all
-      // (he stays put, keeps wandering once the box closes). Repeatable on every interaction.
-      this.dialogueBox.start(boyAmbientDialogue);
+      // (he stays put, keeps wandering once the box closes). Repeatable on every interaction. The
+      // onComplete here only sets the one-frame close guard above -- see its comment.
+      this.dialogueBox.start(boyAmbientDialogue, () => {
+        this.boyDialogueJustClosed = true;
+      });
       return;
     }
 

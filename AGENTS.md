@@ -1289,3 +1289,51 @@ too). Verify manually: `bun run build` for type-check + bundle, then
 `bun run dev` and click through in a real browser. Phaser games are easy to
 get into a state where physics silently no-ops (see the static body gotcha
 above) without throwing — a build passing is not proof the game is playable.
+
+### Audit pass: Le Cachot exterior/interior, character collision/Y-sort, boy NPC
+
+A full live-game audit (Playwright driving the dev server via a temporary
+`window.__game` hook, restored to plain `new Phaser.Game(config)` afterward)
+confirmed the following were already correctly implemented and working —
+left untouched: exterior 5-unit row-house PNG fidelity and placement,
+per-unit colliders (not one giant box — confirmed by walking into each unit
+and getting stopped only at that unit's own footprint), exterior walk-behind
+depth (confirmed live: walking north through the door gap makes Bernadette
+fully disappear behind the roof, walking back out makes her reappear,
+purely via `depthForY()` comparison, no collider tricks), pixel-perfect
+rendering (`pixelArt: true`, no `setFilter(LINEAR)` anywhere in the Cachot
+assets), the interior room PNG and furniture colliders, the interior front
+wall's occlusion (confirmed live: her feet clip behind the wall band's top
+edge right at the threshold, exactly the same `depthForY()` technique as
+the exterior), general character-vs-character feet-only collision (player
+physically blocked from overlapping the boy, confirmed via real keyboard
+movement), dynamic Y-sorting (confirmed live: player's depth flips relative
+to the boy's fixed-position depth as she crosses his Y, both directions),
+the boy NPC's presence/scale/animation/shadow/breathing/autonomous wander
+(confirmed live over several seconds: walks, stops, idles with breathing
+oscillation, resumes, stays in its wander zone), and the boy's dialogue
+portrait blink/talk system (confirmed live via texture-key sampling: mouth
+alternates only while the typewriter is actively revealing text, freezes on
+`neutral` once a line finishes typing, blinking continues independently on
+its own randomized timer either way).
+
+One real, live-reproduced bug was found and fixed: talking to the boy and
+pressing E through to the end of his ambient dialogue would never actually
+close the conversation — it would instantly restart from line one, forever,
+as long as the player stood in range. Root cause: `DialogueBox` binds its
+own permanent `keydown-E` listener (to advance/close the box) *in addition
+to* each scene's own `JustDown(keyE)` polling in `update()` (to *open* a
+new interaction). Both react to the same physical keypress. On the
+keystroke that closes the last line, `DialogueBox`'s own listener runs
+first (synchronous input-dispatch) and closes the box; the *same frame's*
+`update()` then sees `dialogueBox.isActive() === false` and, since the
+player is still standing next to the boy, immediately reopens it. The
+mother/Jeanne one-time-flag dialogues are accidentally immune (their flags
+are set inside that same synchronous `close()`, so `tryInteract()`'s
+existing one-time-flag guard blocks the reopen before it can happen); the
+boy's deliberately flagless, repeatable ambient chat has no such guard.
+Fixed narrowly in `OverworldScene.ts` with a one-frame
+`boyDialogueJustClosed` flag, set from the boy dialogue's own `onComplete`
+and consumed at the top of `tryInteract()` — scoped to the boy interaction
+only, not a change to `DialogueBox` or the mother/Jeanne flows (both keep
+working exactly as before, reverified live after the fix).
