@@ -9,6 +9,8 @@ import { LOURDES_PRESBYTERY_KEY } from '../assets/buildings/lourdesPresbytery';
 import {
   CACHOT_EXTERIOR_UNIT_KEYS,
   CACHOT_EXTERIOR_UNIT_WIDTHS,
+  CACHOT_EXTERIOR_HEIGHT,
+  CACHOT_EXTERIOR_SCALE,
   CACHOT_EXTERIOR_CACHOT_UNIT_INDEX,
 } from '../assets/buildings/lourdesCachotExterior';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
@@ -42,21 +44,16 @@ import { useLetterboxScale } from '../core/scaleMode';
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
 // northern edge (crossable only via the bridge), and Le Cachot + the town sit south of that.
 //
-// **4x the area of the original map** (COLS/ROWS both doubled — 26x58 -> 52x116), per an explicit
-// maintainer request for more breathing room: "not simply zoom the camera out... keep the current
-// visual scale of the characters and environment... do not simply stretch the existing map."
-// `TILE_SIZE` and every character's own display size are untouched, so this is purely more world
-// to walk around in, not a rescale. The transformation used throughout this file, consistently:
-// every POSITION constant (where a road/river/building/landmark sits) is doubled, which — because
-// the map's own dimensions are also exactly doubled — exactly preserves each feature's fractional
-// position on the map (its relative layout), satisfying "preserve current relative positions of
-// landmarks." Every WIDTH/THICKNESS constant (path width, river width, building footprint sizes)
-// is deliberately left unchanged, not doubled — those are visual/gameplay-scale properties tied to
-// character size, not to overall map size, so doubling them too would make paths and rivers look
-// oversized relative to Bernadette rather than just giving the town more room to breathe. The net
-// effect is exactly what was asked for: the same relative town layout, the same-sized roads/river/
-// buildings, just with much more open ground between and around everything.
-const COLS = 52;
+// **Widened again** (COLS 52 -> 72) for two combined reasons: a "slightly wider" ask on its own
+// terms, and Le Cachot's own building now being displayed at 2x its previous size (see
+// `CACHOT_EXTERIOR_SCALE` below) -- at that size the row-house terrace alone is ~30 tiles wide, and
+// fitting it east of the path with real clearance from both the path and the map's own edge (per
+// the standing "no buildings at the extreme edges" rule) needed more than a token increase. The
+// entire increase is added as new columns on the *east* side only -- nothing about the river, path,
+// grotto, ford, or west-side church/presbytery cluster moves or needs re-deriving, so all of that
+// stays exactly as coherent as it already was. `TILE_SIZE` and every character's own display size
+// are untouched, same as every previous map-size change in this file's history.
+const COLS = 72;
 const ROWS = 116;
 const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
@@ -66,49 +63,40 @@ const PATH_HALF_WIDTH = 1;
 
 // Vertical arm of the river, beside the grotto. Fully blocks the player — the only crossing is
 // the scripted ford cutscene, where the companions wade across and Bernadette stays behind.
-// Width kept at 4 tiles (unchanged from the original map) — only its center moved (doubled) to
-// keep the same relative position; see the file-level comment above for why width doesn't scale.
 const RIVER_V_START = 39;
 const RIVER_V_END = 42;
 
-// Horizontal arm, the town's river boundary. Only passable through the bridge at the path. Same
-// width-unchanged, center-doubled treatment as the vertical arm above.
+// Horizontal arm, the town's river boundary. Only passable through the bridge at the path.
 const RIVER_H_TOP = 61;
 const RIVER_H_BOTTOM = 64;
 
 const FIELD_PATH_START_ROW = 18;
-const TOWN_PLAZA_ROW_START = 72;
-
-// Still used for the stone-plaza patch `buildTerrain()` draws (rows TOWN_PLAZA_ROW_START to
-// CACHOT_ROW-2) — a town-square paving area, independent of exactly where the Cachot building
-// itself sits. The building's own placement is CACHOT_BUILDING_LEFT_X/TOP_Y below, not this.
-const CACHOT_ROW = 108;
 
 // The Cachot exterior building's own placement (see `assets/buildings/lourdesCachotExterior.ts`).
-// Deliberately *not* derived from CACHOT_ROW above: the old 48x40 placeholder sat right
-// at presbytery's own south-east corner (barely clipping it, invisible at that tiny scale) — the
-// real 5-unit terrace (241x144, roughly 5x wider) needs far more clear width than that spot has
-// available between the presbytery/path/forest border. Placed instead in the open ground between
-// the river's southern bank and the hospice, east of the path — the widest genuinely clear gap
-// left on the map at this building's scale. `CACHOT_DOOR_X/Y` (Le Cachot's own door, the middle
-// unit) is what actually drives the player-spawn/sister-spawn reference point and the walkable
-// door zone below, replacing the old `cachotDoorPx` derived from CACHOT_ROW/COL.
-const CACHOT_BUILDING_LEFT_X = 545;
-const CACHOT_BUILDING_TOP_Y = 1060;
+// `CACHOT_DOOR_X/Y` (Le Cachot's own door, the middle unit) is what actually drives the
+// player-spawn/sister-spawn reference point and the walkable door zone below.
+const CACHOT_BUILDING_LEFT_X = 576;
+const CACHOT_BUILDING_TOP_Y = 1088;
+// Every *size* constant here (unit widths, the door's own local position within the middle unit)
+// is native-pixel, so each needs `CACHOT_EXTERIOR_SCALE` applied once, here, rather than the
+// building's own asset file pre-multiplying its exported widths (see that file's own doc comment
+// on why it stays native). `CACHOT_BUILDING_LEFT_X/TOP_Y` above are a placement choice, not a
+// size, so they're untouched by the scale.
+const CACHOT_EXTERIOR_UNIT_WIDTHS_SCALED = CACHOT_EXTERIOR_UNIT_WIDTHS.map((w) => w * CACHOT_EXTERIOR_SCALE);
+const CACHOT_EXTERIOR_HEIGHT_SCALED = CACHOT_EXTERIOR_HEIGHT * CACHOT_EXTERIOR_SCALE;
 // Le Cachot's own door sits within the middle unit (index CACHOT_EXTERIOR_CACHOT_UNIT_INDEX),
 // measured by eye against a grid-overlay crop of the source art (same technique as every other
 // footprint in this file) — local to that unit's own top-left, then offset by the cumulative width
 // of the units before it and CACHOT_BUILDING_LEFT_X/TOP_Y to land in world space.
-const CACHOT_DOOR_LOCAL_X = 40; // within the middle unit's own 45px width
-const CACHOT_DOOR_LOCAL_Y = 101; // within the building's shared 144px height
+const CACHOT_DOOR_LOCAL_X = 40 * CACHOT_EXTERIOR_SCALE; // within the middle unit's own 45px (native) width
+const CACHOT_DOOR_LOCAL_Y = 101 * CACHOT_EXTERIOR_SCALE; // within the building's shared 144px (native) height
 const CACHOT_DOOR_X =
   CACHOT_BUILDING_LEFT_X +
-  CACHOT_EXTERIOR_UNIT_WIDTHS.slice(0, CACHOT_EXTERIOR_CACHOT_UNIT_INDEX).reduce((a, b) => a + b, 0) +
+  CACHOT_EXTERIOR_UNIT_WIDTHS_SCALED.slice(0, CACHOT_EXTERIOR_CACHOT_UNIT_INDEX).reduce((a, b) => a + b, 0) +
   CACHOT_DOOR_LOCAL_X;
 const CACHOT_DOOR_Y = CACHOT_BUILDING_TOP_Y + CACHOT_DOOR_LOCAL_Y;
 
-// Kept well clear of the map edges (now with a full forest border beyond them too — see
-// `buildForestBorder()`) so the screen-pinned HUD never covers it.
+// Kept well clear of the map edges so the screen-pinned HUD never covers it.
 const GROTTO_X = 256;
 const GROTTO_Y = 288;
 const NICHE_X = GROTTO_X + 62;
@@ -143,20 +131,19 @@ const JEANNE_RESUME_DISTANCE = 55;
 // Bounded area where the sister and Jeanne wander (`WanderNpc`) once they've crossed the river
 // during Mission 1, "searching for firewood" instead of vanishing -- a rectangle on the far
 // (east) bank, not tied to any specific spot from the original map (this behavior is new). Sized
-// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE = 688, and
-// the forest border's inner edge is FOREST_BORDER_DEPTH_TILES (3) tiles in from the map's own
-// right edge (832) = 784, so there's ~96px of open field between them -- this box (700-770) sits
-// within that gap with a margin on both sides, keeping the pair visibly close to the crossing
-// point/Massabielle without risking wandering into the water or the tree line.
+// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE = 688,
+// well short of this box (700-770), keeping the pair visibly close to the crossing point/
+// Massabielle without risking wandering into the water.
 const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700, FAR_BANK.y - 60, 70, 120);
 const COMPANION_WANDER_SPEED = 28;
 
-// Wander zone for the ambient village boy (`BOY_WANDER_BOUNDS`) -- a stretch of open plaza grass
-// between the path (cols 31-33) and the hospice/Maison Cénac/tribunal cluster (col 40+), well
-// south of the church/river/field, so he never needs to path around any collider (same "pick
-// bounds that are inherently obstacle-free" approach `FAR_BANK_WANDER_BOUNDS` above already uses,
-// rather than building actual pathfinding/collision-avoidance for `WanderNpc`).
-const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(34 * TILE_SIZE, 80 * TILE_SIZE, 6 * TILE_SIZE, 20 * TILE_SIZE);
+// Wander zone for the ambient village boy (`BOY_WANDER_BOUNDS`) -- the open strip of plaza grass
+// between Le Cachot's own footprint (now a much larger building -- see `CACHOT_EXTERIOR_SCALE`)
+// and the relocated hospice/Maison Cénac/tribunal cluster south of it (see `TOWN_BUILDINGS`
+// below), well clear of both so he never needs to path around a collider (same "pick bounds that
+// are inherently obstacle-free" approach `FAR_BANK_WANDER_BOUNDS` above already uses, rather than
+// building actual pathfinding/collision-avoidance for `WanderNpc`).
+const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(38 * TILE_SIZE, 87 * TILE_SIZE, 26 * TILE_SIZE, 4 * TILE_SIZE);
 const BOY_WANDER_SPEED = 24;
 
 interface BuildingPlacement {
@@ -168,15 +155,15 @@ interface BuildingPlacement {
   locationId: LocationId;
 }
 
-// Positions doubled along with the rest of the map (see the file-level comment above) to keep
-// the same relative layout -- sizes (48x40, the shared procedural TOWN_BUILDING box) intentionally
-// unchanged. The tribunal previously moved from col 5 / row 50 to here (east side, south of Maison
-// Cénac) to free room for the presbytery below the church; that reasoning is unaffected by the map
-// resize, so it kept the same relative spot, just doubled like everything else.
+// Staggered in both row *and* column -- not one shared column like the previous layout, which
+// read as buildings "lined up" rather than a real town. All three sit south of Le Cachot's own
+// (now much larger, see `CACHOT_EXTERIOR_SCALE`) footprint, at their own distinct depth into the
+// town, per the "buildings should form a real town layout, with different positions and
+// orientations, rather than appearing lined up side-by-side" ask.
 const TOWN_BUILDINGS: BuildingPlacement[] = [
-  { key: PROP_KEYS.TOWN_BUILDING, col: 42, row: 76, widthPx: 48, heightPx: 40, locationId: 'hospice' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 44, row: 90, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 40, row: 110, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 37, row: 92, widthPx: 48, heightPx: 40, locationId: 'hospice' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 52, row: 98, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
+  { key: PROP_KEYS.TOWN_BUILDING, col: 44, row: 108, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
 ];
 
 /**
@@ -228,30 +215,26 @@ const PRESBYTERY_FOOTPRINT: FootprintRect[] = [
   { xFrac: 0.74, yFrac: 0.5, wFrac: 0.22, hFrac: 0.325 }, // right tree/shed cluster
 ];
 
-// A plain doubling of the church/presbytery's prior positions (col 0.5/0.2) would have landed them
-// flush against the map's own west edge (col 0) — fine on the old 26-wide map where nothing was
-// ever meant to have a forest border, but wrong on this one: "do not place houses/buildings at the
-// outer edges... leave a generous empty/natural area around the edges... concentrate buildings
-// more toward the interior." `WEST_BUFFER_TILES` pushes both buildings inward by the same amount so
-// they keep their prior relative spacing from each other, opening up a genuine countryside gap
-// between them and the forest border (`buildForestBorder()`) instead of a two-tile treeline being
-// the *only* thing separating a building wall from the map edge.
+// Keeps both buildings pushed inward from the map's own west edge -- "do not place houses/
+// buildings at the outer edges... leave a generous empty/natural area around the edges...
+// concentrate buildings more toward the interior."
 const WEST_BUFFER_TILES = 7;
 
-// The church's own position doubled like everything else (col 0.25/row 36 -> col 0.5/row 72), then
-// shifted right by WEST_BUFFER_TILES per the edge-buffer reasoning above. Size unchanged (156x202,
-// ~75% of Bernadette's door height, per the maintainer's prior sign-off that this was the practical
-// ceiling for this art at this scale) — this round's brief didn't ask to touch the church itself.
+// The church anchors the west-side cluster, unchanged from its previous placement -- this round's
+// brief didn't ask to touch the church itself, only the presbytery next to it.
 //
-// The presbytery is a deliberate exception to "keep current visual scale": doubled *again* on top
-// of the map-resize doubling (156x125 -> 312x250, i.e. 2x its current size, per an explicit
-// "twice as large" ask), then nudged further down from that doubled-and-enlarged spot — the map
-// resize alone would have put it at col 0.5/row 98 (mirroring the church's own doubling); shifted
-// to row 99 instead, and given the same WEST_BUFFER_TILES shift as the church (keeping its prior
-// -0.3 relative offset from the church's own column). There's abundant room in this corridor (the
-// plaza path doesn't start until col 26, and the buffer still leaves ~15 tiles of clearance before
-// it), so unlike every prior presbytery change, this is just a placement choice, not another fight
-// against a hard space ceiling.
+// The presbytery is displayed at 166x133 now, not 312x250: the *previous* 312x250 size (2x the
+// church-scale display size, from an earlier "twice as large" ask) was stretching the same 100x80
+// native texture across roughly double the church's own per-source-pixel screen footprint, which
+// is exactly why it read as visibly coarser/more pixelated than the church even though the two
+// source PNGs were comparable quality -- "the problem is the pixel-art treatment/scaling, not the
+// artwork itself." 166x133 applies the *church's own* native-to-display ratio (~1.66x) to the
+// presbytery's native 100x80, so one native pixel now covers the same screen area in both
+// buildings -- same rendering quality/pixel density, no redraw, no new detail, no resampling
+// (still plain nearest-neighbor `setDisplaySize`, see that asset's own doc comment). Repositioned
+// beside the church rather than below it (previously directly south, reading as "stacked" rather
+// than two separate town buildings) and moved up, per the maintainer's own "move it slightly
+// upward... keep it clearly inside the map" ask.
 const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   {
     key: LOURDES_CHURCH_KEY,
@@ -264,33 +247,21 @@ const SPECIAL_BUILDINGS: SpecialBuilding[] = [
   },
   {
     key: LOURDES_PRESBYTERY_KEY,
-    col: 0.2 + WEST_BUFFER_TILES,
-    row: 99,
-    widthPx: 312,
-    heightPx: 250,
+    col: 19,
+    row: 80,
+    widthPx: 166,
+    heightPx: 133,
     locationId: 'presbytery',
     footprint: PRESBYTERY_FOOTPRINT,
   },
 ];
 
-// Positions doubled with the rest of the map; unchanged sizes (see the file-level comment above).
+// Positions unrelated to the town-building relayout above; unchanged sizes. Trees removed from
+// this list entirely (see `DECOR`'s own doc comment below) -- what's left is just the two rocks.
 const DECOR: Array<{ key: string; col: number; row: number }> = [
-  { key: PROP_KEYS.TREE, col: 4, row: 6 },
-  { key: PROP_KEYS.TREE, col: 48, row: 12 },
   { key: PROP_KEYS.ROCK, col: 12, row: 44 },
-  { key: PROP_KEYS.TREE, col: 6, row: 80 },
-  { key: PROP_KEYS.ROCK, col: 46, row: 84 },
-  { key: PROP_KEYS.TREE, col: 20, row: 112 },
+  { key: PROP_KEYS.ROCK, col: 58, row: 100 },
 ];
-
-// A ring of trees a few tiles deep around all four map edges, so the town never backs directly
-// onto empty air — "the map should be surrounded by forest... the outermost areas should feel
-// like the countryside/forest surrounding Lourdes." Generated (not hand-placed) since a solid
-// 336-tile perimeter would mean hundreds of individual entries; spaced (not a solid wall) for a
-// natural tree-line look rather than a fence, and skips any cell that would land on the river or
-// the path (both of which do reach the map edges) so trees never spawn in water or on the road.
-const FOREST_BORDER_DEPTH_TILES = 3;
-const FOREST_BORDER_SPACING_TILES = 3;
 
 const INTERACT_RADIUS = 26;
 
@@ -372,7 +343,12 @@ export class OverworldScene extends Phaser.Scene {
     this.touch = new TouchControls(this);
 
     const cachotDoorPx = { x: CACHOT_DOOR_X, y: CACHOT_DOOR_Y };
-    const startY = data.fromCachot ? cachotDoorPx.y - 20 : cachotDoorPx.y + 26;
+    // Offsets scaled along with the building (CACHOT_EXTERIOR_SCALE) so she stands the same
+    // *relative* distance from the door as before, just against the now-2x-larger doorway. Exiting
+    // Le Cachot (fromCachot) lands her a few px north of the door, directly under the middle unit's
+    // doorway (cachotDoorPx.x is exactly that door's own horizontal center) -- not to the side or
+    // at an arbitrary spot.
+    const startY = data.fromCachot ? cachotDoorPx.y - 20 * CACHOT_EXTERIOR_SCALE : cachotDoorPx.y + 26 * CACHOT_EXTERIOR_SCALE;
     this.player = new Player(this, cachotDoorPx.x, startY, this.touch);
 
     this.buildBuildings();
@@ -381,9 +357,17 @@ export class OverworldScene extends Phaser.Scene {
     this.buildFirewood();
     this.physics.add.collider(this.player, this.colliderBodies);
 
-    this.sister = new NpcActor(this, cachotDoorPx.x - 16, cachotDoorPx.y + 22, 'sister', 'down', SISTER_SHADOW_SCALE);
+    this.sister = new NpcActor(this, cachotDoorPx.x - 16 * CACHOT_EXTERIOR_SCALE, cachotDoorPx.y + 22 * CACHOT_EXTERIOR_SCALE, 'sister', 'down', SISTER_SHADOW_SCALE);
     this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
+    // Permanently non-colliding: the maintainer reported physically bumping into her while she
+    // trails behind Bernadette (before the river crossing, she's following close; after, she's
+    // wandering the far bank -- either way, standing in Bernadette's way is just an annoyance, not
+    // gameplay). She still moves, follows, wanders, and can be talked to exactly as before -- this
+    // only turns off her own physics body's participation in collision checks (see
+    // `NpcActor.setCollisionEnabled()`), which has no effect on any of that. Every other NPC's own
+    // collider is untouched.
+    this.sister.setCollisionEnabled(false);
 
     this.friend = new NpcActor(this, PATH_CENTER * TILE_SIZE + 18, 44 * TILE_SIZE, 'friend', 'down', FRIEND_SHADOW_SCALE, true);
     this.friend.setDepth(depthForY(this.friend.y, DEPTH.ACTORS));
@@ -479,9 +463,43 @@ export class OverworldScene extends Phaser.Scene {
 
     const data: number[][] = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => -1));
 
-    for (let r = FIELD_PATH_START_ROW; r < RIVER_H_TOP - 1; r++) {
-      for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.DIRT_PATH;
-    }
+    // Organic dirt trail instead of a fixed-width rectangular strip of path tiles -- "I don't like
+    // the current square path design... more natural, organic ground/path appearance." A per-row
+    // half-width that wanders between 1-3 tiles (a deterministic wave, not true randomness, same
+    // "no noise" convention `pixelart/tiles.ts`'s own SPECKLE table already uses for texture) gives
+    // the trail an uneven, worn-footpath edge; `edgeIsWorn()` then randomly (again, deterministically)
+    // thins individual tiles right at that wandering edge so it never reads as a clean rectangle at
+    // any width. Still the same `TILE.DIRT_PATH`/`TILE.STONE_PATH` textures -- no new art -- just
+    // applied with an irregular footprint instead of a straight-sided band.
+    const organicHalfWidthAt = (along: number): number => {
+      const wave = Math.sin(along * 0.31) + Math.sin(along * 0.12 + 1.6) * 0.6;
+      return wave > 0.5 ? 3 : wave > -0.4 ? 2 : 1;
+    };
+    const edgeIsWorn = (a: number, b: number): boolean => (a * 7 + b * 13) % 5 === 0;
+    const stampOrganicPathRows = (rowStart: number, rowEnd: number, center: number, tile: number): void => {
+      for (let r = rowStart; r <= rowEnd; r++) {
+        const halfWidth = organicHalfWidthAt(r);
+        for (let c = center - halfWidth; c <= center + halfWidth; c++) {
+          if (c < 0 || c >= COLS) continue;
+          const atEdge = c === center - halfWidth || c === center + halfWidth;
+          if (atEdge && edgeIsWorn(r, c)) continue;
+          data[r][c] = tile;
+        }
+      }
+    };
+    const stampOrganicPathCols = (colStart: number, colEnd: number, center: number, tile: number): void => {
+      for (let c = colStart; c <= colEnd; c++) {
+        const halfWidth = organicHalfWidthAt(c);
+        for (let r = center - halfWidth; r <= center + halfWidth; r++) {
+          if (r < 0 || r >= ROWS) continue;
+          const atEdge = r === center - halfWidth || r === center + halfWidth;
+          if (atEdge && edgeIsWorn(r, c)) continue;
+          data[r][c] = tile;
+        }
+      }
+    };
+
+    stampOrganicPathRows(FIELD_PATH_START_ROW, RIVER_H_TOP - 2, PATH_CENTER, TILE.DIRT_PATH);
 
     const grottoRow = GROTTO_Y / TILE_SIZE;
     for (let r = grottoRow - 1; r <= grottoRow + 3; r++) {
@@ -501,17 +519,22 @@ export class OverworldScene extends Phaser.Scene {
       data[RIVER_H_BOTTOM + 1][c] = TILE.RIVERBANK;
       for (let r = RIVER_H_TOP; r <= RIVER_H_BOTTOM; r++) data[r][c] = TILE.WATER;
     }
+    // The bridge itself stays a plain fixed-width stone crossing (it's a built structure, not a
+    // worn footpath -- an organic edge here would just look like a crumbling bridge) at the
+    // original PATH_HALF_WIDTH, not the wider organic trail either side of it.
     for (let r = RIVER_H_TOP - 1; r <= RIVER_H_BOTTOM + 1; r++) {
       for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.STONE_PATH;
     }
 
-    for (let r = RIVER_H_BOTTOM + 2; r < ROWS; r++) {
-      for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.DIRT_PATH;
-    }
+    stampOrganicPathRows(RIVER_H_BOTTOM + 2, ROWS - 1, PATH_CENTER, TILE.DIRT_PATH);
 
-    for (let r = TOWN_PLAZA_ROW_START; r <= CACHOT_ROW - 2; r++) {
-      for (let c = PATH_CENTER - 6; c <= PATH_CENTER + 6; c++) data[r][c] = TILE.STONE_PATH;
-    }
+    // A short organic branch off the main trail toward Le Cachot's own door, so the "Le Cachot ->
+    // town streets/path -> bridge" route reads as one connected way rather than the building just
+    // floating in open grass. Runs east from the main trail to just short of the doorway itself
+    // (CACHOT_DOOR_X, converted to tiles) at the same row the door sits on.
+    const cachotBranchRow = Math.round(CACHOT_DOOR_Y / TILE_SIZE) - 2;
+    const cachotBranchEndCol = Math.round(CACHOT_DOOR_X / TILE_SIZE);
+    stampOrganicPathCols(PATH_CENTER + 2, cachotBranchEndCol, cachotBranchRow, TILE.DIRT_PATH);
 
     const map = this.make.tilemap({ data, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE });
     const tileset = map.addTilesetImage('tiles', TILESET_KEY, TILE_SIZE, TILE_SIZE, 0, 0)!;
@@ -618,23 +641,29 @@ export class OverworldScene extends Phaser.Scene {
     // Each unit's own wall/ground line, measured by eye against the source art (a grid-overlay
     // crop, same technique as every other footprint in this file) -- the whole row recedes upward
     // in screen-Y from left to right in this isometric art, so this can't be one shared value the
-    // way it can for the much-narrower church/presbytery.
-    const groundLineY = [98, 90, 82, 73, 65];
-    const bandHalfHeight = 7;
+    // way it can for the much-narrower church/presbytery. Native-pixel values, scaled below along
+    // with everything else about this building's displayed/collided size.
+    const groundLineY = [98, 90, 82, 73, 65].map((y) => y * CACHOT_EXTERIOR_SCALE);
+    const bandHalfHeight = 7 * CACHOT_EXTERIOR_SCALE;
+    const doorHalfWidth = 4 * CACHOT_EXTERIOR_SCALE;
 
     let cumulativeX = CACHOT_BUILDING_LEFT_X;
     CACHOT_EXTERIOR_UNIT_KEYS.forEach((key, i) => {
-      const unitW = CACHOT_EXTERIOR_UNIT_WIDTHS[i];
+      const unitW = CACHOT_EXTERIOR_UNIT_WIDTHS_SCALED[i];
       const unitX = cumulativeX;
       const unitY = CACHOT_BUILDING_TOP_Y;
       const groundY = unitY + groundLineY[i];
 
-      this.add.image(unitX, unitY, key).setOrigin(0, 0).setDepth(depthForY(groundY, DEPTH.ACTORS));
+      this.add
+        .image(unitX, unitY, key)
+        .setOrigin(0, 0)
+        .setDisplaySize(unitW, CACHOT_EXTERIOR_HEIGHT_SCALED)
+        .setDepth(depthForY(groundY, DEPTH.ACTORS));
 
       if (i === CACHOT_EXTERIOR_CACHOT_UNIT_INDEX) {
         // Split the wall collider around the door gap instead of one solid band across the unit.
-        const doorLeft = unitX + CACHOT_DOOR_LOCAL_X - 4;
-        const doorRight = unitX + CACHOT_DOOR_LOCAL_X + 4;
+        const doorLeft = unitX + CACHOT_DOOR_LOCAL_X - doorHalfWidth;
+        const doorRight = unitX + CACHOT_DOOR_LOCAL_X + doorHalfWidth;
         if (doorLeft > unitX) {
           const w = doorLeft - unitX;
           this.colliderBodies.push(createBlocker(this, unitX + w / 2, groundY, w, bandHalfHeight * 2));
@@ -693,45 +722,6 @@ export class OverworldScene extends Phaser.Scene {
       const px = this.tileToPixelCenter(col, row);
       this.addStaticProp(key, px.x, px.y, TILE_SIZE, TILE_SIZE * 1.5);
     });
-    this.buildForestBorder();
-  }
-
-  /** A cell counts as "river or path" for forest-border purposes if it falls in the river's own
-   * column band (the vertical arm), the river's own row band (the horizontal arm — which, like
-   * the vertical arm, reaches every map edge), or the path's column band (which also reaches the
-   * top and bottom edges) — each with a 1-tile buffer so trees don't spawn touching the water/road
-   * either. Deliberately approximate (matches the *bands* these features occupy, not their exact
-   * cell-by-cell shape) since this only needs to keep decor off the water/road, not be pixel-exact. */
-  private isRiverOrPathBand(col: number, row: number): boolean {
-    const inVerticalRiver = col >= RIVER_V_START - 1 && col <= RIVER_V_END + 1;
-    const inHorizontalRiver = row >= RIVER_H_TOP - 1 && row <= RIVER_H_BOTTOM + 1;
-    const inPathColumn = col >= PATH_CENTER - PATH_HALF_WIDTH - 1 && col <= PATH_CENTER + PATH_HALF_WIDTH + 1;
-    return inVerticalRiver || inHorizontalRiver || inPathColumn;
-  }
-
-  private buildForestBorder(): void {
-    const placed = new Set<string>();
-    const tryPlace = (col: number, row: number) => {
-      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
-      const key = `${col},${row}`;
-      if (placed.has(key) || this.isRiverOrPathBand(col, row)) return;
-      placed.add(key);
-      const px = this.tileToPixelCenter(col, row);
-      this.addStaticProp(PROP_KEYS.TREE, px.x, px.y, TILE_SIZE, TILE_SIZE * 1.5);
-    };
-
-    for (let c = 0; c < COLS; c += FOREST_BORDER_SPACING_TILES) {
-      for (let d = 0; d < FOREST_BORDER_DEPTH_TILES; d++) {
-        tryPlace(c, d);
-        tryPlace(c, ROWS - 1 - d);
-      }
-    }
-    for (let r = 0; r < ROWS; r += FOREST_BORDER_SPACING_TILES) {
-      for (let d = 0; d < FOREST_BORDER_DEPTH_TILES; d++) {
-        tryPlace(d, r);
-        tryPlace(COLS - 1 - d, r);
-      }
-    }
   }
 
   private buildGrotto(): void {
@@ -886,11 +876,6 @@ export class OverworldScene extends Phaser.Scene {
       this.dialogueBox.start(mission01Dialogue.friendMeet, () => {
         this.friendMet = true;
         this.sister.setVisible(true);
-        // She's about to start following close behind Bernadette (see the `updateFollowerPosition`
-        // call in update()) -- her own collider would otherwise be able to block Bernadette's path
-        // whenever she trails into it. Turned back on in beginRiverCrossing(), once she's walking
-        // her own scripted route instead of tracking Bernadette.
-        this.sister.setCollisionEnabled(false);
         this.leader = new LeaderNpc(this.friend, JEANNE_WAYPOINTS, JEANNE_SPEED, JEANNE_MAX_DISTANCE, JEANNE_RESUME_DISTANCE);
         MissionManager.advanceObjective();
         this.tasksPanel.notifyNewObjective();
@@ -959,9 +944,6 @@ export class OverworldScene extends Phaser.Scene {
     this.phase = 'crossing';
     this.player.setLocked(true);
     this.interactionPrompt.hide();
-    // She's no longer following Bernadette from here on (a scripted walk, then wandering the far
-    // bank), so the general character-collision system applies to her again.
-    this.sister.setCollisionEnabled(true);
 
     await Promise.all([
       this.friend.walkTo(FAR_BANK.friendX, FAR_BANK.y, 1600),

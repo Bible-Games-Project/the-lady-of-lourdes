@@ -1635,3 +1635,109 @@ sorts correctly on both sides of its anchor, confirmed the door's solid/open geo
 second-step exit trigger from the previous pass are both still intact and untouched, and opened
 Louise's dialogue to confirm the new small mouth animates naturally through several frames of
 typing.
+
+### Lourdes Overworld: wider map, tree border and square path tiles removed, Le Cachot doubled, town de-linearized, Presbytery pixel-density fix
+
+A large, multi-part maintainer request touching the Overworld map's own size, decoration, path
+rendering, and the layout of every named landmark on it, plus Le Cachot's exterior building itself
+and three more portraits' talk mouths. Handled together since several parts (map width, Le Cachot's
+new size, the town's relayout) are genuinely interdependent -- see below.
+
+1. **Map widened, but not by a token amount.** `COLS` 52 -> 72 (`MAP_W` 832 -> 1152), added
+   entirely as new columns on the *east* side -- nothing about the river, path, grotto, ford, or
+   west-side church/presbytery cluster moved or needed re-deriving, so all of that stayed exactly
+   as coherent as it already was (a deliberate choice: a uniform whole-map stretch would have been
+   just as valid for "wider," but touching zero already-tuned west-side coordinates was the lower-
+   risk path). The size of the increase itself wasn't arbitrary: with Le Cachot's own building now
+   displayed at 2x (see #4 below), the row-house terrace alone is ~30 tiles wide, and fitting that
+   east of the path with genuine clearance from both the path and the map's own edge (the standing
+   "no buildings at the extreme edges" rule) needed more room than "slightly wider" would suggest in
+   isolation -- the two asks turned out to be in tension, and this pass resolved it by treating the
+   Cachot-driven space requirement as the binding constraint.
+2. **Tree border removed entirely**, not just thinned: `buildForestBorder()` and its
+   `isRiverOrPathBand()` helper are deleted outright (were only ever called from each other), along
+   with the `FOREST_BORDER_DEPTH_TILES`/`SPACING_TILES` constants. The maintainer also asked to
+   remove the *hand-placed* `DECOR` trees, not just the generated ring -- "I will add the forest/
+   trees myself later" reads as wanting a clean slate for trees specifically, not just the
+   systematic edge ring -- so `DECOR` now only lists the two rocks (unrelated to the tree
+   complaint, left alone).
+3. **Square path tiles replaced with an organic trail.** The previous path/plaza rendering stamped
+   flat rectangular bands of `TILE.DIRT_PATH`/`STONE_PATH` (a fixed `PATH_HALF_WIDTH` strip, plus a
+   13-tile-wide rectangular "town plaza" block) -- unmistakably a grid of square tiles at any zoom.
+   Replaced with `stampOrganicPathRows()`/`stampOrganicPathCols()`: a per-row (or per-column, for
+   the new Cachot branch trail) half-width that wanders between 1-3 tiles via a small sine-based
+   deterministic wave (no true randomness, matching `pixelart/tiles.ts`'s own SPECKLE-table
+   convention for texture), plus `edgeIsWorn()`, a deterministic modulo check that skips individual
+   tiles right at that wandering edge so the boundary itself looks chewed/uneven rather than a
+   clean offset rectangle. Still the exact same `DIRT_PATH`/`STONE_PATH` textures -- no new art --
+   just applied with an irregular footprint. The town's old rectangular stone plaza is gone outright
+   (replaced by the same organic trail continuing through town); the bridge crossing itself stayed a
+   plain fixed-width `STONE_PATH` band at the original width, deliberately *not* organic -- a built
+   stone bridge with a "worn dirt trail" edge would read as crumbling, not natural. A new short
+   organic branch (`stampOrganicPathCols`) connects the main trail east to Le Cachot's own doorway,
+   so "Le Cachot -> town streets/path -> bridge" reads as one connected route rather than the
+   building floating in open grass.
+4. **Le Cachot's exterior displayed at 2x native size**, a real world-size increase (not a camera
+   zoom): `CACHOT_EXTERIOR_SCALE = 2` (new, in `lourdesCachotExterior.ts`) is applied via
+   `Image#setDisplaySize` in `buildCachotExterior()`, the same nearest-neighbor-only technique the
+   church/presbytery already use for their own display-vs-native scale, so doubling is a clean
+   1-source-px-to-2x2-screen-px enlargement with no blur/resampling. Every placement-*and*-collision
+   constant derived from the building's own native geometry (`CACHOT_DOOR_LOCAL_X/Y`, the per-unit
+   ground-line array, the collider band's own half-height, the door-gap half-width, the player/
+   sister spawn offsets from the door) is scaled by the same constant in one place, rather than
+   pre-multiplying the exported native numbers -- see `lourdesCachotExterior.ts`'s own doc comment
+   on why the exports themselves stay native. Collision itself is unchanged in *kind* -- still one
+   small wall-base band collider per unit, split around the door gap on the middle unit, not one
+   giant rectangle over the whole 5-unit terrace -- just correctly scaled. Verified live: she's
+   blocked well before reaching any solid unit, the door gap itself stays walkable, and (per the
+   separate exit-position ask) `CACHOT_DOOR_X` -- which the exit spawn was already keyed to before
+   this pass -- still lands her exactly centered under the middle door once the doubled geometry
+   feeds into it.
+5. **Town buildings de-linearized.** The hospice/Maison Cénac/tribunal cluster previously sat in
+   nearly the same column (42/44/40), reading as a row of buildings rather than a town; now staggered
+   in both row *and* column (37/52/44, rows 92/98/108), all placed south of Le Cachot's own (now
+   much larger) footprint so neither cluster overlaps the other. The presbytery moved from directly
+   below the church to beside it (col 19 vs. the church's own ~7.5-17.25 span) and further up (row
+   80 vs. the previous 99), per the maintainer's own "move it slightly upward... keep it clearly
+   inside the map" ask -- verified clear of both the church and the main path with a live screenshot,
+   not just the fractional math.
+6. **Presbytery's pixel-art density now matches the church's.** Root cause, once actually compared
+   side by side: both buildings' *native* textures are quantized/downscaled once, offline, to a
+   fixed small pixel size (church 94x122, presbytery 100x80) -- genuinely comparable source quality.
+   What differed was the *display* size each was stretched to: the church at 156x202 (~1.66x its
+   native size) vs. the presbytery at 312x250 (~3.12x its native size, from an earlier "twice as
+   large" ask layered on top of an already-doubled map). Nearly double the stretch factor is exactly
+   why the same-quality source read as visibly coarser -- more screen pixels per source pixel, at a
+   nearest-neighbor scale that makes no attempt to hide it. The maintainer's own diagnosis ("the
+   problem is the pixel-art treatment/scaling, not the artwork itself") pointed straight at the fix:
+   the presbytery's *original*, pre-"1115x888 source" high-resolution art was never committed to
+   this repo (confirmed via `git log`/full filesystem search -- only the already-quantized 100x80
+   native texture survives anywhere in this project's history), so there is no higher-detail source
+   left to re-derive a bigger native texture from; re-scaling the display size to match the church's
+   own native-to-display ratio (166x133, i.e. ~1.66x, same aspect ratio as the existing 100x80) is
+   the only fix available that adds zero new detail, does zero resampling/blur, and doesn't touch
+   the source pixels at all -- exactly what was asked for.
+7. **Toinette's collider is now permanently off**, not toggled on/off around the river crossing.
+   The maintainer reported still bumping into her; `setCollisionEnabled(false)` now happens once at
+   her own creation and is never turned back on (the old `setCollisionEnabled(true)` call in
+   `beginRiverCrossing()` is deleted, along with the now-redundant duplicate `false` call that used
+   to live in `friendMeet`'s `onComplete`). She still moves, follows, wanders, and can be talked to
+   exactly as before -- this only ever touched her own physics body's participation in collision
+   checks, never her position/animation/AI, and every other NPC's own collider is untouched.
+8. **Antoine's and Toinette's talk mouths, shrunk** -- same fix, same root cause, as Louise's own
+   talk mouth two passes ago (see that section above): Toinette's talk/talkBlink frames were a
+   large, flat, two-tone solid fill (11x7px, no gradient, no lip color showing through); Antoine's
+   was a large filled-and-outlined circle with a "teeth" highlight, more cartoonish than the game's
+   other portraits. Both regenerated from their own (unmodified) neutral frames the same restrained
+   way: a small soft-shadow row directly under the character's own closed-lip line, and a 2-3px
+   genuinely dark core beneath that -- 8 pixels total per character, not a filled shape spanning
+   10+. Both characters' blink frames were re-checked against the same complaint and found already
+   correct (small, symmetric, eyebrows/hair untouched) -- left unmodified.
+
+Verified live via Playwright for every item above: map world bounds width, tree/decor counts,
+per-row path-tile-width variance, Le Cachot's actual displayed unit size, collision blocking at
+multiple approach points, the door gap staying open, the exit spawn's X position against the live
+`cachotDoorZone` rectangle, Toinette's and every other NPC's own `body.enable` state, presbytery
+collision still intact after the display-size change, the boy's wander bounds against the
+relocated town cluster, and opened both Antoine's ambient chat and Toinette's own dialogue line to
+confirm their new portraits render and animate.

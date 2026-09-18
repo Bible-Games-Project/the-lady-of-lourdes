@@ -43,10 +43,23 @@ export const CACHOT_EXTERIOR_UNIT_KEYS = [
 
 const UNIT_URLS = [unit1Url, unit2Url, unit3Url, unit4Url, unit5Url];
 
-/** Display width of each unit, left to right — together they sum to the full building's display
- * width (241px) with zero gap, since the slices were cut at exact pixel boundaries. */
+/** Display width of each unit, left to right — together they sum to the full building's *native*
+ * pixel width (241px) with zero gap, since the slices were cut at exact pixel boundaries.
+ * `CACHOT_EXTERIOR_SCALE` (below) is what actually determines the *displayed* size in
+ * `OverworldScene.ts` — these stay the raw native numbers so the door-local/ground-line math there
+ * has one single place to apply the scale, rather than every constant already being pre-multiplied
+ * and needing to be un-multiplied whenever the native pixel geometry actually matters. */
 export const CACHOT_EXTERIOR_UNIT_WIDTHS = [48, 45, 45, 48, 55] as const;
 export const CACHOT_EXTERIOR_HEIGHT = 144;
+
+/** The building is displayed at 2x its native pixel size — "the individual PNG floors/sections of
+ * Le Cachot should be displayed at 2x their current visual size... the building itself should
+ * become physically larger in the world," per an explicit maintainer ask, not a camera zoom (the
+ * world/collision geometry actually doubles too — see `OverworldScene.ts#buildCachotExterior()`).
+ * Applied via `Image#setDisplaySize`, same as the church/presbytery already do — still
+ * nearest-neighbor filtered (this key is never added to `BootScene`'s LINEAR-filter list), so
+ * doubling is a clean 1-source-px-to-2x2-screen-px block enlargement with no blur/resampling. */
+export const CACHOT_EXTERIOR_SCALE = 2;
 
 /** Index into `CACHOT_EXTERIOR_UNIT_KEYS` of the unit that is actually Le Cachot (the middle one). */
 export const CACHOT_EXTERIOR_CACHOT_UNIT_INDEX = 2;
