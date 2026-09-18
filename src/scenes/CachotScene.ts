@@ -2,7 +2,13 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, GAME_WIDTH, DEPTH } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import { CACHOT_ROOM_KEY, CACHOT_ROOM_WIDTH, CACHOT_ROOM_HEIGHT } from '../assets/interiors/lourdesCachotInterior';
+import {
+  CACHOT_ROOM_KEY,
+  CACHOT_FRONT_WALL_KEY,
+  CACHOT_ROOM_WIDTH,
+  CACHOT_ROOM_HEIGHT,
+  CACHOT_FRONT_WALL_LOCAL_Y,
+} from '../assets/interiors/lourdesCachotInterior';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { MOTHER_FRAME_HEIGHT } from '../assets/npc/motherSprite';
@@ -92,15 +98,22 @@ const MARGIN = 2;
  * `worldFrac()` against the rendered game -- see the FracRect doc comment above for why.
  */
 const FURNITURE_FOOTPRINTS: FracRect[] = [
-  worldFrac(186, 40, 230, 107), // hearth/fireplace -- bottom edge deliberately not grown, leaving
-  // the open floor south of it (where the upper dining chair used to stand -- now removed from the
-  // artwork entirely, see lourdesCachotInterior.ts) as unobstructed as possible
+  worldFrac(186, 40, 230, 107), // hearth/fireplace -- bottom edge deliberately not grown; it faces
+  // the north chair below and the real gap there is only ~6 native px (see NORTH_CHAIR_FOOTPRINT)
   grow(worldFrac(147, 46, 191, 103), MARGIN), // dresser
   grow(worldFrac(223, 73, 268, 109), MARGIN), // chest
   grow(worldFrac(274, 70, 349, 140), MARGIN), // bed
   grow(worldFrac(240, 97, 265, 121), MARGIN), // small stool, left of bed
   grow(worldFrac(315, 132, 348, 163), MARGIN), // stool/nightstand, foot of bed
-  grow(worldFrac(191, 126, 230, 175), MARGIN), // dining table + the south (front) chair, merged
+  // Dining table + the south (front) chair, merged; margin applied on top/left/right (native
+  // 191,126,230,175 grown by MARGIN=2), but the bottom edge is pinned to the lower wall's own top
+  // edge (world y182, see FRONT_WALL_LEFT/RIGHT below) instead of a further 2px margin. The real
+  // floor gap between the table cluster and the wall is only ~7 native px -- less than
+  // Bernadette's own ~11px-tall collision box -- so it was never a walkable corridor; leaving any
+  // gap between the two separate colliders there let her get physically wedged between both at
+  // once instead of being stopped cleanly by one continuous obstacle. This was the reported
+  // "stuck between the table and the lower wall" bug -- see AGENTS.md.
+  worldFrac(189, 124, 232, 182),
   grow(worldFrac(124, 109, 155, 153), MARGIN), // bench/bedroll under the left window
   grow(worldFrac(90, 147, 136, 186), MARGIN), // barrel
   grow(worldFrac(129, 157, 155, 188), MARGIN), // bucket
@@ -110,6 +123,20 @@ const FURNITURE_FOOTPRINTS: FracRect[] = [
   grow(worldFrac(326, 140, 364, 197), MARGIN), // spinning wheel
   grow(worldFrac(320, 170, 359, 201), MARGIN), // basket of towels
 ];
+
+/**
+ * The north (upper, back) dining chair -- restored along with the rest of the original room
+ * artwork (see `lourdesCachotInterior.ts`), so it needs its own collider again. Top edge pinned to
+ * the fireplace's own bottom edge (world y107, the first entry in FURNITURE_FOOTPRINTS above)
+ * rather than a further-grown margin, for the same reason the table's own bottom edge above is
+ * pinned to the wall: the real gap between the chair and the fireplace in the art is only ~6
+ * native px, less than Bernadette's own collision box, so it was never a walkable corridor, and
+ * leaving daylight between the two separate colliders there risked the same wedged-between-two-
+ * obstacles bug. Left/right/bottom get the normal MARGIN; the bottom overlaps the dining table's
+ * own footprint slightly, which is harmless (two solid colliders overlapping just merge into one
+ * larger blocked area -- the actual bug this whole pass is fixing is a *gap*, not an overlap).
+ */
+const NORTH_CHAIR_FOOTPRINT: FracRect = worldFrac(196, 107, 225, 133);
 
 /** The room's four walls -- back, left, right, and the front (with a gap left open for the door;
  * see FRONT_WALL_LEFT/RIGHT below). Each wall is one or two rectangles following its own footprint
@@ -127,22 +154,29 @@ const WALL_FOOTPRINTS: FracRect[] = [
 /**
  * The front (south) wall, half-open door, and steps -- all `worldFrac()`, measured directly off
  * the rendered game (grid-overlay crops at camera zoom 1/scroll (0,0), where screenshot pixels
- * equal world pixels 1:1). The maintainer asked for two changes here: the wall no longer has any
- * walk-behind/occlusion effect at all -- it is now a plain solid boundary Bernadette simply cannot
- * pass, the same as every other piece of furniture in the room -- and the door's own collision must
- * follow its actual half-open shape (solid where the door leaf and its frame post are, open where
- * the artwork shows a real gap with steps visible beyond it), not one rectangle spanning the whole
- * doorway.
+ * equal world pixels 1:1).
  *
- * Reading the doorway left to right at these world coordinates: a stone jamb/door-leaf-in-shadow
- * block from x208 to x228 (the left frame post at 208-213 and the door leaf itself, swung ajar,
- * merge into one continuous dark shape with no daylight between them -- so one solid rect covers
- * both), then a genuine open gap from x228 to x248 where the stone steps are directly visible
- * through the doorway, then the right frame post, solid again, from x248 onward. Vertically the low
- * wall/door band runs from world y182 (its own top edge) down to y265 (past the steps, into the
- * room art's own black margin) -- FRONT_WALL_LEFT/RIGHT both simply span that whole height now
- * (no more splitting off a "walk-behind" strip), since a solid boundary doesn't need to stop short
- * of anything the way the old occlusion overlay did.
+ * The door's own collision follows its actual half-open shape (solid where the door leaf and its
+ * frame post are, open where the artwork shows a real gap with steps visible beyond it), not one
+ * rectangle spanning the whole doorway -- this part was correct and untouched this pass. Reading
+ * the doorway left to right: a stone jamb/door-leaf-in-shadow block from x208 to x228 (the left
+ * frame post at 208-213 and the door leaf itself, swung ajar, merge into one continuous dark shape
+ * with no daylight between them -- so one solid rect covers both), then a genuine open gap from
+ * x228 to x248 where the stone steps are directly visible through the doorway, then the right
+ * frame post, solid again, from x248 onward. Vertically the low wall/door band runs from world
+ * y182 (its own top edge, right at the wooden beam capping the doorway) down to y265 (past the
+ * steps, into the room art's own black margin).
+ *
+ * **The walk-behind-the-beam effect is back** (see `buildFrontWallBand()` and
+ * `lourdesCachotInterior.ts`): a previous pass in this same session deleted it in favor of a plain
+ * solid wall, on the theory that Bernadette can never actually reach "behind" the solid stone
+ * either side of the door anyway. True for the stone, but wrong about the door: she genuinely can
+ * walk south through the open gap onto the steps -- that's the one place in this wall where she is
+ * meant to pass the beam's own y182-196 band, and without the overlay the flat room backdrop (which
+ * always renders behind every actor) let her appear in front of the beam the whole time, when a
+ * real wooden lintel over a doorway would visually cover anyone standing under/behind it. The
+ * collider geometry below (FRONT_WALL_LEFT/RIGHT, still solid for their own full height) is
+ * unchanged -- only the visual layer on top of it was restored.
  */
 const FRONT_WALL_LEFT: FracRect = worldFrac(95, 182, 228, 265);
 const FRONT_WALL_RIGHT: FracRect = worldFrac(248, 182, 385, 265);
@@ -228,6 +262,8 @@ export class CachotScene extends Phaser.Scene {
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
 
+    this.buildFrontWallBand();
+
     const stepRect = SECOND_STEP_ZONE;
     this.secondStepZone = new Phaser.Geom.Rectangle(
       ROOM_OFFSET_X + stepRect.xFrac * CACHOT_ROOM_WIDTH,
@@ -237,18 +273,42 @@ export class CachotScene extends Phaser.Scene {
     );
   }
 
-  /** The maintainer's own room artwork, used as the permanent backdrop (the upper dining chair has
-   * been removed from this same artwork -- see `lourdesCachotInterior.ts`'s doc comment), plus
-   * invisible colliders matching its actual furniture/walls -- see the FURNITURE_FOOTPRINTS/
-   * WALL_FOOTPRINTS doc comments above for the full reasoning. */
+  /** The maintainer's own room artwork, used as the permanent backdrop, plus invisible colliders
+   * matching its actual furniture/walls -- see the FURNITURE_FOOTPRINTS/WALL_FOOTPRINTS doc
+   * comments above for the full reasoning. */
   private buildRoom(): void {
     this.add.image(ROOM_OFFSET_X, ROOM_OFFSET_Y, CACHOT_ROOM_KEY).setOrigin(0, 0).setDepth(DEPTH.GROUND);
 
-    [...FURNITURE_FOOTPRINTS, ...WALL_FOOTPRINTS, FRONT_WALL_LEFT, FRONT_WALL_RIGHT, DOOR_STOPPER].forEach((r) => {
+    [...FURNITURE_FOOTPRINTS, NORTH_CHAIR_FOOTPRINT, ...WALL_FOOTPRINTS, FRONT_WALL_LEFT, FRONT_WALL_RIGHT, DOOR_STOPPER].forEach((r) => {
       const cx = ROOM_OFFSET_X + (r.xFrac + r.wFrac / 2) * CACHOT_ROOM_WIDTH;
       const cy = ROOM_OFFSET_Y + (r.yFrac + r.hFrac / 2) * CACHOT_ROOM_HEIGHT;
       this.colliderBodies.push(createBlocker(this, cx, cy, r.wFrac * CACHOT_ROOM_WIDTH, r.hFrac * CACHOT_ROOM_HEIGHT));
     });
+  }
+
+  /**
+   * The "walk behind the front wall" effect: a second copy of the room's own bottom strip (low
+   * stone wall, door, lantern, and the wooden beam over the doorway), pinned exactly on top of
+   * where that same strip already appears in the backdrop, given ONE fixed depth from the beam's
+   * own ground line. Bernadette's own per-frame `depthForY(this.y, DEPTH.ACTORS)` (already
+   * computed every frame in `Player.ts#update()`) then naturally sorts above or below it as she
+   * moves -- the exact same trick `OverworldScene.ts#addFootprintBuilding()` already uses for the
+   * church/presbytery, reused here rather than inventing a new occlusion system. In practice this
+   * only ever matters while she's inside the open half of the doorway (the only place she can
+   * cross the beam's own y182-196 band at all -- the solid stone either side stops her at y182);
+   * applying the overlay across the full room width anyway is harmless since she can never reach
+   * "behind" the solid stone regardless of how this sorts.
+   *
+   * Anchor: the beam's own verified world-space bottom edge, y196 (screenshotted directly off the
+   * live-rendered game at camera zoom=1/scroll=(0,0), where screenshot pixels equal world pixels
+   * exactly -- see `lourdesCachotInterior.ts`'s own doc comment and FRONT_WALL_LEFT/RIGHT above,
+   * which agree: the beam spans world y182-196).
+   */
+  private buildFrontWallBand(): void {
+    const wallX = ROOM_OFFSET_X;
+    const wallY = ROOM_OFFSET_Y + CACHOT_FRONT_WALL_LOCAL_Y;
+    const beamBottomWorldY = 196;
+    this.add.image(wallX, wallY, CACHOT_FRONT_WALL_KEY).setOrigin(0, 0).setDepth(depthForY(beamBottomWorldY, DEPTH.ACTORS));
   }
 
   private buildNarration(): void {

@@ -1567,3 +1567,71 @@ teleport keyed specifically to the *second* step of the two visible outside the 
   starts from open floor well inside the room and walks *toward* the boundary, which has the added
   benefit of matching how the maintainer's own bug reports are actually phrased ("walk behind the
   wall" implies approaching from inside the room, not spawning behind it).
+
+### Le Cachot: previous pass's simplifications reverted, "stuck between table and wall" bug actually fixed, Louise's talk mouth shrunk
+
+The immediately preceding pass (above) removed the upper chair from the art, deleted the lower
+wall's walk-behind effect, and turned it into a plain solid boundary. The maintainer rejected both
+of those simplifications outright: the chair removal used a clone-stamp patch that looked like a
+visible "reconstruction" rather than the original artwork, and the plain-wall approach lost the
+walk-behind-the-beam effect at the doorway that an earlier round had specifically asked for. On
+top of reverting both, the maintainer also reported a genuinely new bug: Bernadette could get
+physically stuck between the dining table and the lower wall.
+
+1. **`cachot_room.png` restored byte-for-byte from before the clone-stamp patch** (`git show
+   0c7675b~1:src/assets/interiors/cachot_room.png`, checksum-verified identical to the version
+   restored). The chair is back in the base backdrop exactly as originally supplied -- no redraw,
+   no patch, no extension. `cachot_frontwall.png` was similarly restored from the last commit that
+   had it (`3e3865b`), since the underlying pixels there were never touched by the chair patch (a
+   completely different region of the image) and its crop geometry is still valid.
+2. **The actual "stuck between the table and the lower wall" bug**: the table+south-chair
+   collider's own bottom edge (grown to world y177) and the lower wall's top edge (y182) left only
+   a ~5 world-px gap between two *separate* colliders -- narrower than Bernadette's own ~11px-tall
+   collision box. A gap that size isn't just unwalkable (the art itself only has ~7px of real floor
+   there), it's actively dangerous: her hitbox can straddle both colliders' edges at once and get
+   simultaneous overlap-separation pushes from each side, which is what "stuck" actually looked
+   like. **Fix**: pin the table's own bottom edge to y182 (the wall's own top edge) instead of a
+   further-grown margin, so the two colliders touch with zero gap -- one continuous obstacle
+   instead of two colliders with an ambiguous sliver between them. Applied the identical fix to the
+   *other* place this same class of bug existed but hadn't been reported yet: the ~6px gap between
+   the fireplace's bottom edge and the restored north chair's top edge, found by re-deriving the
+   chair's collider from scratch (it had no collider at all right after the art was restored, since
+   the previous pass deleted it along with the chair itself) and checking it against every
+   neighboring object rather than just copying the old pre-removal numbers back. General lesson
+   worth keeping for this room specifically: two colliders with a gap between them smaller than
+   Bernadette's own hitbox is never actually a walkable corridor in this art at this scale, and
+   should be closed to zero rather than left open "just in case" -- see AGENTS.md's account of the
+   south-of-canvas test-methodology trap two passes up for the same underlying lesson from the test
+   side rather than the collider side.
+3. **The lower wall's walk-behind/occlusion effect is back**, using the exact mechanism from
+   before the previous pass deleted it (`buildFrontWallBand()`, anchor at the beam's own verified
+   world-space bottom edge y196) -- worth being precise about *why* restoring it doesn't reopen the
+   very bug two passes ago fixed (the floor visually covering Bernadette instead of the wall): the
+   *collision* boundary (FRONT_WALL_LEFT/RIGHT, solid for their full y182-265 height) never
+   changed and isn't what determines where she can walk -- only the door's own open gap
+   (x228-248, from the half-open-door pass) lets her actually cross the beam's y182-196 band at
+   all, and that's the one place the overlay's Y-sort comparison ever actually matters. Applying
+   the overlay across the wall's full width (including the solid stone she can never reach behind)
+   is harmless, exactly as it always was.
+4. **Louise's talking mouth, shrunk.** The previous portrait pass's talk/talkBlink frames painted
+   a large (11x5px, ~40 pixels) *solid, flat, two-tone dark fill* over the mouth -- no gradient, no
+   skin/lip color showing through, which is what read as an "ugly blob" at this resolution.
+   Compared against the same talk frame for every other real-art portrait in the game (jeanne/
+   bernadette/boy/sister), the actual working pattern is the opposite of what "bigger bounding box"
+   suggests: their talk-diff regions are *mostly still skin/lip-toned* pixels (subtle shading, not
+   a fill) with only 1-2 truly dark pixels at the very center -- the impression of an open mouth
+   comes from a tiny dark core, not a filled shape. Regenerated Louise's talk/talkBlink from her
+   own (unmodified) neutral frame the same way: a 5px soft brown row directly under her closed-lip
+   line, and a 3px genuinely dark core beneath that -- 8 pixels total, not 40. Her blink was
+   re-checked against this same "ugly/large" concern and found already correct (both eyes' own iris
+   pixels are replaced with skin tone in a small, symmetric box; the eyebrows one row above are
+   untouched) -- left unmodified, since it wasn't actually broken, just visually adjacent to the
+   mouth problem in the same complaint.
+
+All four reverified in the actual running game via Playwright (not just by reading the code):
+walked the exact table/wall corridor from both directions and from the south, circumnavigated the
+whole furniture cluster in a loop, confirmed the chair blocks movement, confirmed the beam overlay
+sorts correctly on both sides of its anchor, confirmed the door's solid/open geometry and the
+second-step exit trigger from the previous pass are both still intact and untouched, and opened
+Louise's dialogue to confirm the new small mouth animates naturally through several frames of
+typing.
