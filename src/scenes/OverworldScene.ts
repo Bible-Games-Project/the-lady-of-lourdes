@@ -43,35 +43,38 @@ import { useLetterboxScale } from '../core/scaleMode';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
-// northern edge (crossable only via the bridge), and the town — now the maintainer's own single
+// northern edge (crossable only via the bridge), and the town — the maintainer's own single
 // painted PNG (see `assets/town/lourdesTown.ts`) — sits south of that, with Le Cachot as the
 // grey-roofed house within it.
 //
-// **The town PNG is displayed at TOWN_SCALE (3x) its native size**, a real world-space
-// enlargement, not a camera zoom. At that size it's far wider (native 1535px -> 4605 world px)
-// than the map ever was, so the map itself is widened to fit it — the entire increase is new
-// columns on the *east* side, and the map is also made taller (new rows on the *south* side) since
-// the PNG at 3x is taller than the old town area too. Neither the PNG's own width nor height is
-// cropped to fit; the map grows to fit the PNG instead, per the maintainer's explicit instruction.
+// **The town PNG is displayed at TOWN_SCALE (1.5x) its native size**, a real world-space
+// enlargement, not a camera zoom -- halved from an earlier 3x per an explicit "too large, reduce
+// to 50% of its current size" ask (i.e. 1.5x native, not 1.5x of the 3x display). The PNG's own
+// pixels are completely untouched either way; only `setDisplaySize`'s target changes, still plain
+// nearest-neighbor. The map is sized to fit the PNG at whatever TOWN_SCALE currently is (COLS/ROWS
+// below), not the other way around -- shrinking TOWN_SCALE is why the map is smaller again too,
+// not a separate map-size decision.
 //
 // **The whole north cluster (path, river, grotto, ford) is shifted east by OFFSET_X_TILES**, as one
 // rigid block — nothing about its own internal layout changes, only its position — so the bridge
 // lands under the town PNG's own painted path opening at the top of the image instead of at the
 // map's old, now-mostly-empty west side. This is why every north-side X coordinate below adds
 // OFFSET_X_TILES/OFFSET_X: PATH_CENTER, the river's vertical arm, the grotto/niche/firewood spots,
-// the ford zone and far-bank wander box. Every Y coordinate is untouched.
-const OFFSET_X_TILES = 115;
+// the ford zone and far-bank wander box. Every Y coordinate is untouched. OFFSET_X_TILES scales
+// down along with TOWN_SCALE (the bridge needs to land under the same painted path opening, which
+// is now closer to the town PNG's own left edge in world space).
+const OFFSET_X_TILES = 45;
 const OFFSET_X = OFFSET_X_TILES * TILE_SIZE;
 
 // World placement of the town PNG's own native top-left corner (see `assets/town/lourdesTown.ts`).
 // Chosen so the painted path opening at the top of the image (native x ~750) lands almost exactly
-// under the bridge once the north cluster is shifted by OFFSET_X below (2350 vs 2352 — 2px, well
+// under the bridge once the north cluster is shifted by OFFSET_X below (1225 vs 1232 — 7px, well
 // under a tile) — the two are derived from the same OFFSET_X_TILES choice, not independently tuned.
 const TOWN_X0 = 100;
 const TOWN_Y0 = 1050;
 
-const COLS = 304;
-const ROWS = 264;
+const COLS = 160;
+const ROWS = 168;
 const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
 

@@ -44,9 +44,12 @@ import cachotUrl from './lourdes_town_cachot.png';
 export const TOWN_NATIVE_WIDTH = 1535;
 export const TOWN_NATIVE_HEIGHT = 1024;
 
-/** Displayed at 3x native size — a real world-space enlargement (`setDisplaySize`, nearest-neighbor,
- * same as every other real-art building in this game), not a camera zoom. */
-export const TOWN_SCALE = 3;
+/** Displayed at 1.5x native size — a real world-space enlargement (`setDisplaySize`,
+ * nearest-neighbor, same as every other real-art building in this game), not a camera zoom.
+ * Halved from an earlier 3x per an explicit "the town PNG is too large, reduce its displayed size
+ * to 50% of its current size" ask (50% of 3x is 1.5x native, not a second multiplier on top of 3x).
+ * The source PNG itself (`lourdes_town_*.png`) is completely untouched either way. */
+export const TOWN_SCALE = 1.5;
 
 export const TOWN_GROUND_KEY = 'lourdes_town_ground';
 

@@ -1882,3 +1882,37 @@ speed) movement through that same house's roof area down to the footprint's own 
 fountain's own outer walkway, blocked at the fountain's actual basin, the Cachot door zone
 correctly triggering `CachotScene`, the exit spawn landing at exactly the door's own center-X,
 and the boy's wander position changing across repeated samples (not frozen against a house wall).
+
+### Town PNG halved again: 3x → 1.5x (`TOWN_SCALE`)
+
+The 3x display size from the section above was itself reported "far too large" one round later —
+"reduce its displayed/world size to 50% of its current size... 1.5x the original PNG dimensions"
+(i.e. half of 3x, not a second 1.5x multiplier stacked on top). This turned out to be a
+**one-constant change with no other hand-tuned numbers to touch**, precisely because every piece
+of town-related placement math in `OverworldScene.ts` — every building's world position/size in
+`addTownBuilding()`/`buildCachotHouse()`, `FOUNTAIN_COLLIDER`, `CACHOT_DOOR_X/Y`, `JEANNE_SPAWN`/
+`JEANNE_WAYPOINTS`, `BOY_WANDER_BOUNDS` — was written as a formula off `TOWN_X0`/`TOWN_Y0`/
+`TOWN_SCALE` rather than as separately hardcoded pixel values (see the previous section's own
+`addTownBuilding()` doc comment). Changing `TOWN_SCALE` alone (`lourdesTown.ts`, `3` → `1.5`)
+correctly rescaled every collider, depth anchor, and NPC position with it — verified live
+(door-zone width exactly halved, fountain collider south edge at the newly-scaled position, the
+Cachot exit spawn still landing at exactly the door's own center-X, offset `0`).
+
+Two things *did* still need re-deriving by hand, since they depend on the PNG's own displayed
+footprint in world space, not on any building's position within it:
+
+- **`OFFSET_X_TILES`** (115 → 45): re-solved the same way as before — the smaller-scale painted
+  path opening (native x ~750) now sits much closer to the PNG's own left edge in world pixels
+  (750x1.5 vs 750x3), so the north cluster (bridge/river/grotto/ford) needs a smaller eastward shift
+  to land under it. `TOWN_X0` (the PNG's own left-margin placement) was left at its existing value,
+  `100` — only the shift amount changed, not the margin choice.
+- **`COLS`/`ROWS`** (304/264 → 160/168): recomputed from the PNG's new, smaller displayed footprint
+  (2302.5x1536 vs 4605x3072) plus the same margin allowances as before, not derived from
+  `OFFSET_X_TILES` or any building position. The world genuinely shrank back down alongside the PNG
+  — this is expected, not a regression: "keep the entire town PNG visible and properly positioned...
+  adjust the map/world dimensions if necessary" was explicit about the map following the PNG's own
+  size, in either direction.
+
+The source PNG files themselves (`lourdes_town_*.png`) were not touched at all — same crops, same
+pixels, only their `setDisplaySize` target changed, still plain nearest-neighbor (no blur/repixel/
+resample of any kind, confirmed visually via a close-up screenshot at the new size).
