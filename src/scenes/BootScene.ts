@@ -30,9 +30,7 @@ import { preloadBoyPortrait } from '../assets/portraits/boyPortrait';
 import { preloadSisterPortrait } from '../assets/portraits/sisterPortrait';
 import { preloadMotherPortrait } from '../assets/portraits/motherPortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
-import { preloadLourdesChurch } from '../assets/buildings/lourdesChurch';
-import { preloadLourdesPresbytery } from '../assets/buildings/lourdesPresbytery';
-import { preloadLourdesCachotExterior } from '../assets/buildings/lourdesCachotExterior';
+import { preloadLourdesTown } from '../assets/town/lourdesTown';
 import { preloadLourdesCachotInterior } from '../assets/interiors/lourdesCachotInterior';
 
 export class BootScene extends Phaser.Scene {
@@ -54,9 +52,7 @@ export class BootScene extends Phaser.Scene {
     preloadSisterPortrait(this);
     preloadMotherPortrait(this);
     preloadLourdesGrass(this);
-    preloadLourdesChurch(this);
-    preloadLourdesPresbytery(this);
-    preloadLourdesCachotExterior(this);
+    preloadLourdesTown(this);
     preloadLourdesCachotInterior(this);
   }
 

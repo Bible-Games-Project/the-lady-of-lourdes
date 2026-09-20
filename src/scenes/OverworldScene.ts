@@ -4,15 +4,18 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
-import { LOURDES_CHURCH_KEY } from '../assets/buildings/lourdesChurch';
-import { LOURDES_PRESBYTERY_KEY } from '../assets/buildings/lourdesPresbytery';
 import {
-  CACHOT_EXTERIOR_UNIT_KEYS,
-  CACHOT_EXTERIOR_UNIT_WIDTHS,
-  CACHOT_EXTERIOR_HEIGHT,
-  CACHOT_EXTERIOR_SCALE,
-  CACHOT_EXTERIOR_CACHOT_UNIT_INDEX,
-} from '../assets/buildings/lourdesCachotExterior';
+  TOWN_NATIVE_WIDTH,
+  TOWN_NATIVE_HEIGHT,
+  TOWN_SCALE,
+  TOWN_GROUND_KEY,
+  TOWN_BUILDINGS,
+  CACHOT_BUILDING,
+  CACHOT_DOOR_LOCAL_X,
+  CACHOT_DOOR_LOCAL_BOTTOM_Y,
+  CACHOT_DOOR_HALF_WIDTH,
+  type TownBuildingDef,
+} from '../assets/town/lourdesTown';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -24,7 +27,6 @@ import { DialogueBox } from '../gameplay/DialogueBox';
 import { TasksPanel } from '../gameplay/TasksPanel';
 import { GameplayTopBar } from '../gameplay/GameplayTopBar';
 import { InteractionPrompt } from '../gameplay/InteractionPrompt';
-import { Toast } from '../gameplay/Toast';
 import { Caption } from '../gameplay/Caption';
 import { RosaryUI } from '../gameplay/RosaryUI';
 import { updateFollowerPosition } from '../gameplay/Follower';
@@ -33,7 +35,6 @@ import { WanderNpc } from '../gameplay/WanderNpc';
 import { MissionManager } from '../gameplay/MissionManager';
 import { mission01Dialogue, MISSION_01_FIREWOOD_TARGET, MISSION_01_OBJECTIVES } from '../data/missions/mission01';
 import { boyAmbientDialogue } from '../data/dialogue/ambientDialogue';
-import { LOCATIONS, type LocationId } from '../data/world/locations';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
 import { wait, tweenPromise } from '../gameplay/async';
@@ -42,85 +43,88 @@ import { useLetterboxScale } from '../core/scaleMode';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
-// northern edge (crossable only via the bridge), and Le Cachot + the town sit south of that.
+// northern edge (crossable only via the bridge), and the town — now the maintainer's own single
+// painted PNG (see `assets/town/lourdesTown.ts`) — sits south of that, with Le Cachot as the
+// grey-roofed house within it.
 //
-// **Widened again** (COLS 52 -> 72) for two combined reasons: a "slightly wider" ask on its own
-// terms, and Le Cachot's own building now being displayed at 2x its previous size (see
-// `CACHOT_EXTERIOR_SCALE` below) -- at that size the row-house terrace alone is ~30 tiles wide, and
-// fitting it east of the path with real clearance from both the path and the map's own edge (per
-// the standing "no buildings at the extreme edges" rule) needed more than a token increase. The
-// entire increase is added as new columns on the *east* side only -- nothing about the river, path,
-// grotto, ford, or west-side church/presbytery cluster moves or needs re-deriving, so all of that
-// stays exactly as coherent as it already was. `TILE_SIZE` and every character's own display size
-// are untouched, same as every previous map-size change in this file's history.
-const COLS = 72;
-const ROWS = 116;
+// **The town PNG is displayed at TOWN_SCALE (3x) its native size**, a real world-space
+// enlargement, not a camera zoom. At that size it's far wider (native 1535px -> 4605 world px)
+// than the map ever was, so the map itself is widened to fit it — the entire increase is new
+// columns on the *east* side, and the map is also made taller (new rows on the *south* side) since
+// the PNG at 3x is taller than the old town area too. Neither the PNG's own width nor height is
+// cropped to fit; the map grows to fit the PNG instead, per the maintainer's explicit instruction.
+//
+// **The whole north cluster (path, river, grotto, ford) is shifted east by OFFSET_X_TILES**, as one
+// rigid block — nothing about its own internal layout changes, only its position — so the bridge
+// lands under the town PNG's own painted path opening at the top of the image instead of at the
+// map's old, now-mostly-empty west side. This is why every north-side X coordinate below adds
+// OFFSET_X_TILES/OFFSET_X: PATH_CENTER, the river's vertical arm, the grotto/niche/firewood spots,
+// the ford zone and far-bank wander box. Every Y coordinate is untouched.
+const OFFSET_X_TILES = 115;
+const OFFSET_X = OFFSET_X_TILES * TILE_SIZE;
+
+// World placement of the town PNG's own native top-left corner (see `assets/town/lourdesTown.ts`).
+// Chosen so the painted path opening at the top of the image (native x ~750) lands almost exactly
+// under the bridge once the north cluster is shifted by OFFSET_X below (2350 vs 2352 — 2px, well
+// under a tile) — the two are derived from the same OFFSET_X_TILES choice, not independently tuned.
+const TOWN_X0 = 100;
+const TOWN_Y0 = 1050;
+
+const COLS = 304;
+const ROWS = 264;
 const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
 
-const PATH_CENTER = 32;
+const PATH_CENTER = 32 + OFFSET_X_TILES;
 const PATH_HALF_WIDTH = 1;
 
 // Vertical arm of the river, beside the grotto. Fully blocks the player — the only crossing is
 // the scripted ford cutscene, where the companions wade across and Bernadette stays behind.
-const RIVER_V_START = 39;
-const RIVER_V_END = 42;
+const RIVER_V_START = 39 + OFFSET_X_TILES;
+const RIVER_V_END = 42 + OFFSET_X_TILES;
 
 // Horizontal arm, the town's river boundary. Only passable through the bridge at the path.
 const RIVER_H_TOP = 61;
 const RIVER_H_BOTTOM = 64;
 
 const FIELD_PATH_START_ROW = 18;
-
-// The Cachot exterior building's own placement (see `assets/buildings/lourdesCachotExterior.ts`).
-// `CACHOT_DOOR_X/Y` (Le Cachot's own door, the middle unit) is what actually drives the
-// player-spawn/sister-spawn reference point and the walkable door zone below.
-const CACHOT_BUILDING_LEFT_X = 576;
-const CACHOT_BUILDING_TOP_Y = 1088;
-// Every *size* constant here (unit widths, the door's own local position within the middle unit)
-// is native-pixel, so each needs `CACHOT_EXTERIOR_SCALE` applied once, here, rather than the
-// building's own asset file pre-multiplying its exported widths (see that file's own doc comment
-// on why it stays native). `CACHOT_BUILDING_LEFT_X/TOP_Y` above are a placement choice, not a
-// size, so they're untouched by the scale.
-const CACHOT_EXTERIOR_UNIT_WIDTHS_SCALED = CACHOT_EXTERIOR_UNIT_WIDTHS.map((w) => w * CACHOT_EXTERIOR_SCALE);
-const CACHOT_EXTERIOR_HEIGHT_SCALED = CACHOT_EXTERIOR_HEIGHT * CACHOT_EXTERIOR_SCALE;
-// Le Cachot's own door sits within the middle unit (index CACHOT_EXTERIOR_CACHOT_UNIT_INDEX),
-// measured by eye against a grid-overlay crop of the source art (same technique as every other
-// footprint in this file) — local to that unit's own top-left, then offset by the cumulative width
-// of the units before it and CACHOT_BUILDING_LEFT_X/TOP_Y to land in world space.
-const CACHOT_DOOR_LOCAL_X = 40 * CACHOT_EXTERIOR_SCALE; // within the middle unit's own 45px (native) width
-const CACHOT_DOOR_LOCAL_Y = 101 * CACHOT_EXTERIOR_SCALE; // within the building's shared 144px (native) height
-const CACHOT_DOOR_X =
-  CACHOT_BUILDING_LEFT_X +
-  CACHOT_EXTERIOR_UNIT_WIDTHS_SCALED.slice(0, CACHOT_EXTERIOR_CACHOT_UNIT_INDEX).reduce((a, b) => a + b, 0) +
-  CACHOT_DOOR_LOCAL_X;
-const CACHOT_DOOR_Y = CACHOT_BUILDING_TOP_Y + CACHOT_DOOR_LOCAL_Y;
+const CAVE_FLOOR_COL_START = 7 + OFFSET_X_TILES;
+const CAVE_FLOOR_COL_END = 13 + OFFSET_X_TILES;
 
 // Kept well clear of the map edges so the screen-pinned HUD never covers it.
-const GROTTO_X = 256;
+const GROTTO_X = 256 + OFFSET_X;
 const GROTTO_Y = 288;
 const NICHE_X = GROTTO_X + 62;
 const NICHE_Y = GROTTO_Y + 19;
 
 const FIREWOOD_SPOTS = [
-  { x: 192, y: 640 },
-  { x: 352, y: 768 },
-  { x: 512, y: 576 },
+  { x: 192 + OFFSET_X, y: 640 },
+  { x: 352 + OFFSET_X, y: 768 },
+  { x: 512 + OFFSET_X, y: 576 },
 ];
 
 // Width (4 tiles) and the GROTTO_Y-relative anchor are unchanged from the original map's own
-// proportions — only repositioned to track the doubled RIVER_V_START/GROTTO_Y.
+// proportions — only repositioned to track the shifted RIVER_V_START/GROTTO_Y.
 const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
 const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
-// Jeanne leads Bernadette from the town, across the bridge, and up to the ford — where she
-// naturally stops, well short of the grotto so she doesn't upstage the apparition.
+// Jeanne starts near Le Cachot (on the open plaza between the fountain and Le Cachot's own door,
+// clear of both their colliders), waits for Bernadette to meet her there, then leads her north
+// through the town's own painted path — first threading west of the central manor (the only
+// direction with a clear, collider-free corridor all the way up to the town's own path opening at
+// the top of the PNG), then across the bridge and up to the ford, where she naturally stops well
+// short of the grotto so she doesn't upstage the apparition. `LeaderNpc` walks each leg as a
+// straight line with no obstacle avoidance, so every waypoint (and the straight segment leading to
+// it) was chosen to stay clear of every town building's own collider footprint.
+const JEANNE_SPAWN = { x: TOWN_X0 + 820 * TOWN_SCALE, y: TOWN_Y0 + 700 * TOWN_SCALE };
 const JEANNE_WAYPOINTS: Point[] = [
-  { x: PATH_CENTER * TILE_SIZE, y: 88 * TILE_SIZE },
+  { x: TOWN_X0 + 480 * TOWN_SCALE, y: TOWN_Y0 + 690 * TOWN_SCALE },
+  { x: TOWN_X0 + 420 * TOWN_SCALE, y: TOWN_Y0 + 400 * TOWN_SCALE },
+  { x: TOWN_X0 + 700 * TOWN_SCALE, y: TOWN_Y0 + 50 * TOWN_SCALE },
   { x: PATH_CENTER * TILE_SIZE, y: (RIVER_H_BOTTOM + 1) * TILE_SIZE + 8 },
   { x: PATH_CENTER * TILE_SIZE, y: (RIVER_H_TOP - 1) * TILE_SIZE - 8 },
   { x: PATH_CENTER * TILE_SIZE, y: 400 },
-  { x: 500, y: 300 },
+  { x: 500 + OFFSET_X, y: 300 },
 ];
 // Speed and distance thresholds are gameplay feel, not spatial layout -- deliberately left
 // unchanged (she still walks at the same visual pace; the bigger map just means a longer walk).
@@ -131,137 +135,55 @@ const JEANNE_RESUME_DISTANCE = 55;
 // Bounded area where the sister and Jeanne wander (`WanderNpc`) once they've crossed the river
 // during Mission 1, "searching for firewood" instead of vanishing -- a rectangle on the far
 // (east) bank, not tied to any specific spot from the original map (this behavior is new). Sized
-// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE = 688,
-// well short of this box (700-770), keeping the pair visibly close to the crossing point/
-// Massabielle without risking wandering into the water.
-const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700, FAR_BANK.y - 60, 70, 120);
+// to the actual clear gap here: the river's east edge sits at (RIVER_V_END+1)*TILE_SIZE, well
+// short of this box, keeping the pair visibly close to the crossing point/Massabielle without
+// risking wandering into the water.
+const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700 + OFFSET_X, FAR_BANK.y - 60, 70, 120);
 const COMPANION_WANDER_SPEED = 28;
 
-// Wander zone for the ambient village boy (`BOY_WANDER_BOUNDS`) -- the open strip of plaza grass
-// between Le Cachot's own footprint (now a much larger building -- see `CACHOT_EXTERIOR_SCALE`)
-// and the relocated hospice/Maison Cénac/tribunal cluster south of it (see `TOWN_BUILDINGS`
-// below), well clear of both so he never needs to path around a collider (same "pick bounds that
-// are inherently obstacle-free" approach `FAR_BANK_WANDER_BOUNDS` above already uses, rather than
-// building actual pathfinding/collision-avoidance for `WanderNpc`).
-const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(38 * TILE_SIZE, 87 * TILE_SIZE, 26 * TILE_SIZE, 4 * TILE_SIZE);
+// Wander zone for the ambient village boy — a small patch of open plaza just north of the
+// fountain, clear of the fountain's own collider, Le Cachot's, and every neighboring house's
+// footprint (same "pick bounds that are inherently obstacle-free" approach `FAR_BANK_WANDER_BOUNDS`
+// above already uses, rather than building actual pathfinding/collision-avoidance for `WanderNpc`).
+const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(
+  TOWN_X0 + 660 * TOWN_SCALE,
+  TOWN_Y0 + 700 * TOWN_SCALE,
+  100 * TOWN_SCALE,
+  60 * TOWN_SCALE,
+);
 const BOY_WANDER_SPEED = 24;
 
-interface BuildingPlacement {
-  key: string;
-  col: number;
-  row: number;
-  widthPx: number;
-  heightPx: number;
-  locationId: LocationId;
-}
+// Fountain collider — the town's only other (non-house) collidable object, per the maintainer's
+// explicit "only houses and the fountain, nothing else" ask. Measured by eye against the source
+// PNG as a rect closely matching the actual stone basin (not its wider decorative walkway ring,
+// which stays freely walkable), native x:[705,825] y:[612,688], converted to world space and left
+// in the ground layer (see `buildTown()`) rather than sliced into its own depth-sorted sprite —
+// short enough that a fixed "always behind the player" rendering doesn't read as wrong.
+const FOUNTAIN_COLLIDER = {
+  x: TOWN_X0 + 765 * TOWN_SCALE,
+  y: TOWN_Y0 + 650 * TOWN_SCALE,
+  w: 120 * TOWN_SCALE,
+  h: 76 * TOWN_SCALE,
+};
 
-// Staggered in both row *and* column -- not one shared column like the previous layout, which
-// read as buildings "lined up" rather than a real town. All three sit south of Le Cachot's own
-// (now much larger, see `CACHOT_EXTERIOR_SCALE`) footprint, at their own distinct depth into the
-// town, per the "buildings should form a real town layout, with different positions and
-// orientations, rather than appearing lined up side-by-side" ask.
-const TOWN_BUILDINGS: BuildingPlacement[] = [
-  { key: PROP_KEYS.TOWN_BUILDING, col: 37, row: 92, widthPx: 48, heightPx: 40, locationId: 'hospice' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 52, row: 98, widthPx: 48, heightPx: 40, locationId: 'maisonCenac' },
-  { key: PROP_KEYS.TOWN_BUILDING, col: 44, row: 108, widthPx: 48, heightPx: 40, locationId: 'tribunal' },
-];
+// Every town building except Le Cachot gets the same generic footprint: a band near the bottom of
+// its own bounding box (the wall base, below the tall roof/chimneys that a player should be able
+// to walk behind) spanning most of its width (clear of the roof's own eaves/corners). Not one giant
+// rectangle over the whole sprite -- matches the "solid lower portion blocks, upper portion is
+// walk-behind" ask uniformly across all ~16 buildings without needing a hand-measured footprint
+// per building the way the old church/presbytery footprints were.
+const TOWN_FOOTPRINT_X_FRAC = { min: 0.15, max: 0.85 };
+const TOWN_FOOTPRINT_Y_FRAC = { min: 0.7, max: 0.95 };
 
-/**
- * A collision rectangle as a fraction of a `SpecialBuilding`'s own displayed width/height,
- * measured by eye against the building's texture (grid-overlay crops, same technique used
- * throughout this file's asset work) -- so it automatically scales and repositions correctly
- * whenever the building's own `widthPx`/`heightPx`/`col`/`row` change, instead of needing to be
- * re-measured in absolute pixels every time the building is resized.
- */
-interface FootprintRect {
-  xFrac: number;
-  yFrac: number;
-  wFrac: number;
-  hFrac: number;
-}
-
-interface SpecialBuilding {
-  key: string;
-  col: number;
-  row: number;
-  widthPx: number;
-  heightPx: number;
-  locationId: LocationId;
-  /** Small rectangles matching the building's actual solid footprint (wall base, tree/shrub
-   * trunks) -- NOT one big box over the whole sprite. Anything above/behind this footprint (the
-   * roof, upper stories, tree canopies) is walkable-through for Y-sort purposes: the player only
-   * visually renders behind the building while north of `col`/`row`'s own y (see
-   * `addFootprintBuilding()`), and only actually collides once they reach one of these rects. */
-  footprint: FootprintRect[];
-}
-
-// Church footprint (measured on the 94x122 native texture, see lourdesChurch.ts): the stone
-// wall + low fence the entrance sits behind, plus the two flanking trees' trunk/base areas.
-// Excludes the roof, bell tower, and tree canopies entirely -- those are tall enough in the
-// sprite that a player standing "in" them (north of the building's own row) should render behind
-// the building, not collide with it.
-const CHURCH_FOOTPRINT: FootprintRect[] = [
-  { xFrac: 0.17, yFrac: 0.754, wFrac: 0.702, hFrac: 0.213 }, // wall + fence base
-  { xFrac: 0.128, yFrac: 0.779, wFrac: 0.149, hFrac: 0.123 }, // left tree trunk/base
-  { xFrac: 0.723, yFrac: 0.754, wFrac: 0.234, hFrac: 0.148 }, // right tree/bush base
-];
-
-// Presbytery footprint (measured on the 100x80 native texture, see lourdesPresbytery.ts): the
-// low fence/gate along the front, plus the tree cluster on the left and the tree/garden-shed
-// cluster on the right.
-const PRESBYTERY_FOOTPRINT: FootprintRect[] = [
-  { xFrac: 0.12, yFrac: 0.75, wFrac: 0.76, hFrac: 0.2 }, // fence + gate base
-  { xFrac: 0.02, yFrac: 0.625, wFrac: 0.14, hFrac: 0.2 }, // left tree cluster
-  { xFrac: 0.74, yFrac: 0.5, wFrac: 0.22, hFrac: 0.325 }, // right tree/shed cluster
-];
-
-// Keeps both buildings pushed inward from the map's own west edge -- "do not place houses/
-// buildings at the outer edges... leave a generous empty/natural area around the edges...
-// concentrate buildings more toward the interior."
-const WEST_BUFFER_TILES = 7;
-
-// The church anchors the west-side cluster, unchanged from its previous placement -- this round's
-// brief didn't ask to touch the church itself, only the presbytery next to it.
-//
-// The presbytery is displayed at 166x133 now, not 312x250: the *previous* 312x250 size (2x the
-// church-scale display size, from an earlier "twice as large" ask) was stretching the same 100x80
-// native texture across roughly double the church's own per-source-pixel screen footprint, which
-// is exactly why it read as visibly coarser/more pixelated than the church even though the two
-// source PNGs were comparable quality -- "the problem is the pixel-art treatment/scaling, not the
-// artwork itself." 166x133 applies the *church's own* native-to-display ratio (~1.66x) to the
-// presbytery's native 100x80, so one native pixel now covers the same screen area in both
-// buildings -- same rendering quality/pixel density, no redraw, no new detail, no resampling
-// (still plain nearest-neighbor `setDisplaySize`, see that asset's own doc comment). Repositioned
-// beside the church rather than below it (previously directly south, reading as "stacked" rather
-// than two separate town buildings) and moved up, per the maintainer's own "move it slightly
-// upward... keep it clearly inside the map" ask.
-const SPECIAL_BUILDINGS: SpecialBuilding[] = [
-  {
-    key: LOURDES_CHURCH_KEY,
-    col: 0.5 + WEST_BUFFER_TILES,
-    row: 72,
-    widthPx: 156,
-    heightPx: 202,
-    locationId: 'church',
-    footprint: CHURCH_FOOTPRINT,
-  },
-  {
-    key: LOURDES_PRESBYTERY_KEY,
-    col: 19,
-    row: 80,
-    widthPx: 166,
-    heightPx: 133,
-    locationId: 'presbytery',
-    footprint: PRESBYTERY_FOOTPRINT,
-  },
-];
+// Le Cachot's own door, in world space — drives the walkable door-gap in its collider (below) and
+// the exact spot Bernadette lands at exiting `CachotScene`: "directly underneath the middle door,"
+// not to the side or at an arbitrary position.
+const CACHOT_DOOR_X = TOWN_X0 + (CACHOT_BUILDING.x + CACHOT_DOOR_LOCAL_X) * TOWN_SCALE;
+const CACHOT_DOOR_Y = TOWN_Y0 + (CACHOT_BUILDING.y + CACHOT_DOOR_LOCAL_BOTTOM_Y) * TOWN_SCALE;
 
 // Positions unrelated to the town-building relayout above; unchanged sizes. Trees removed from
 // this list entirely (see `DECOR`'s own doc comment below) -- what's left is just the two rocks.
-const DECOR: Array<{ key: string; col: number; row: number }> = [
-  { key: PROP_KEYS.ROCK, col: 12, row: 44 },
-  { key: PROP_KEYS.ROCK, col: 58, row: 100 },
-];
+const DECOR: Array<{ key: string; col: number; row: number }> = [{ key: PROP_KEYS.ROCK, col: 12 + OFFSET_X_TILES, row: 44 }];
 
 const INTERACT_RADIUS = 26;
 
@@ -293,7 +215,6 @@ export class OverworldScene extends Phaser.Scene {
   private tasksPanel!: TasksPanel;
   private topBar!: GameplayTopBar;
   private interactionPrompt!: InteractionPrompt;
-  private toast!: Toast;
   private rosary!: RosaryUI;
   private keyE!: Phaser.Input.Keyboard.Key;
 
@@ -314,7 +235,6 @@ export class OverworldScene extends Phaser.Scene {
   private firewoodSprites: Phaser.GameObjects.Image[] = [];
 
   private cachotDoorZone!: Phaser.Geom.Rectangle;
-  private buildings: Array<{ placement: BuildingPlacement; doorZone: Phaser.Geom.Rectangle }> = [];
   private colliderBodies: (Phaser.Types.Physics.Arcade.ImageWithStaticBody | Phaser.GameObjects.Zone)[] = [];
 
   private phase: Phase = 'explore';
@@ -335,29 +255,24 @@ export class OverworldScene extends Phaser.Scene {
     this.boyWander = null;
     this.boyDialogueJustClosed = false;
     this.colliderBodies = [];
-    this.buildings = [];
     this.firewoodSprites = [];
 
     this.buildTerrain();
 
     this.touch = new TouchControls(this);
 
-    const cachotDoorPx = { x: CACHOT_DOOR_X, y: CACHOT_DOOR_Y };
-    // Offsets scaled along with the building (CACHOT_EXTERIOR_SCALE) so she stands the same
-    // *relative* distance from the door as before, just against the now-2x-larger doorway. Exiting
-    // Le Cachot (fromCachot) lands her a few px north of the door, directly under the middle unit's
-    // doorway (cachotDoorPx.x is exactly that door's own horizontal center) -- not to the side or
-    // at an arbitrary spot.
-    const startY = data.fromCachot ? cachotDoorPx.y - 20 * CACHOT_EXTERIOR_SCALE : cachotDoorPx.y + 26 * CACHOT_EXTERIOR_SCALE;
-    this.player = new Player(this, cachotDoorPx.x, startY, this.touch);
+    // Exiting Le Cachot (fromCachot) lands her a few px north of the door, directly under the
+    // door's own horizontal center (CACHOT_DOOR_X) -- not to the side or at an arbitrary spot.
+    const startY = data.fromCachot ? CACHOT_DOOR_Y - 24 : CACHOT_DOOR_Y + 30;
+    this.player = new Player(this, CACHOT_DOOR_X, startY, this.touch);
 
-    this.buildBuildings();
+    this.buildTown();
     this.buildDecor();
     this.buildGrotto();
     this.buildFirewood();
     this.physics.add.collider(this.player, this.colliderBodies);
 
-    this.sister = new NpcActor(this, cachotDoorPx.x - 16 * CACHOT_EXTERIOR_SCALE, cachotDoorPx.y + 22 * CACHOT_EXTERIOR_SCALE, 'sister', 'down', SISTER_SHADOW_SCALE);
+    this.sister = new NpcActor(this, CACHOT_DOOR_X - 30, CACHOT_DOOR_Y + 26, 'sister', 'down', SISTER_SHADOW_SCALE);
     this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
     // Permanently non-colliding: the maintainer reported physically bumping into her while she
@@ -369,7 +284,7 @@ export class OverworldScene extends Phaser.Scene {
     // collider is untouched.
     this.sister.setCollisionEnabled(false);
 
-    this.friend = new NpcActor(this, PATH_CENTER * TILE_SIZE + 18, 44 * TILE_SIZE, 'friend', 'down', FRIEND_SHADOW_SCALE, true);
+    this.friend = new NpcActor(this, JEANNE_SPAWN.x, JEANNE_SPAWN.y, 'friend', 'down', FRIEND_SHADOW_SCALE, true);
     this.friend.setDepth(depthForY(this.friend.y, DEPTH.ACTORS));
 
     const boyStart = Phaser.Geom.Rectangle.Random(BOY_WANDER_BOUNDS, new Phaser.Geom.Point());
@@ -406,6 +321,11 @@ export class OverworldScene extends Phaser.Scene {
     const npcs = [this.sister, this.friend, this.boy];
     this.physics.add.collider(this.player, npcs);
     this.physics.add.collider(npcs, npcs);
+    // Houses (and the fountain) block NPCs too, not just the player -- "the house collision should
+    // apply to NPCs as well where appropriate." Every scripted waypoint/wander bound in this file
+    // was chosen to stay clear of every collider's footprint (see their own doc comments), so this
+    // never leaves an NPC stuck against a wall it can't route around.
+    this.physics.add.collider(npcs, this.colliderBodies);
 
     this.cameras.main.setBounds(0, 0, MAP_W, MAP_H);
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
@@ -415,7 +335,6 @@ export class OverworldScene extends Phaser.Scene {
     this.tasksPanel = new TasksPanel(this);
     this.topBar = new GameplayTopBar(this);
     this.interactionPrompt = new InteractionPrompt(this);
-    this.toast = new Toast(this);
     this.rosary = new RosaryUI(this);
 
     this.keyE = this.input.keyboard!.addKey('E');
@@ -487,23 +406,12 @@ export class OverworldScene extends Phaser.Scene {
         }
       }
     };
-    const stampOrganicPathCols = (colStart: number, colEnd: number, center: number, tile: number): void => {
-      for (let c = colStart; c <= colEnd; c++) {
-        const halfWidth = organicHalfWidthAt(c);
-        for (let r = center - halfWidth; r <= center + halfWidth; r++) {
-          if (r < 0 || r >= ROWS) continue;
-          const atEdge = r === center - halfWidth || r === center + halfWidth;
-          if (atEdge && edgeIsWorn(r, c)) continue;
-          data[r][c] = tile;
-        }
-      }
-    };
 
     stampOrganicPathRows(FIELD_PATH_START_ROW, RIVER_H_TOP - 2, PATH_CENTER, TILE.DIRT_PATH);
 
     const grottoRow = GROTTO_Y / TILE_SIZE;
     for (let r = grottoRow - 1; r <= grottoRow + 3; r++) {
-      for (let c = 7; c <= 13; c++) data[r][c] = TILE.CAVE_FLOOR;
+      for (let c = CAVE_FLOOR_COL_START; c <= CAVE_FLOOR_COL_END; c++) data[r][c] = TILE.CAVE_FLOOR;
     }
 
     // Vertical arm, beside the grotto — spans the whole field down to where it joins the bend.
@@ -526,15 +434,12 @@ export class OverworldScene extends Phaser.Scene {
       for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.STONE_PATH;
     }
 
-    stampOrganicPathRows(RIVER_H_BOTTOM + 2, ROWS - 1, PATH_CENTER, TILE.DIRT_PATH);
-
-    // A short organic branch off the main trail toward Le Cachot's own door, so the "Le Cachot ->
-    // town streets/path -> bridge" route reads as one connected way rather than the building just
-    // floating in open grass. Runs east from the main trail to just short of the doorway itself
-    // (CACHOT_DOOR_X, converted to tiles) at the same row the door sits on.
-    const cachotBranchRow = Math.round(CACHOT_DOOR_Y / TILE_SIZE) - 2;
-    const cachotBranchEndCol = Math.round(CACHOT_DOOR_X / TILE_SIZE);
-    stampOrganicPathCols(PATH_CENTER + 2, cachotBranchEndCol, cachotBranchRow, TILE.DIRT_PATH);
+    // No tile-stamped path south of the bridge: the town's own painted path (part of the single
+    // town PNG placed in `buildTown()`) takes over immediately south of the riverbank -- "remove
+    // the square path tiles... more natural, organic ground/path appearance" is now satisfied by
+    // that hand-painted artwork rather than a second, redundant tile-based path system underneath
+    // it. The organic dirt trail above is still used for the open field north of the river, where
+    // there's no painted art to replace it.
 
     const map = this.make.tilemap({ data, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE });
     const tileset = map.addTilesetImage('tiles', TILESET_KEY, TILE_SIZE, TILE_SIZE, 0, 0)!;
@@ -567,154 +472,98 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * Church/presbytery only: renders the building at its full displayed size (unlike
-   * `addStaticProp()`, there's no single collider box scaled off that size) and instead gives it
-   * one small static collider per `footprint` rectangle, so only the building's actual solid
-   * base/trees block movement -- the tall roof/upper-story/canopy area above the footprint has no
-   * collider at all.
-   *
-   * Depth sorting falls out of the existing per-frame `depthForY()` call already used everywhere
-   * else in this file (`Player.update()` recomputes her own depth from her live `y` every frame;
-   * `NpcActor` does the same for the shadow). Setting this building's depth *once*, from `cy` (its
-   * bottom/ground-contact edge, the same anchor the footprint rects are measured against), is
-   * enough: whenever the player's `y` is north of `cy` she's standing "further up the screen" than
-   * the building's own ground line, so `depthForY(player.y, ...)` computes lower than
-   * `depthForY(cy, ...)` and Phaser draws her behind the building; south of `cy`, the inequality
-   * flips and she draws in front. No per-frame work needed on the building's side, and no special
-   * case in Player.ts -- this is the same trick every other static prop in this file already uses
-   * (`addStaticProp()`'s `image.setDepth(depthForY(y, DEPTH.ACTORS))`), just paired with a
-   * footprint-shaped collider instead of one box so the behind/in-front illusion actually has room
-   * to read: the player can get close enough to the upper part of the sprite (roof, tower, tree
-   * canopies) to visually go behind it before hitting anything solid.
+   * The town's ground layer (paths, open sand, the fountain, every building's own hole already cut
+   * out — see `assets/town/lourdesTown.ts`), placed once at the town's world origin and displayed
+   * at TOWN_SCALE. Sits just below `DEPTH.GROUND` (the field's tile-based terrain layer built in
+   * `buildTerrain()`) and above the grass layer (`DEPTH.GROUND - 1`) -- "grass, then the town PNG,
+   * then (later) the river/Massabielle/grotto PNG above that" -- so this one call is also where
+   * that whole layer-order contract lives.
    */
-  private addFootprintBuilding(building: SpecialBuilding): void {
-    const px = this.tileToPixelCenter(building.col, building.row);
-    const cx = px.x + building.widthPx / 2;
-    const cy = px.y + building.heightPx;
+  private buildTownGround(): void {
+    const image = this.add.image(TOWN_X0, TOWN_Y0, TOWN_GROUND_KEY).setOrigin(0, 0);
+    image.setDisplaySize(TOWN_NATIVE_WIDTH * TOWN_SCALE, TOWN_NATIVE_HEIGHT * TOWN_SCALE);
+    image.setDepth(DEPTH.GROUND - 0.5);
 
-    const image = this.add.image(cx, cy, building.key).setOrigin(0.5, 1);
-    image.setDisplaySize(building.widthPx, building.heightPx);
-    image.setDepth(depthForY(cy, DEPTH.ACTORS));
-
-    building.footprint.forEach((r) => {
-      const rw = r.wFrac * building.widthPx;
-      const rh = r.hFrac * building.heightPx;
-      const rx = px.x + r.xFrac * building.widthPx + rw / 2;
-      const ry = px.y + r.yFrac * building.heightPx + rh / 2;
-      this.colliderBodies.push(createBlocker(this, rx, ry, rw, rh));
-    });
-
-    this.add
-      .text(cx, px.y - 6, Localization.t(LOCATIONS[building.locationId].nameKey), textStyle({ fontSize: '9px', color: '#3a3226' }))
-      .setOrigin(0.5)
-      .setDepth(DEPTH.OVERLAY_LOW);
-
-    // Door zone centered on the footprint's main wall/fence rect (the first entry) rather than the
-    // generic proportional formula `addStaticProp()`'s callers use -- that formula assumes the
-    // door sits near the bottom-center of the whole sprite, which is no longer a safe assumption
-    // now the collision footprint (and the real door within it) can sit anywhere in the frame.
-    const doorRect = building.footprint[0];
-    const doorZone = new Phaser.Geom.Rectangle(
-      px.x + doorRect.xFrac * building.widthPx,
-      px.y + doorRect.yFrac * building.heightPx,
-      doorRect.wFrac * building.widthPx,
-      doorRect.hFrac * building.heightPx,
+    this.colliderBodies.push(
+      createBlocker(this, FOUNTAIN_COLLIDER.x, FOUNTAIN_COLLIDER.y, FOUNTAIN_COLLIDER.w, FOUNTAIN_COLLIDER.h),
     );
-    this.buildings.push({ placement: building, doorZone });
   }
 
   /**
-   * Le Cachot's map building: 5 separate images (one per row-house unit, see
-   * `assets/buildings/lourdesCachotExterior.ts`'s own doc comment for why it's sliced rather than
-   * one image), placed edge-to-edge so they read as a single terrace row. Each unit gets its own
-   * Y-sort depth (their own wall/ground line sits at meaningfully different screen-Y per unit, this
-   * being a much wider building than church/presbytery) and its own footprint colliders, following
-   * the same `depthForY(groundLine, DEPTH.ACTORS)` + `createBlocker()` pattern
-   * `addFootprintBuilding()` uses for those, just applied per-unit instead of once for the whole
-   * building. Only the middle unit is Le Cachot: its own footprint gets a gap at the door (so it's
-   * walkable) and drives `this.cachotDoorZone` (unchanged downstream — `update()`/`tryInteract()`
-   * still just check that one rectangle, exactly as before this building was replaced). The other 4
-   * units are solid background architecture only: footprint-collided and depth-sorted like the
-   * middle one, but no label, no door gap, no interaction.
+   * One generic town building (every one of `TOWN_BUILDINGS` except Le Cachot, handled separately
+   * by `buildCachotHouse()` below): its own sliced crop (see `assets/town/lourdesTown.ts`), placed
+   * at its native rect's world position/size, with a single footprint-band collider near its own
+   * base (`TOWN_FOOTPRINT_X_FRAC`/`TOWN_FOOTPRINT_Y_FRAC`) rather than one box over the whole
+   * sprite -- the tall roof/chimneys above that band have no collider, so the player can walk
+   * behind them.
+   *
+   * Depth sorting falls out of the existing per-frame `depthForY()` call already used everywhere
+   * else in this file (`Player.update()` recomputes her own depth from her live `y` every frame).
+   * Setting this building's depth *once*, from its own bottom/ground-contact edge (the same anchor
+   * the footprint band is measured against), is enough: whenever the player's `y` is north of that
+   * edge she's standing "further up the screen" than the building's own ground line, so
+   * `depthForY(player.y, ...)` computes lower and Phaser draws her behind the building; south of
+   * it, the inequality flips and she draws in front.
    */
-  private buildCachotExterior(): void {
-    // Each unit's own wall/ground line, measured by eye against the source art (a grid-overlay
-    // crop, same technique as every other footprint in this file) -- the whole row recedes upward
-    // in screen-Y from left to right in this isometric art, so this can't be one shared value the
-    // way it can for the much-narrower church/presbytery. Native-pixel values, scaled below along
-    // with everything else about this building's displayed/collided size.
-    const groundLineY = [98, 90, 82, 73, 65].map((y) => y * CACHOT_EXTERIOR_SCALE);
-    const bandHalfHeight = 7 * CACHOT_EXTERIOR_SCALE;
-    const doorHalfWidth = 4 * CACHOT_EXTERIOR_SCALE;
+  private addTownBuilding(def: TownBuildingDef): void {
+    const wx = TOWN_X0 + def.x * TOWN_SCALE;
+    const wy = TOWN_Y0 + def.y * TOWN_SCALE;
+    const ww = def.w * TOWN_SCALE;
+    const wh = def.h * TOWN_SCALE;
+    const groundY = wy + wh;
 
-    let cumulativeX = CACHOT_BUILDING_LEFT_X;
-    CACHOT_EXTERIOR_UNIT_KEYS.forEach((key, i) => {
-      const unitW = CACHOT_EXTERIOR_UNIT_WIDTHS_SCALED[i];
-      const unitX = cumulativeX;
-      const unitY = CACHOT_BUILDING_TOP_Y;
-      const groundY = unitY + groundLineY[i];
+    this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
 
-      this.add
-        .image(unitX, unitY, key)
-        .setOrigin(0, 0)
-        .setDisplaySize(unitW, CACHOT_EXTERIOR_HEIGHT_SCALED)
-        .setDepth(depthForY(groundY, DEPTH.ACTORS));
-
-      if (i === CACHOT_EXTERIOR_CACHOT_UNIT_INDEX) {
-        // Split the wall collider around the door gap instead of one solid band across the unit.
-        const doorLeft = unitX + CACHOT_DOOR_LOCAL_X - doorHalfWidth;
-        const doorRight = unitX + CACHOT_DOOR_LOCAL_X + doorHalfWidth;
-        if (doorLeft > unitX) {
-          const w = doorLeft - unitX;
-          this.colliderBodies.push(createBlocker(this, unitX + w / 2, groundY, w, bandHalfHeight * 2));
-        }
-        if (unitX + unitW > doorRight) {
-          const w = unitX + unitW - doorRight;
-          this.colliderBodies.push(createBlocker(this, doorRight + w / 2, groundY, w, bandHalfHeight * 2));
-        }
-
-        this.cachotDoorZone = new Phaser.Geom.Rectangle(doorLeft, groundY - bandHalfHeight, doorRight - doorLeft, bandHalfHeight * 2 + 20);
-        this.add
-          .text(unitX + unitW / 2, unitY - 6, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
-          .setOrigin(0.5)
-          .setDepth(DEPTH.OVERLAY_LOW);
-      } else {
-        this.colliderBodies.push(createBlocker(this, unitX + unitW / 2, groundY, unitW, bandHalfHeight * 2));
-      }
-
-      cumulativeX += unitW;
-    });
+    const fx0 = wx + TOWN_FOOTPRINT_X_FRAC.min * ww;
+    const fx1 = wx + TOWN_FOOTPRINT_X_FRAC.max * ww;
+    const fy0 = wy + TOWN_FOOTPRINT_Y_FRAC.min * wh;
+    const fy1 = wy + TOWN_FOOTPRINT_Y_FRAC.max * wh;
+    this.colliderBodies.push(createBlocker(this, (fx0 + fx1) / 2, (fy0 + fy1) / 2, fx1 - fx0, fy1 - fy0));
   }
 
-  private buildBuildings(): void {
-    this.buildCachotExterior();
+  /**
+   * Le Cachot: the grey-roofed house in the town PNG, the only building with an interior. Same
+   * placement/depth as `addTownBuilding()`, but its footprint collider is split around a walkable
+   * door gap (its own door, measured within the crop — see `CACHOT_DOOR_LOCAL_X/BOTTOM_Y`) instead
+   * of one solid band, and it drives `this.cachotDoorZone` (unchanged downstream —
+   * `handlePrompts()`/`tryInteract()` just check that one rectangle).
+   */
+  private buildCachotHouse(): void {
+    const def = CACHOT_BUILDING;
+    const wx = TOWN_X0 + def.x * TOWN_SCALE;
+    const wy = TOWN_Y0 + def.y * TOWN_SCALE;
+    const ww = def.w * TOWN_SCALE;
+    const wh = def.h * TOWN_SCALE;
+    const groundY = wy + wh;
 
-    SPECIAL_BUILDINGS.forEach((building) => this.addFootprintBuilding(building));
+    this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
 
-    // Hospice, Maison Cénac, and the tribunal -- still the shared procedural TOWN_BUILDING box at
-    // its native 48x40 size, one big collider each via addStaticProp() as before. Only the church
-    // and presbytery (now in SPECIAL_BUILDINGS above) needed the bigger real-art display size and
-    // the footprint-shaped collision.
-    TOWN_BUILDINGS.forEach((placement) => {
-      const px = this.tileToPixelCenter(placement.col, placement.row);
-      const cx = px.x + placement.widthPx / 2;
-      const cy = px.y + placement.heightPx;
-      this.addStaticProp(placement.key, cx, cy, placement.widthPx, placement.heightPx);
-      this.add
-        .text(cx, px.y - 6, Localization.t(LOCATIONS[placement.locationId].nameKey), textStyle({ fontSize: '9px', color: '#3a3226' }))
-        .setOrigin(0.5)
-        .setDepth(DEPTH.OVERLAY_LOW);
-      const doorZoneWidth = placement.widthPx * 0.5;
-      const doorZoneHeight = placement.heightPx * 0.35;
-      const doorZoneOffsetY = placement.heightPx * 0.2;
-      const doorZone = new Phaser.Geom.Rectangle(
-        cx - doorZoneWidth / 2,
-        cy - doorZoneOffsetY,
-        doorZoneWidth,
-        doorZoneHeight,
-      );
-      this.buildings.push({ placement, doorZone });
-    });
+    const bandY0 = wy + 0.67 * wh;
+    const bandY1 = wy + 0.86 * wh;
+    const doorHalfWidth = CACHOT_DOOR_HALF_WIDTH * TOWN_SCALE;
+    const doorLeft = CACHOT_DOOR_X - doorHalfWidth;
+    const doorRight = CACHOT_DOOR_X + doorHalfWidth;
+    const fx0 = wx + TOWN_FOOTPRINT_X_FRAC.min * ww;
+    const fx1 = wx + TOWN_FOOTPRINT_X_FRAC.max * ww;
+
+    if (doorLeft > fx0) {
+      this.colliderBodies.push(createBlocker(this, (fx0 + doorLeft) / 2, (bandY0 + bandY1) / 2, doorLeft - fx0, bandY1 - bandY0));
+    }
+    if (fx1 > doorRight) {
+      this.colliderBodies.push(createBlocker(this, (doorRight + fx1) / 2, (bandY0 + bandY1) / 2, fx1 - doorRight, bandY1 - bandY0));
+    }
+
+    this.cachotDoorZone = new Phaser.Geom.Rectangle(doorLeft, bandY0 - 6, doorRight - doorLeft, bandY1 - bandY0 + 30);
+    this.add
+      .text(CACHOT_DOOR_X, wy - 6, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
+      .setOrigin(0.5)
+      .setDepth(DEPTH.OVERLAY_LOW);
+  }
+
+  private buildTown(): void {
+    this.buildTownGround();
+    TOWN_BUILDINGS.forEach((def) => this.addTownBuilding(def));
+    this.buildCachotHouse();
   }
 
   private buildDecor(): void {
@@ -826,13 +675,6 @@ export class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    for (const building of this.buildings) {
-      if (Phaser.Geom.Rectangle.Contains(building.doorZone, player.x, player.y)) {
-        this.interactionPrompt.showAt(player.x, player.y - 24, Localization.t(K.COMMON_INTERACT));
-        return;
-      }
-    }
-
     if (MissionManager.getCurrentObjective()?.id === MISSION_01_OBJECTIVES.COLLECT_FIREWOOD) {
       for (const sprite of this.firewoodSprites) {
         if (sprite.active && isNear(player, sprite, INTERACT_RADIUS)) {
@@ -896,13 +738,6 @@ export class OverworldScene extends Phaser.Scene {
     if (Phaser.Geom.Rectangle.Contains(this.cachotDoorZone, player.x, player.y)) {
       fadeToScene(this, SCENE_KEYS.CACHOT);
       return;
-    }
-
-    for (const building of this.buildings) {
-      if (Phaser.Geom.Rectangle.Contains(building.doorZone, player.x, player.y)) {
-        this.toast.show(Localization.t(K.LOCATION_LOCKED_NOTE));
-        return;
-      }
     }
 
     if (MissionManager.getCurrentObjective()?.id === MISSION_01_OBJECTIVES.COLLECT_FIREWOOD) {

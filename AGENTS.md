@@ -1741,3 +1741,144 @@ multiple approach points, the door gap staying open, the exit spawn's X position
 collision still intact after the display-size change, the boy's wander bounds against the
 relocated town cluster, and opened both Antoine's ambient chat and Toinette's own dialogue line to
 confirm their new portraits render and animate.
+
+### Lourdes town replaced by a single painted PNG (`assets/town/lourdesTown.ts`)
+
+The maintainer supplied one large painted PNG of the entire town (isometric-rendered houses, a
+winding sand path, a central fountain) and asked for it to become the visual/collision source of
+truth for the town section, replacing every individually-placed building
+(`lourdesChurch.ts`/`lourdesPresbytery.ts`/the old `TOWN_BUILDINGS` procedural boxes/the old
+5-unit Cachot exterior terrace) and the old tile-stamped dirt/stone path south of the river. This
+is the biggest structural change to `OverworldScene.ts` in the file's history — read this section
+before touching anything town-related again.
+
+1. **The PNG is sliced into a "ground" layer plus one crop per building, not used as one flat
+   image.** Same reasoning as the old Cachot-terrace slicing (a single fixed Y-sort depth can't be
+   correct for art this tall — different buildings' own ground-contact line sits at very different
+   screen-Y). Every building's native-pixel bounding rect was measured by eye against grid-overlay
+   crops of the source PNG (small Python/PIL scripts in the scratchpad, not checked in), then
+   sliced out with **zero color/pixel modification** — `numpy` array slicing only, never redrawn.
+   **This was verified mechanically, not just by eye**: pasting the ground layer plus all 17
+   building crops back at their exact recorded rects reproduces the original PNG with `0` total
+   abs-pixel-difference (checked via a `numpy` diff over the whole image) — proof nothing was lost,
+   duplicated, or altered, the same bar `lourdesCachotExterior.ts`'s recovery work held itself to.
+   17 rects total: `mill`, `presbytery`, `churchA`, `churchB`, `manor`, `houseC`...`houseM`/`houseK2`
+   (16 generic buildings, arbitrary IDs — the painting has no in-game distinction between a
+   "church" and a generic house anymore, since only Le Cachot has an interior) plus `cachot`. The
+   fountain is **not** sliced out (see point 4).
+2. **Getting the bounding boxes right took several iterations, worth knowing if this ever needs
+   redoing.** First-pass boxes (read off a 100px-grid overview screenshot by eye) had three classes
+   of error: (a) adjacent buildings' boxes overlapping by a small sliver (fixed by trimming one
+   side — verified with a simple rect/rect overlap check before ever cropping), (b) one building
+   (the small cottage west of the manor, `houseC`) captured almost entirely wrong on the first
+   attempt (a stray corner instead of the actual building — the fix was a tight, single-building
+   crop at 2.5x zoom with a 20px grid, not a wider overview), and (c) whole buildings simply missed
+   off the first list entirely (`houseK2`, and both `houseI`/`houseL` needing their boxes widened)
+   — caught by a connected-components scan for leftover blue/grey roof-colored pixels still present
+   in the "ground" layer after the first slicing pass (`scipy.ndimage.label` on a `B channel >
+   R channel + 12` mask), not by eyeballing the result. **Any future re-slicing of a painted
+   collage like this should use that same leftover-pixel scan plus the full reconstruction diff as
+   the actual correctness check — a downscaled preview image is not reliable enough to eyeball**
+   (a fully-erased hole with grass showing through it looks deceptively similar, at a glance, to a
+   half-erased building at typical screenshot resolution).
+3. **Displayed at `TOWN_SCALE` (3x) native size via `setDisplaySize`, nearest-neighbor** — same
+   established pattern every other real-art building in this game already uses (see
+   `CACHOT_EXTERIOR_SCALE`'s own historical doc comment, same reasoning). A real world-space
+   enlargement, not a camera zoom.
+4. **Colliders: houses (one footprint band each, `TOWN_FOOTPRINT_X_FRAC`/`Y_FRAC`) plus the
+   fountain, nothing else.** No path/road/open-ground collider exists at all — "the only
+   environmental objects that should have physical collision are the houses and the fountain" is
+   enforced structurally (there is no code path that could add a path collider), not just by
+   careful placement. Every generic building gets the *same* footprint band (bottom 25% of its own
+   height, middle 70% of its own width) rather than a hand-measured footprint per building the way
+   church/presbytery used to have — with 16 buildings, a uniform rule was the only tractable
+   option, and it reads fine since the source art's roofs all sit well above that band. The
+   fountain's collider is a plain rect closely matching its actual stone basin (not the wider
+   decorative walkway ring around it, which stays walkable) — left in the ground layer rather than
+   sliced into its own depth-sorted sprite, since it's short enough that "always renders behind the
+   player" doesn't read as wrong the way it would for a two-story house.
+5. **Le Cachot is the grey-roofed house** (`CACHOT_BUILDING` in `lourdesTown.ts`) — every other
+   building in the painting has a blue roof; grey is the one deliberate exception in the source art,
+   confirmed by close-up crop before assuming. It's the only building with a door gap in its
+   collider (split left/right, same technique the old 5-unit terrace used for its own door) and the
+   only one wired to `this.cachotDoorZone`/`fadeToScene(CACHOT)`. `CACHOT_DOOR_X/Y` (module-level
+   consts, derived from the crop's own measured door position — `CACHOT_DOOR_LOCAL_X/BOTTOM_Y` in
+   `lourdesTown.ts`) drive both the door-gap collider split and the exact spawn point Bernadette
+   lands at exiting `CachotScene` — horizontally exactly centered on the door (verified: `0`px
+   offset), a few px north of it.
+6. **Walk-behind**: each building's depth is set once, from its own bottom/ground-line edge
+   (`depthForY(wy + wh, DEPTH.ACTORS)`), exactly the same `depthForY()`-every-frame-vs-once trick
+   `addFootprintBuilding()` used to use for church/presbytery — nothing new here, just applied
+   uniformly across 17 buildings via one shared `addTownBuilding()` instead of one bespoke method
+   per building type. Verified live: walking into the open area *above* a building's own footprint
+   band is unobstructed (no collider there at all) right up to the footprint's own north edge,
+   where the player is blocked precisely at that boundary — confirms both halves of "solid base
+   blocks, tall roof is walk-behind" in one motion-based test rather than trusting the depth math
+   by inspection alone.
+7. **Layer order**: grass (`DEPTH.GROUND - 1`, unchanged) → town ground PNG (`DEPTH.GROUND - 0.5`,
+   new) → the field's tile-based terrain layer, i.e. the river/path/grotto system north of the town
+   (`DEPTH.GROUND`, unchanged) → actors. This is deliberately where the *next* PNG (river +
+   Massabielle + grotto, not yet supplied) will slot in later — "above the town PNG" per the
+   maintainer's own stated plan — without needing this ordering rethought: it would simply replace
+   the existing tile-based terrain layer's *visual* role while the terrain layer's own collision
+   (the river-crossing blockers, the ford zone) stays exactly where it is, since none of that moved
+   this round.
+8. **The whole north cluster (path, river, grotto, ford) was shifted east as one rigid block**
+   (`OFFSET_X_TILES = 115`, added to `PATH_CENTER`/`RIVER_V_START`/`RIVER_V_END`/`GROTTO_X`/
+   `NICHE_X`/`FIREWOOD_SPOTS`/`FORD_ZONE`/`FAR_BANK_WANDER_BOUNDS`/the cave-floor columns/one
+   `DECOR` rock) so the bridge lands almost exactly under the town PNG's own painted path opening
+   at the top of the image (2px off — the offset was solved for this, not independently tuned).
+   Nothing about the north cluster's own *internal* relative layout changed — this is a pure
+   translation, not a redesign, so the river/grotto/ford system stays exactly as coherent as it
+   already was. The map itself grew far more than "slightly wider" in the literal sense (COLS
+   72→304, ROWS 264, since the PNG at 3x is 4605x3072 native) specifically because the painted PNG
+   at the requested 3x scale would not otherwise fit without cropping it — "if the PNG at 3x does
+   not fit inside the current Lourdes world, make the actual world/map wider as necessary... do not
+   crop the PNG" was explicit, and the same logic forced the height increase too even though only
+   width was mentioned, since the PNG's native aspect ratio isn't square.
+9. **Old buildings fully removed**, not just visually superseded: `lourdesChurch.ts`/
+   `lourdes_church.png`, `lourdesPresbytery.ts`/`lourdes_presbytery.png`,
+   `lourdesCachotExterior.ts`/`cachot_exterior_unit1-5.png` (the whole `assets/buildings/` dir, now
+   empty, was deleted) are gone from the repo, their `BootScene.ts` preloads removed, and
+   `OverworldScene.ts`'s generic locked-building door-zone system (`this.buildings`,
+   `addFootprintBuilding()`, the old `SPECIAL_BUILDINGS`/`TOWN_BUILDINGS`/`CHURCH_FOOTPRINT`/
+   `PRESBYTERY_FOOTPRINT`) is deleted outright, not left dead — none of the new town buildings have
+   individual interiors/lock-toasts, only Le Cachot has interaction at all, so that whole system had
+   no remaining caller.
+10. **NPCs now collide with houses/the fountain too** (`this.physics.add.collider(npcs,
+    this.colliderBodies)`, new this round — previously only the player collided with world
+    geometry at all). Since `LeaderNpc`/`WanderNpc` have zero obstacle avoidance (straight-line
+    movement only), every scripted waypoint and wander-bounds rectangle in this file (Jeanne's
+    spawn + 3-leg route through the town, the boy's wander box) was individually checked against
+    every building/fountain footprint rect *before* being finalized, not chosen by eye and hoped —
+    this is why Jeanne's route bends noticeably west around the central manor rather than going
+    straight north from her spawn: a straight line there would run directly through the manor's,
+    presbytery's, and church's own footprints. **Any future change to a waypoint/wander-bounds
+    constant in this file must re-check it against `TOWN_BUILDINGS`'/`CACHOT_BUILDING`'s footprint
+    rects (or the fountain rect) the same way**, or risk silently soft-locking a scripted NPC walk
+    against a wall it can no longer path around.
+11. **Jeanne (the `friend` NpcActor) now spawns near Le Cachot** (`JEANNE_SPAWN`, the open plaza
+    between the fountain and Le Cachot's own door) instead of out in the north field — "place Jeanne
+    near Le Cachot... she should clearly appear to be waiting for Bernadette." Her `friendMeet`
+    leader route (`JEANNE_WAYPOINTS`) now starts with three new town-interior legs (threading west
+    of the manor, up to the town's own path opening) before rejoining the original bridge/ford
+    waypoints, which only needed their X coordinates shifted by `OFFSET_X` (their Y values, and the
+    ford/apparition sequence itself, are completely untouched).
+12. **Not done this round, by explicit maintainer choice**: "Father NPC" and "Random Man 1", asked
+    for in the same message that prompted this whole section, do not exist anywhere in this
+    codebase — no `CharacterId`, no sprite, no dialogue. Asked the maintainer how to handle this
+    rather than inventing new character art/dialogue unprompted; they chose to skip both for now.
+    **Do not add placeholder art/dialogue for either without being asked again** — when real
+    positioning info and art/dialogue exist for them, place them near the mill (Father) and on the
+    map's east side (Random Man 1) respectively, on the town PNG's own path, following the same
+    footprint-avoidance check as point 10 above.
+
+Verified live via Playwright (a temporary `window.__game` hook, same pattern as every earlier
+audit in this file, reverted before commit): world bounds exactly `4864x4224`, the ground layer's
+own `displayWidth/Height` exactly `4605x3072` (confirms pixel-perfect 3x, no rounding drift),
+player blocked entering a house's footprint band from a clean approach, free (unobstructed, full-
+speed) movement through that same house's roof area down to the footprint's own edge, free
+(unobstructed, full-speed) movement along open plaza/path ground including right past the
+fountain's own outer walkway, blocked at the fountain's actual basin, the Cachot door zone
+correctly triggering `CachotScene`, the exit spawn landing at exactly the door's own center-X,
+and the boy's wander position changing across repeated samples (not frozen against a house wall).
