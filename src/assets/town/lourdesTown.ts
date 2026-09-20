@@ -102,6 +102,30 @@ export const CACHOT_DOOR_LOCAL_X = 140; // native px within the crop (845 - 705)
 export const CACHOT_DOOR_LOCAL_BOTTOM_Y = 160; // native px within the crop (905 - 745)
 export const CACHOT_DOOR_HALF_WIDTH = 22; // native px
 
+/**
+ * Every texture key this asset registers, for `BootScene.ts` to force LINEAR filtering on (see the
+ * loop there, next to `HOME_BACKGROUND_KEY`/`JOURNEY_MAP_KEY`). This source PNG is a continuous
+ * -tone isometric rendering (soft shading, anti-aliased roof tiles/window edges/curved chimneys),
+ * not genuine pre-quantized pixel art like this game's tiles/character sprites — the same
+ * distinction `BootScene.ts`'s own doc comment already draws for the Home background. Nearest
+ * -neighbor (this project's default, via `pixelArt: true`) is the *wrong* filter for that kind of
+ * source: at TOWN_SCALE's own fractional ratio (1.5x) it duplicates whole source pixels unevenly
+ * rather than reconstructing the image's actual (already anti-aliased) curves and diagonals, which
+ * is what actually produced the "excessively pixelated, chunky blocks" look, not the artwork or the
+ * display size themselves. LINEAR filtering isn't a blur pass over the pixels (no Gaussian/box
+ * filter is ever applied, and the source file itself is never touched) — it's the correct texture
+ * -sampling mode for continuous-tone art at a mild upscale, exactly the same fix already applied to
+ * `HOME_BACKGROUND_KEY`/`JOURNEY_MAP_KEY` for the identical reason. Genuine pixel-art assets
+ * elsewhere in this game (tiles, character sprites, the grass texture) are correctly *not* in this
+ * list — LINEAR would blur those, since they're deliberately low-res flat-color art meant to be
+ * seen as blocky pixels; this PNG never was that.
+ */
+export const TOWN_TEXTURE_KEYS: string[] = [
+  TOWN_GROUND_KEY,
+  ...TOWN_BUILDINGS.map((b) => b.key),
+  CACHOT_BUILDING.key,
+];
+
 export function preloadLourdesTown(scene: Phaser.Scene): void {
   scene.load.image(TOWN_GROUND_KEY, groundUrl);
   const urls: Record<string, string> = {

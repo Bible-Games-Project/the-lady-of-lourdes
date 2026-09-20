@@ -30,7 +30,7 @@ import { preloadBoyPortrait } from '../assets/portraits/boyPortrait';
 import { preloadSisterPortrait } from '../assets/portraits/sisterPortrait';
 import { preloadMotherPortrait } from '../assets/portraits/motherPortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
-import { preloadLourdesTown } from '../assets/town/lourdesTown';
+import { preloadLourdesTown, TOWN_TEXTURE_KEYS } from '../assets/town/lourdesTown';
 import { preloadLourdesCachotInterior } from '../assets/interiors/lourdesCachotInterior';
 
 export class BootScene extends Phaser.Scene {
@@ -74,12 +74,14 @@ export class BootScene extends Phaser.Scene {
     registerRosaryTextures(this);
     registerHomeEffectTextures(this);
 
-    // The Home background (and the small Bernadette torso cutout taken from it) are the
-    // maintainer's own finished art (soft/anti-aliased), not the procedural pixel grids the rest
-    // of the game uses. The game runs with `pixelArt: true` (nearest-neighbor everywhere by
-    // default) — force linear filtering on these textures so they scale smoothly instead of
-    // going jagged.
-    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY, JOURNEY_MAP_KEY].forEach((key) => {
+    // The Home background (and the small Bernadette torso cutout taken from it), the journey map,
+    // and the Lourdes town PNG are all the maintainer's own finished/rendered art (soft,
+    // anti-aliased), not the procedural pixel grids the rest of the game uses. The game runs with
+    // `pixelArt: true` (nearest-neighbor everywhere by default) — force linear filtering on these
+    // textures so they scale smoothly instead of going jagged/chunky (see `TOWN_TEXTURE_KEYS`'s own
+    // doc comment for why this, not a blur pass, is the actual fix for the town PNG reading as
+    // "excessively pixelated" at its display size).
+    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY, JOURNEY_MAP_KEY, ...TOWN_TEXTURE_KEYS].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 

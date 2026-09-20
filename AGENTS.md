@@ -1916,3 +1916,51 @@ footprint in world space, not on any building's position within it:
 The source PNG files themselves (`lourdes_town_*.png`) were not touched at all — same crops, same
 pixels, only their `setDisplaySize` target changed, still plain nearest-neighbor (no blur/repixel/
 resample of any kind, confirmed visually via a close-up screenshot at the new size).
+
+### Town PNG: LINEAR filtering (not nearest-neighbor) + depth-anchor fix
+
+Two more complaints about the town PNG, addressed independently:
+
+1. **"Excessively pixelated, chunky blocks"** — root cause was the *filter mode*, not the display
+   size or the artwork. This source PNG is a continuous-tone isometric rendering (soft shading,
+   anti-aliased roof tiles/chimneys/curves) — the same category of asset as `HOME_BACKGROUND_KEY`/
+   `JOURNEY_MAP_KEY`, which `BootScene.ts` already force-LINEAR for exactly this reason (see that
+   file's own long-standing doc comment) — not genuine pre-quantized pixel art like this game's
+   tiles/character sprites/grass texture. Rendering it with this project's default nearest-neighbor
+   (`pixelArt: true`) at `TOWN_SCALE`'s fractional ratio duplicates source pixels unevenly instead
+   of reconstructing the image's own (already-anti-aliased) curves, which is what actually produced
+   the "chunky" look. **Fix**: added every town texture key (`TOWN_TEXTURE_KEYS`, exported from
+   `lourdesTown.ts`) to `BootScene.ts`'s existing LINEAR-filter loop. This is *not* a blur pass —
+   no Gaussian/box filter ever touches the pixels, the source files are untouched, and character
+   sprites/tiles/grass are deliberately left off this list (LINEAR would genuinely blur *those*,
+   since they're meant to read as flat-color pixel blocks). Verified visually via close-up
+   screenshots: smooth curves/gradients, no chunky blocks, Bernadette's own sprite (not in the
+   LINEAR list) still crisp pixel art by contrast right next to it.
+2. **"Hard rectangular cuts where Bernadette goes behind a house"** — root cause was a specific,
+   fixable misalignment, not a fundamental limitation of single-depth Y-sorting. `addTownBuilding()`
+   /`buildCachotHouse()` were anchoring each building's render depth at the *crop's own bounding
+   -box bottom*, but the collider's own south edge sits several world-pixels further *north* (at
+   `TOWN_FOOTPRINT_Y_FRAC.max`, 95% of the crop's height) — the gap between the two is the stone
+   apron/walkway painted in front of each house, which is real, walkable, open ground. A player
+   standing in that gap (in front of the door, on the walkway) is south of the collider but still
+   north of the old depth anchor, so the *entire* building rendered on top of her there — she'd
+   pop behind the house while visibly standing in the open, then pop back in front a few steps
+   later. **Fix**: both methods now anchor depth at the same row the collider's own south edge
+   already uses (`groundY = wy + TOWN_FOOTPRINT_Y_FRAC.max * wh`), so the flip happens exactly at
+   the wall/door line instead of past it. Checked whether per-building (or per-strip, like the old
+   5-unit Cachot terrace) anchors were needed for buildings with visibly irregular rooflines (the
+   manor's shorter left wing vs. taller main block, the mill's house-plus-wheel silhouette) —
+   **they weren't**: every building in this art sits on one continuous, level apron regardless of
+   how tall or uneven its roofline is above that line (confirmed both by eye against each crop and
+   empirically — a bottommost-opaque-pixel scan per building found the apron opaque at or past the
+   collider's south edge in literally every column of every building, i.e. roofline height above
+   the apron never actually affects where the *ground contact* line sits), so one flat anchor per
+   building, now correctly placed, is the geometrically correct answer here, not an approximation.
+   Collision itself is numerically unchanged by this fix (`groundY`'s formula is byte-identical to
+   the collider's own pre-existing south-edge formula — the bug was purely in what the *depth*
+   anchor used, never in the collider) — verified live: player blocked at the same edge as before,
+   depth flips exactly at that edge (not past it) in both directions, and Bernadette walking the
+   perimeter of several houses (front, side, and behind) shows no rectangular pop-in/pop-out — she
+   is fully hidden while positioned under a house's own opaque roof/wall pixels and fully visible
+   the instant she's outside them, with the same soft-edged (not rectangular) silhouette the crop's
+   own alpha channel already provides.

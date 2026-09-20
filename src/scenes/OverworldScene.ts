@@ -502,25 +502,36 @@ export class OverworldScene extends Phaser.Scene {
    *
    * Depth sorting falls out of the existing per-frame `depthForY()` call already used everywhere
    * else in this file (`Player.update()` recomputes her own depth from her live `y` every frame).
-   * Setting this building's depth *once*, from its own bottom/ground-contact edge (the same anchor
-   * the footprint band is measured against), is enough: whenever the player's `y` is north of that
-   * edge she's standing "further up the screen" than the building's own ground line, so
-   * `depthForY(player.y, ...)` computes lower and Phaser draws her behind the building; south of
-   * it, the inequality flips and she draws in front.
+   * Setting this building's depth *once*, from its own footprint's own *south* edge (the same row
+   * the collider band's own bottom edge sits on, `TOWN_FOOTPRINT_Y_FRAC.max` -- NOT the crop's own
+   * bounding-box bottom, which is measurably further south and includes several more world-pixels
+   * of the stone apron/walkway painted in front of the house), is enough: whenever the player's `y`
+   * is north of that row she's standing "further up the screen" than the building's own ground
+   * line, so `depthForY(player.y, ...)` computes lower and Phaser draws her behind the building;
+   * south of it, the inequality flips and she draws in front. Using the crop's bounding-box bottom
+   * instead (the previous behavior) put the flip several pixels *south* of the collider's own edge,
+   * inside the walkway a player can actually stand on in front of the door -- she'd render behind
+   * the whole house while visibly standing in the open, then abruptly pop in front a few steps
+   * later, reading as a hard, arbitrary "rectangular cut" rather than natural depth. Every building
+   * in this art sits on a roughly flat apron regardless of how tall or irregular its own roofline
+   * is above that line (confirmed by eye against every crop -- e.g. the manor's shorter left wing
+   * and taller main block still share one continuous, level apron ellipse), so one flat anchor per
+   * building -- not a per-column/per-strip one -- is the geometrically correct choice here: it's
+   * the building's own ground-contact line, not its skyline, that decides front-vs-behind.
    */
   private addTownBuilding(def: TownBuildingDef): void {
     const wx = TOWN_X0 + def.x * TOWN_SCALE;
     const wy = TOWN_Y0 + def.y * TOWN_SCALE;
     const ww = def.w * TOWN_SCALE;
     const wh = def.h * TOWN_SCALE;
-    const groundY = wy + wh;
+    const groundY = wy + TOWN_FOOTPRINT_Y_FRAC.max * wh;
 
     this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
 
     const fx0 = wx + TOWN_FOOTPRINT_X_FRAC.min * ww;
     const fx1 = wx + TOWN_FOOTPRINT_X_FRAC.max * ww;
     const fy0 = wy + TOWN_FOOTPRINT_Y_FRAC.min * wh;
-    const fy1 = wy + TOWN_FOOTPRINT_Y_FRAC.max * wh;
+    const fy1 = groundY;
     this.colliderBodies.push(createBlocker(this, (fx0 + fx1) / 2, (fy0 + fy1) / 2, fx1 - fx0, fy1 - fy0));
   }
 
@@ -537,12 +548,13 @@ export class OverworldScene extends Phaser.Scene {
     const wy = TOWN_Y0 + def.y * TOWN_SCALE;
     const ww = def.w * TOWN_SCALE;
     const wh = def.h * TOWN_SCALE;
-    const groundY = wy + wh;
-
-    this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
-
+    // Same fix as `addTownBuilding()`: anchor the depth at the wall/door band's own south edge,
+    // not the crop's bounding-box bottom (which includes the apron/steps in front of the door).
     const bandY0 = wy + 0.67 * wh;
     const bandY1 = wy + 0.86 * wh;
+    const groundY = bandY1;
+
+    this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
     const doorHalfWidth = CACHOT_DOOR_HALF_WIDTH * TOWN_SCALE;
     const doorLeft = CACHOT_DOOR_X - doorHalfWidth;
     const doorRight = CACHOT_DOOR_X + doorHalfWidth;
