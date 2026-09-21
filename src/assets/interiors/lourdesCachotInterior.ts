@@ -9,11 +9,10 @@ import cachotRoomUrl from './cachot_room.png';
  * backdrop. This **fully replaces** the previous room artwork per an explicit "completely replace
  * the current interior artwork" ask — not a patch, not a recolor, not blended with the old image.
  *
- * The supplied source arrived as a lossy WebP (360138-byte precedent: this is the same situation
- * `assets/town/lourdesTown.ts` documents for the town PNG — the only copy available, already
+ * The supplied source arrived as a lossy WebP (360138 bytes) — the only copy available, already
  * through one lossy encoding step before it ever reached this codebase, so "preserve exactly as
  * provided" means preserving *this* file's own pixels, not chasing a losslessness the source
- * never had). Converted straight to PNG, cropped tight to its own real content (the transparent
+ * never had. Converted straight to PNG, cropped tight to its own real content (the transparent
  * margin around the isometric room shape — verified via an alpha-channel bounding-box scan, not
  * eyeballed, native crop 915x1009), then given a single quality (`Image.LANCZOS`) downscale
  * straight to final display size (214x236) — the same "resize once offline with a quality filter,

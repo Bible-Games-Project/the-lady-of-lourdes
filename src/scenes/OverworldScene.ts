@@ -4,18 +4,6 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
-import {
-  TOWN_NATIVE_WIDTH,
-  TOWN_NATIVE_HEIGHT,
-  TOWN_SCALE,
-  TOWN_GROUND_KEY,
-  TOWN_BUILDINGS,
-  CACHOT_BUILDING,
-  CACHOT_DOOR_LOCAL_X,
-  CACHOT_DOOR_LOCAL_BOTTOM_Y,
-  CACHOT_DOOR_HALF_WIDTH,
-  type TownBuildingDef,
-} from '../assets/town/lourdesTown';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -43,35 +31,23 @@ import { useLetterboxScale } from '../core/scaleMode';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
-// northern edge (crossable only via the bridge), and the town — the maintainer's own single
-// painted PNG (see `assets/town/lourdesTown.ts`) — sits south of that, with Le Cachot as the
-// grey-roofed house within it.
+// northern edge (crossable only via the bridge), and the town sits south of that.
 //
-// **The town PNG is displayed at TOWN_SCALE (1.5x) its native size**, a real world-space
-// enlargement, not a camera zoom -- halved from an earlier 3x per an explicit "too large, reduce
-// to 50% of its current size" ask (i.e. 1.5x native, not 1.5x of the 3x display). The PNG's own
-// pixels are completely untouched either way; only `setDisplaySize`'s target changes, still plain
-// nearest-neighbor. The map is sized to fit the PNG at whatever TOWN_SCALE currently is (COLS/ROWS
-// below), not the other way around -- shrinking TOWN_SCALE is why the map is smaller again too,
-// not a separate map-size decision.
+// **The single large painted town PNG has been removed entirely** (per an explicit "I do NOT want
+// to use the single large town/city PNG anymore" ask — a full reversal of that earlier approach,
+// not a patch on top of it). The area south of the river is now plain open grass — the same grass
+// layer built in `buildTerrain()` below, completely untouched — with no buildings, no fountain, and
+// no colliders placed in it. Individual building PNGs (each with a filename that is the sole source
+// of truth for what it is and where it goes — never guessed from the artwork) will be added here
+// one at a time in a future pass; until then this whole band is intentionally empty.
 //
-// **The whole north cluster (path, river, grotto, ford) is shifted east by OFFSET_X_TILES**, as one
-// rigid block — nothing about its own internal layout changes, only its position — so the bridge
-// lands under the town PNG's own painted path opening at the top of the image instead of at the
-// map's old, now-mostly-empty west side. This is why every north-side X coordinate below adds
-// OFFSET_X_TILES/OFFSET_X: PATH_CENTER, the river's vertical arm, the grotto/niche/firewood spots,
-// the ford zone and far-bank wander box. Every Y coordinate is untouched. OFFSET_X_TILES scales
-// down along with TOWN_SCALE (the bridge needs to land under the same painted path opening, which
-// is now closer to the town PNG's own left edge in world space).
+// **The north cluster (path, river, grotto, ford) keeps the eastward shift (OFFSET_X_TILES) left
+// over from when it was aligned under the removed town PNG's own painted path opening.** That
+// cluster — and every coordinate below that adds OFFSET_X_TILES/OFFSET_X — is explicitly out of
+// scope for this cleanup (the river/Massabielle/grotto system must stay untouched), so the offset
+// stays exactly as-is rather than being re-tuned for a town layout that doesn't exist yet.
 const OFFSET_X_TILES = 45;
 const OFFSET_X = OFFSET_X_TILES * TILE_SIZE;
-
-// World placement of the town PNG's own native top-left corner (see `assets/town/lourdesTown.ts`).
-// Chosen so the painted path opening at the top of the image (native x ~750) lands almost exactly
-// under the bridge once the north cluster is shifted by OFFSET_X below (1225 vs 1232 — 7px, well
-// under a tile) — the two are derived from the same OFFSET_X_TILES choice, not independently tuned.
-const TOWN_X0 = 100;
-const TOWN_Y0 = 1050;
 
 const COLS = 160;
 const ROWS = 168;
@@ -111,19 +87,25 @@ const FIREWOOD_SPOTS = [
 const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
 const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
-// Jeanne starts near Le Cachot (on the open plaza between the fountain and Le Cachot's own door,
-// clear of both their colliders), waits for Bernadette to meet her there, then leads her north
-// through the town's own painted path — first threading west of the central manor (the only
-// direction with a clear, collider-free corridor all the way up to the town's own path opening at
-// the top of the PNG), then across the bridge and up to the ford, where she naturally stops well
-// short of the grotto so she doesn't upstage the apparition. `LeaderNpc` walks each leg as a
-// straight line with no obstacle avoidance, so every waypoint (and the straight segment leading to
-// it) was chosen to stay clear of every town building's own collider footprint.
-const JEANNE_SPAWN = { x: TOWN_X0 + 820 * TOWN_SCALE, y: TOWN_Y0 + 700 * TOWN_SCALE };
+// Le Cachot's connection point to `CachotScene` — a placeholder location, not derived from any
+// building art, since the removed town PNG's own Le Cachot crop is gone and no replacement PNG has
+// been supplied yet (its filename is what will identify and place it — see the doc comment above).
+// Sits on open grass just south of the bridge so the player's own scene-start spawn and the
+// interior enter/exit plumbing (`buildCachotEntrance()` below, `CachotScene.ts`'s `fromCachot` exit)
+// keep working end-to-end in the meantime. Once the real Le Cachot exterior PNG arrives, this should
+// move to sit at that art's own door instead of staying here.
+const CACHOT_DOOR_X = PATH_CENTER * TILE_SIZE;
+const CACHOT_DOOR_Y = (RIVER_H_BOTTOM + 10) * TILE_SIZE;
+
+// Jeanne starts on the open grass near Le Cachot's placeholder entrance, waits for Bernadette to
+// meet her there, then leads her north up to the bridge and across to the ford, where she naturally
+// stops well short of the grotto so she doesn't upstage the apparition. `LeaderNpc` walks each leg
+// as a straight line with no obstacle avoidance; with no buildings currently placed south of the
+// river there is nothing for these waypoints to route around, but they're kept simple and central
+// rather than assuming any future building layout.
+const JEANNE_SPAWN = { x: CACHOT_DOOR_X + 80, y: CACHOT_DOOR_Y + 60 };
 const JEANNE_WAYPOINTS: Point[] = [
-  { x: TOWN_X0 + 480 * TOWN_SCALE, y: TOWN_Y0 + 690 * TOWN_SCALE },
-  { x: TOWN_X0 + 420 * TOWN_SCALE, y: TOWN_Y0 + 400 * TOWN_SCALE },
-  { x: TOWN_X0 + 700 * TOWN_SCALE, y: TOWN_Y0 + 50 * TOWN_SCALE },
+  { x: CACHOT_DOOR_X + 20, y: CACHOT_DOOR_Y + 30 },
   { x: PATH_CENTER * TILE_SIZE, y: (RIVER_H_BOTTOM + 1) * TILE_SIZE + 8 },
   { x: PATH_CENTER * TILE_SIZE, y: (RIVER_H_TOP - 1) * TILE_SIZE - 8 },
   { x: PATH_CENTER * TILE_SIZE, y: 400 },
@@ -144,45 +126,11 @@ const JEANNE_RESUME_DISTANCE = 55;
 const FAR_BANK_WANDER_BOUNDS = new Phaser.Geom.Rectangle(700 + OFFSET_X, FAR_BANK.y - 60, 70, 120);
 const COMPANION_WANDER_SPEED = 28;
 
-// Wander zone for the ambient village boy — a small patch of open plaza just north of the
-// fountain, clear of the fountain's own collider, Le Cachot's, and every neighboring house's
-// footprint (same "pick bounds that are inherently obstacle-free" approach `FAR_BANK_WANDER_BOUNDS`
-// above already uses, rather than building actual pathfinding/collision-avoidance for `WanderNpc`).
-const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(
-  TOWN_X0 + 660 * TOWN_SCALE,
-  TOWN_Y0 + 700 * TOWN_SCALE,
-  100 * TOWN_SCALE,
-  60 * TOWN_SCALE,
-);
+// Wander zone for the ambient village boy — a small patch of open grass near Le Cachot's
+// placeholder entrance. No building footprints exist yet to stay clear of; this will likely need
+// re-checking against real building colliders once they're placed.
+const BOY_WANDER_BOUNDS = new Phaser.Geom.Rectangle(CACHOT_DOOR_X - 140, CACHOT_DOOR_Y + 20, 100, 60);
 const BOY_WANDER_SPEED = 24;
-
-// Fountain collider — the town's only other (non-house) collidable object, per the maintainer's
-// explicit "only houses and the fountain, nothing else" ask. Measured by eye against the source
-// PNG as a rect closely matching the actual stone basin (not its wider decorative walkway ring,
-// which stays freely walkable), native x:[705,825] y:[612,688], converted to world space and left
-// in the ground layer (see `buildTown()`) rather than sliced into its own depth-sorted sprite —
-// short enough that a fixed "always behind the player" rendering doesn't read as wrong.
-const FOUNTAIN_COLLIDER = {
-  x: TOWN_X0 + 765 * TOWN_SCALE,
-  y: TOWN_Y0 + 650 * TOWN_SCALE,
-  w: 120 * TOWN_SCALE,
-  h: 76 * TOWN_SCALE,
-};
-
-// Every town building except Le Cachot gets the same generic footprint: a band near the bottom of
-// its own bounding box (the wall base, below the tall roof/chimneys that a player should be able
-// to walk behind) spanning most of its width (clear of the roof's own eaves/corners). Not one giant
-// rectangle over the whole sprite -- matches the "solid lower portion blocks, upper portion is
-// walk-behind" ask uniformly across all ~16 buildings without needing a hand-measured footprint
-// per building the way the old church/presbytery footprints were.
-const TOWN_FOOTPRINT_X_FRAC = { min: 0.15, max: 0.85 };
-const TOWN_FOOTPRINT_Y_FRAC = { min: 0.7, max: 0.95 };
-
-// Le Cachot's own door, in world space — drives the walkable door-gap in its collider (below) and
-// the exact spot Bernadette lands at exiting `CachotScene`: "directly underneath the middle door,"
-// not to the side or at an arbitrary position.
-const CACHOT_DOOR_X = TOWN_X0 + (CACHOT_BUILDING.x + CACHOT_DOOR_LOCAL_X) * TOWN_SCALE;
-const CACHOT_DOOR_Y = TOWN_Y0 + (CACHOT_BUILDING.y + CACHOT_DOOR_LOCAL_BOTTOM_Y) * TOWN_SCALE;
 
 // Positions unrelated to the town-building relayout above; unchanged sizes. Trees removed from
 // this list entirely (see `DECOR`'s own doc comment below) -- what's left is just the two rocks.
@@ -269,7 +217,7 @@ export class OverworldScene extends Phaser.Scene {
     const startY = data.fromCachot ? CACHOT_DOOR_Y - 24 : CACHOT_DOOR_Y + 30;
     this.player = new Player(this, CACHOT_DOOR_X, startY, this.touch);
 
-    this.buildTown();
+    this.buildCachotEntrance();
     this.buildDecor();
     this.buildGrotto();
     this.buildFirewood();
@@ -437,12 +385,11 @@ export class OverworldScene extends Phaser.Scene {
       for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.STONE_PATH;
     }
 
-    // No tile-stamped path south of the bridge: the town's own painted path (part of the single
-    // town PNG placed in `buildTown()`) takes over immediately south of the riverbank -- "remove
-    // the square path tiles... more natural, organic ground/path appearance" is now satisfied by
-    // that hand-painted artwork rather than a second, redundant tile-based path system underneath
-    // it. The organic dirt trail above is still used for the open field north of the river, where
-    // there's no painted art to replace it.
+    // No tile-stamped path south of the bridge: that whole band is now plain open grass (the town
+    // PNG that used to occupy it has been removed entirely — see this file's header comment), with
+    // no path art to place until individual building PNGs (and whatever paths their own layout
+    // calls for) are added there. The organic dirt trail above is still used for the open field
+    // north of the river, which is untouched.
 
     const map = this.make.tilemap({ data, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE });
     const tileset = map.addTilesetImage('tiles', TILESET_KEY, TILE_SIZE, TILE_SIZE, 0, 0)!;
@@ -475,110 +422,20 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The town's ground layer (paths, open sand, the fountain, every building's own hole already cut
-   * out — see `assets/town/lourdesTown.ts`), placed once at the town's world origin and displayed
-   * at TOWN_SCALE. Sits just below `DEPTH.GROUND` (the field's tile-based terrain layer built in
-   * `buildTerrain()`) and above the grass layer (`DEPTH.GROUND - 1`) -- "grass, then the town PNG,
-   * then (later) the river/Massabielle/grotto PNG above that" -- so this one call is also where
-   * that whole layer-order contract lives.
+   * Placeholder Le Cachot entrance: no image, no collider — just the interaction zone (and its
+   * label) that keeps the enter/exit connection to `CachotScene.ts` working while no exterior
+   * building art has been supplied yet (see `CACHOT_DOOR_X/Y`'s own doc comment above). Once the
+   * real Le Cachot PNG is identified by filename, this should be replaced with a real per-building
+   * placement (image + footprint collider + depth anchor, one collider per solid part, matching
+   * whatever new buildings get built alongside it) rather than extended in place.
    */
-  private buildTownGround(): void {
-    const image = this.add.image(TOWN_X0, TOWN_Y0, TOWN_GROUND_KEY).setOrigin(0, 0);
-    image.setDisplaySize(TOWN_NATIVE_WIDTH * TOWN_SCALE, TOWN_NATIVE_HEIGHT * TOWN_SCALE);
-    image.setDepth(DEPTH.GROUND - 0.5);
-
-    this.colliderBodies.push(
-      createBlocker(this, FOUNTAIN_COLLIDER.x, FOUNTAIN_COLLIDER.y, FOUNTAIN_COLLIDER.w, FOUNTAIN_COLLIDER.h),
-    );
-  }
-
-  /**
-   * One generic town building (every one of `TOWN_BUILDINGS` except Le Cachot, handled separately
-   * by `buildCachotHouse()` below): its own sliced crop (see `assets/town/lourdesTown.ts`), placed
-   * at its native rect's world position/size, with a single footprint-band collider near its own
-   * base (`TOWN_FOOTPRINT_X_FRAC`/`TOWN_FOOTPRINT_Y_FRAC`) rather than one box over the whole
-   * sprite -- the tall roof/chimneys above that band have no collider, so the player can walk
-   * behind them.
-   *
-   * Depth sorting falls out of the existing per-frame `depthForY()` call already used everywhere
-   * else in this file (`Player.update()` recomputes her own depth from her live `y` every frame).
-   * Setting this building's depth *once*, from its own footprint's own *south* edge (the same row
-   * the collider band's own bottom edge sits on, `TOWN_FOOTPRINT_Y_FRAC.max` -- NOT the crop's own
-   * bounding-box bottom, which is measurably further south and includes several more world-pixels
-   * of the stone apron/walkway painted in front of the house), is enough: whenever the player's `y`
-   * is north of that row she's standing "further up the screen" than the building's own ground
-   * line, so `depthForY(player.y, ...)` computes lower and Phaser draws her behind the building;
-   * south of it, the inequality flips and she draws in front. Using the crop's bounding-box bottom
-   * instead (the previous behavior) put the flip several pixels *south* of the collider's own edge,
-   * inside the walkway a player can actually stand on in front of the door -- she'd render behind
-   * the whole house while visibly standing in the open, then abruptly pop in front a few steps
-   * later, reading as a hard, arbitrary "rectangular cut" rather than natural depth. Every building
-   * in this art sits on a roughly flat apron regardless of how tall or irregular its own roofline
-   * is above that line (confirmed by eye against every crop -- e.g. the manor's shorter left wing
-   * and taller main block still share one continuous, level apron ellipse), so one flat anchor per
-   * building -- not a per-column/per-strip one -- is the geometrically correct choice here: it's
-   * the building's own ground-contact line, not its skyline, that decides front-vs-behind.
-   */
-  private addTownBuilding(def: TownBuildingDef): void {
-    const wx = TOWN_X0 + def.x * TOWN_SCALE;
-    const wy = TOWN_Y0 + def.y * TOWN_SCALE;
-    const ww = def.w * TOWN_SCALE;
-    const wh = def.h * TOWN_SCALE;
-    const groundY = wy + TOWN_FOOTPRINT_Y_FRAC.max * wh;
-
-    this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
-
-    const fx0 = wx + TOWN_FOOTPRINT_X_FRAC.min * ww;
-    const fx1 = wx + TOWN_FOOTPRINT_X_FRAC.max * ww;
-    const fy0 = wy + TOWN_FOOTPRINT_Y_FRAC.min * wh;
-    const fy1 = groundY;
-    this.colliderBodies.push(createBlocker(this, (fx0 + fx1) / 2, (fy0 + fy1) / 2, fx1 - fx0, fy1 - fy0));
-  }
-
-  /**
-   * Le Cachot: the grey-roofed house in the town PNG, the only building with an interior. Same
-   * placement/depth as `addTownBuilding()`, but its footprint collider is split around a walkable
-   * door gap (its own door, measured within the crop — see `CACHOT_DOOR_LOCAL_X/BOTTOM_Y`) instead
-   * of one solid band, and it drives `this.cachotDoorZone` (unchanged downstream —
-   * `handlePrompts()`/`tryInteract()` just check that one rectangle).
-   */
-  private buildCachotHouse(): void {
-    const def = CACHOT_BUILDING;
-    const wx = TOWN_X0 + def.x * TOWN_SCALE;
-    const wy = TOWN_Y0 + def.y * TOWN_SCALE;
-    const ww = def.w * TOWN_SCALE;
-    const wh = def.h * TOWN_SCALE;
-    // Same fix as `addTownBuilding()`: anchor the depth at the wall/door band's own south edge,
-    // not the crop's bounding-box bottom (which includes the apron/steps in front of the door).
-    const bandY0 = wy + 0.67 * wh;
-    const bandY1 = wy + 0.86 * wh;
-    const groundY = bandY1;
-
-    this.add.image(wx, wy, def.key).setOrigin(0, 0).setDisplaySize(ww, wh).setDepth(depthForY(groundY, DEPTH.ACTORS));
-    const doorHalfWidth = CACHOT_DOOR_HALF_WIDTH * TOWN_SCALE;
-    const doorLeft = CACHOT_DOOR_X - doorHalfWidth;
-    const doorRight = CACHOT_DOOR_X + doorHalfWidth;
-    const fx0 = wx + TOWN_FOOTPRINT_X_FRAC.min * ww;
-    const fx1 = wx + TOWN_FOOTPRINT_X_FRAC.max * ww;
-
-    if (doorLeft > fx0) {
-      this.colliderBodies.push(createBlocker(this, (fx0 + doorLeft) / 2, (bandY0 + bandY1) / 2, doorLeft - fx0, bandY1 - bandY0));
-    }
-    if (fx1 > doorRight) {
-      this.colliderBodies.push(createBlocker(this, (doorRight + fx1) / 2, (bandY0 + bandY1) / 2, fx1 - doorRight, bandY1 - bandY0));
-    }
-
-    this.cachotDoorZone = new Phaser.Geom.Rectangle(doorLeft, bandY0 - 6, doorRight - doorLeft, bandY1 - bandY0 + 30);
+  private buildCachotEntrance(): void {
+    const halfWidth = 24;
+    this.cachotDoorZone = new Phaser.Geom.Rectangle(CACHOT_DOOR_X - halfWidth, CACHOT_DOOR_Y - 20, halfWidth * 2, 40);
     this.add
-      .text(CACHOT_DOOR_X, wy - 6, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
+      .text(CACHOT_DOOR_X, CACHOT_DOOR_Y - 26, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
       .setOrigin(0.5)
       .setDepth(DEPTH.OVERLAY_LOW);
-  }
-
-  private buildTown(): void {
-    this.buildTownGround();
-    TOWN_BUILDINGS.forEach((def) => this.addTownBuilding(def));
-    this.buildCachotHouse();
   }
 
   private buildDecor(): void {

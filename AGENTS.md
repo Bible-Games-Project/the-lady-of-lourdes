@@ -2073,3 +2073,56 @@ reused or adapted.
 - Wall-mounted decoration (the cross, framed picture, shelf with its hanging cloth) gets no
   separate collider, same as the old room's own wall dressing — it's within the back wall's own
   footprint band and well above where the player's feet could ever be.
+
+### The single town PNG, removed — back to individual per-building PNGs (reversal)
+
+A full reversal of the "single large painted town PNG" approach documented in the sections above
+("Lourdes town replaced by a single painted PNG," "Town PNG halved again," "Town PNG: LINEAR
+filtering + depth-anchor fix"), per an explicit "I do NOT want to use the single large town/city
+PNG anymore" ask. This round **removed that whole system cleanly** rather than layering new work
+on top of it — `src/assets/town/` (the `lourdesTown.ts` module and all 18 sliced PNG crops:
+ground, mill, presbytery, churchA/B, manor, houseC–M, houseK2, cachot) is deleted outright, along
+with every usage in `OverworldScene.ts` (`buildTownGround()`, `addTownBuilding()`,
+`buildCachotHouse()`, `buildTown()`, `TOWN_X0/Y0`, `TOWN_FOOTPRINT_X_FRAC/Y_FRAC`,
+`FOUNTAIN_COLLIDER`, the PNG-derived `CACHOT_DOOR_X/Y`) and `BootScene.ts`
+(`preloadLourdesTown`/`TOWN_TEXTURE_KEYS`).
+
+**What's left south of the river is now plain open grass** — the existing grass Tilemap layer
+(`assets/terrain/lourdesGrass.ts`, built in `buildTerrain()`) untouched, with zero buildings, zero
+colliders, and no path art placed on top of it. The river/Massabielle/grotto system north of it
+(the vertical/horizontal river arms, the ford cutscene, the grotto/niche, `OFFSET_X_TILES`'s
+eastward shift of that whole cluster, `FIREWOOD_SPOTS`, mission logic) is completely untouched —
+explicitly out of scope, kept exactly as it was.
+
+Individual building PNGs will be added to this empty area one at a time in a future round, where
+**each PNG's own filename is the sole source of truth for what building it is and where it goes**
+— never inferred from the artwork itself. Each building will need its own footprint-measured
+collider (small colliders on the solid base only, not one box over the whole sprite) and its own
+Y-sort depth anchored at that footprint's own south edge (the same "collider south edge, not the
+crop's bounding-box bottom" principle the removed town PNG's own fix established — see "Town PNG:
+LINEAR filtering + depth-anchor fix" above), re-measured per building from its own actual geometry
+since the previous uniform `TOWN_FOOTPRINT_X_FRAC`/`Y_FRAC` fractions were specific to that PNG's
+own consistent apron-based architecture and won't necessarily hold for whatever new art arrives.
+
+**Le Cachot's connection to `CachotScene.ts` (untouched, still the working second-pass interior
+from the previous round) was kept alive through this cleanup with a placeholder**, since removing
+the town PNG also removed the only thing that used to define where its door sits. `CACHOT_DOOR_X/Y`
+now resolve to a plain, art-free location on open grass just south of the bridge (`PATH_CENTER *
+TILE_SIZE`, a fixed row below the riverbank) — still the player's own scene-start spawn point and
+still the exact spot `CachotScene.ts`'s `fromCachot` exit lands her at, but with no image and no
+collider, just the interaction zone + label (`buildCachotEntrance()`) so `tryInteract()`/
+`handlePrompts()` keep working unmodified. Jeanne's spawn/waypoints and the boy's wander bounds
+were recomputed off this same placeholder point rather than left referencing the removed
+`TOWN_X0`/`TOWN_SCALE` constants — simple, central positions with no building footprints to route
+around yet. **All of this is temporary**: once the real Le Cachot exterior PNG is supplied (via
+its filename), `CACHOT_DOOR_X/Y` and `buildCachotEntrance()` should be replaced with a real
+per-building placement (image + footprint collider + depth anchor), not extended in place, and the
+NPC positions re-checked against whatever building footprints exist at that point.
+
+Verified live via Playwright: the overworld loads with zero errors, walking in every direction
+across the whole former-town area moves freely with no invisible walls (`colliderBodies` only
+contains the river/bridge blockers — 5 total, no fountain/house colliders), and both directions of
+the Le Cachot connection work (walking into the placeholder door zone and pressing E starts
+`CachotScene`; calling its exit lands the player back in `OverworldScene` at `CACHOT_DOOR_Y - 24`,
+directly under the placeholder point, exactly as the pre-existing `fromCachot` logic expects).
+`bunx tsc --noEmit` and `bun run build` both pass clean.

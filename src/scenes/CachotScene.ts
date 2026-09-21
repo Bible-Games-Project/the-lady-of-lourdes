@@ -87,8 +87,8 @@ const FURNITURE_FOOTPRINTS: FracRect[] = [
  * room-perimeter box -- the tall back wall's own upper stonework (above where it actually meets
  * the floor) is walk-behind-only in the sense that nothing needs to collide with it at all (it's
  * far above where the player's feet could ever be), so only the wall's own floor-contact band
- * needs a collider, same principle `OverworldScene.ts#addTownBuilding()` uses for its buildings'
- * footprint-only collision. */
+ * needs a collider -- footprint-only collision, matching how building collision works elsewhere in
+ * this game (a small collider on the solid base, not one box over the whole sprite). */
 const WALL_FOOTPRINTS: FracRect[] = [
   nativeFrac(20, 15, 895, 218), // back wall (window, cross, picture, shelf all mounted on it)
   nativeFrac(15, 15, 160, 235), // left wall, upper diagonal corner
