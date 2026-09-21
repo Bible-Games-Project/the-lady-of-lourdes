@@ -140,6 +140,12 @@ export class HomeScene extends Phaser.Scene {
       buttonStyle,
       { x: 0, y: 1 },
     );
+    // On an aspect ratio extreme enough that the safe width can't fit both buttons apart (see the
+    // onSafeAreaChange block below), the two anchored corners overlap rather than either one
+    // sliding off-screen. Giving Play the higher depth means it — the primary action — stays the
+    // one that's readable/tappable in that rare case, instead of whichever button happened to be
+    // created last winning by accident.
+    playButton.setDepth(1);
 
     // Anchored by its own right/bottom edge, growing leftward/upward from that corner.
     const moreGamesButton = createButton(
@@ -163,18 +169,25 @@ export class HomeScene extends Phaser.Scene {
     // core/safeArea.ts. Because each element is anchored by the edge that faces its corner (set
     // above), each position below is that edge's target coordinate directly — `edge ± margin` —
     // with no width/height compensation needed.
+    //
+    // Each button is anchored to its own safe corner unconditionally — no clamping toward the
+    // center. An earlier version capped `playLeftEdge` at `GAME_WIDTH / 2 - buttonWidth - 4` to
+    // keep the two buttons from overlapping, but that cap is a *smaller* (more restrictive) value
+    // than `insets.left + margin` on a sufficiently tall/narrow device — e.g. a 9:19.5 phone crops
+    // ~178 of the 480 logical units off each side, leaving only ~125 logical units of safe width
+    // in the middle, well under the 124px the cap alone would allow let alone two 112px buttons —
+    // so `Math.min()` of the two silently picked the tighter, *wrong* bound and pushed Play's own
+    // left edge outside the safe area, reproducing exactly the reported "cut off" bug. Full
+    // visibility of each button is the hard requirement here; on a device this extreme the two
+    // buttons sitting close together (or slightly overlapping) is the acceptable trade-off, not a
+    // button silently sliding off-screen.
     const margin = 16;
     onSafeAreaChange(this, (insets) => {
       gear.setPosition(GAME_WIDTH - insets.right - margin, insets.top + margin);
 
       const bottomEdge = GAME_HEIGHT - insets.bottom - margin;
-      // Clamped so that on an extreme aspect ratio (far more cropped than this game is actually
-      // meant to be played at) the two buttons can shrink toward the center without ever
-      // crossing or overlapping each other.
-      const playLeftEdge = Math.min(insets.left + margin, GAME_WIDTH / 2 - buttonWidth - 4);
-      const moreGamesRightEdge = Math.max(GAME_WIDTH - insets.right - margin, GAME_WIDTH / 2 + buttonWidth + 4);
-      playButton.setPosition(playLeftEdge, bottomEdge);
-      moreGamesButton.setPosition(moreGamesRightEdge, bottomEdge);
+      playButton.setPosition(insets.left + margin, bottomEdge);
+      moreGamesButton.setPosition(GAME_WIDTH - insets.right - margin, bottomEdge);
     });
   }
 

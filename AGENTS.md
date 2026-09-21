@@ -1964,3 +1964,66 @@ Two more complaints about the town PNG, addressed independently:
    is fully hidden while positioned under a house's own opaque roof/wall pixels and fully visible
    the instant she's outside them, with the same soft-edged (not rectangular) silhouette the crop's
    own alpha channel already provides.
+
+### Home's Play button and the Journey's first apparition node, clipped on some aspect ratios
+
+Two resolution-dependent clipping bugs, both under the full-bleed `ENVELOP` scale mode
+(`core/scaleMode.ts`) these two scenes use, both root-caused by testing live at several aspect
+ratios with Playwright rather than reasoning about the safe-area math in the abstract — several
+dead ends below turned out to be flaky test timing, not real bugs, and the actual fixes needed
+digging into Phaser's own `Size`/`Camera` source to find behavior its public docs don't cover.
+
+1. **Home's Play button** (`HomeScene.ts`) was *already* wired up to `core/safeArea.ts`'s
+   `onSafeAreaChange`/`getSafeAreaInsets` system (built in an earlier round for this exact class of
+   bug) — anchored by its own left/bottom edge, positioned as `insets.left + margin`. The remaining
+   bug was one extra clamp on top of that: `Math.min(insets.left + margin, GAME_WIDTH/2 -
+   buttonWidth - 4)`, added so Play and More Games would shrink toward the center rather than
+   overlap on a moderately cropped device. On a sufficiently tall/narrow one (a 9:19.5 phone in
+   portrait crops ~178 of the 480 logical units off *each* side — confirmed against Phaser's own
+   `Size.constrain()` source, not guessed), the *center-approach* cap (`124`) ends up **smaller**
+   than the *safe-margin* requirement (`193.64`), so `Math.min()` silently picked the tighter,
+   wrong bound and pushed Play's own left edge outside the safe area — reproducing the exact
+   reported bug. Fix: drop that cap entirely; each button now always anchors to its own safe
+   corner unconditionally. On a device this extreme, the two buttons can end up close together (or
+   slightly overlapping) rather than either one sliding off-screen — full visibility is the hard
+   requirement here, overlap is the acceptable trade-off. Also gave Play a higher depth than More
+   Games, so in that same extreme case the primary action stays the one that's readable/tappable
+   rather than whichever button happened to be created (and so z-ordered) last.
+2. **The Journey's first apparition node** (`ApparitionJourneyScene.ts`) sits only ~19 world-px
+   above the scrollable map's own bottom edge (`worldHeight`) — see `journeyRoute.ts`'s own
+   `ROUTE_WAYPOINTS[0]`. This scene didn't use the safe-area system *at all* before this round (no
+   `onSafeAreaChange` import), so on a device wide enough that `ENVELOP` crops the top/bottom (e.g.
+   21:9), the node could be scrolled at most to `worldHeight - GAME_HEIGHT`, landing it inside the
+   now-cropped bottom strip with no way to scroll it any further into the visible area. Fix: track
+   live `insets` via `onSafeAreaChange`, and widen the *valid scroll range* by however much is
+   currently cropped off each edge (`clampScroll()`) — scrolling into that extra margin only ever
+   reveals content that's cropped off-screen anyway, so it's free room to bring a near-edge node
+   back into the safe portion of the view. The initial auto-scroll-to-current-node calculation was
+   also changed to center the node in the *safe* viewport height, not the nominal one.
+   - **Non-obvious extra fix required**: widening `clampScroll()`'s range alone did *nothing* —
+     confirmed live (`scrollTarget` computed correctly, but `camera.scrollY` silently snapped back
+     to the old, narrower value one frame later). Traced into Phaser's own `Camera#preRender()`
+     source: `if (this.useBounds) { sy = this.clampY(sy); }` runs **every single frame**,
+     re-clamping `scrollY` against whatever `camera.setBounds()` was last given, regardless of how
+     `scrollY` was actually set (direct assignment doesn't skip this — it's not just a `centerOn()`
+     -only safeguard). `camera.setBounds(0, 0, GAME_WIDTH, worldHeight)` was still the original,
+     un-widened bounds, silently overriding the new clamp every frame. Fix: `updateCameraBounds()`,
+     called alongside `clampScroll()` whenever insets change, widens the actual bounds
+     (`setBounds(0, -insets.top, GAME_WIDTH, worldHeight + insets.top + insets.bottom)`) to match.
+     **Any future change to this scene's scroll clamping must update both together** — a wider
+     manual clamp with unwidened `camera.setBounds()` is a silent no-op, not a visible bug, so it's
+     easy to ship without noticing.
+   - The screen-pinned header/back/scroll-arrow buttons had the exact same "positioned against the
+     raw logical edge, not the safe one" bug Home already had one round ago — fixed the same way
+     (`layoutSafeAreaUI()`, called from the same `onSafeAreaChange` registration).
+   - **Known remaining gap, not fixed this round**: this scene only ever scrolls *vertically* — its
+     background is exactly `GAME_WIDTH` wide with no horizontal scroll or extra world space to pan
+     into. On a sufficiently *portrait* device (tall/narrow — the opposite extreme from the 21:9
+     case above), `ENVELOP` crops the *left/right* edges instead, and since the route's waypoints
+     span most of the map's own width (`journeyRoute.ts`'s `ROUTE_WAYPOINTS` range roughly x:71–321
+     out of 480), a portrait-enough device can crop nodes horizontally with no scroll available to
+     compensate — confirmed live at a realistic 19.5:9 phone-portrait ratio. Fixing this properly
+     would mean either a horizontal scroll axis or a bounded camera zoom-out (capped well short of
+     "excessive"), interacting with the vertical clamp math above; out of scope for this round,
+     which was scoped to the specific reported bug (the *first* node, clipped by the *bottom* edge)
+     — flagged here for whoever picks up a future "Journey map still clips on portrait" report.

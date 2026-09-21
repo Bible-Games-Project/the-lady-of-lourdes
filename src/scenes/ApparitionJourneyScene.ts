@@ -11,8 +11,10 @@ import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { Toast } from '../gameplay/Toast';
 import { textStyle } from '../ui/text';
 import { useFullBleedScale } from '../core/scaleMode';
+import { onSafeAreaChange, type SafeAreaInsets } from '../core/safeArea';
 
 const NODE_COUNT = MISSIONS.length;
+const UI_MARGIN = 20;
 
 const hex = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
 
@@ -52,6 +54,18 @@ export class ApparitionJourneyScene extends Phaser.Scene {
   private dragStartScroll = 0;
   private leaves: JourneyLeaf[] = [];
   private elapsedMs = 0;
+  // Live-updated by onSafeAreaChange (see core/safeArea.ts) -- non-zero under this scene's
+  // full-bleed ENVELOP scale mode whenever the device aspect ratio doesn't match 16:9. Everything
+  // that positions itself against a screen edge (the header/back/scroll buttons) or clamps the
+  // scroll range (so a node near the world's own top/bottom edge doesn't land in the cropped,
+  // invisible strip) reads this instead of raw 0/GAME_HEIGHT.
+  private insets: SafeAreaInsets = { left: 0, right: 0, top: 0, bottom: 0 };
+  private title!: Phaser.GameObjects.Text;
+  private backBtn!: Phaser.GameObjects.Image;
+  private upBtn!: Phaser.GameObjects.Image;
+  private upBtnBackdrop!: Phaser.GameObjects.Arc;
+  private downBtn!: Phaser.GameObjects.Image;
+  private downBtnBackdrop!: Phaser.GameObjects.Arc;
 
   constructor() {
     super(SCENE_KEYS.JOURNEY);
@@ -69,10 +83,22 @@ export class ApparitionJourneyScene extends Phaser.Scene {
 
     this.toast = new Toast(this);
 
-    // Start scrolled to the current (first unlocked-but-not-completed) mission.
+    // Start scrolled so the current (first unlocked-but-not-completed) mission's node lands in
+    // the center of the *safe* (uncropped) viewport, not the nominal GAME_HEIGHT one -- see
+    // `onSafeAreaChange` below and its own doc comment on `insets`. Registered before this so
+    // `this.insets` already reflects the real device the very first time this runs.
+    onSafeAreaChange(this, (insets) => {
+      this.insets = insets;
+      this.layoutSafeAreaUI();
+      this.updateCameraBounds();
+      this.scrollTarget = this.clampScroll(this.scrollTarget);
+      this.cameras.main.scrollY = this.scrollTarget;
+    });
+
     const currentIndex = this.findCurrentMissionIndex();
     const node = nodes[currentIndex - 1];
-    this.scrollTarget = Phaser.Math.Clamp(node.y - GAME_HEIGHT / 2, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+    const safeCenter = this.insets.top + (GAME_HEIGHT - this.insets.top - this.insets.bottom) / 2;
+    this.scrollTarget = this.clampScroll(node.y - safeCenter);
     this.cameras.main.scrollY = this.scrollTarget;
 
     this.keyEsc = this.input.keyboard!.addKey('ESC');
@@ -80,7 +106,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.keyDown = this.input.keyboard!.addKey('DOWN');
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.y > 40) {
+      if (p.y > this.insets.top + 40) {
         this.dragStartY = p.y;
         this.dragStartScroll = this.cameras.main.scrollY;
       }
@@ -88,7 +114,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.dragStartY === null || !p.isDown) return;
       const dy = p.y - this.dragStartY;
-      this.scrollTarget = Phaser.Math.Clamp(this.dragStartScroll - dy, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+      this.scrollTarget = this.clampScroll(this.dragStartScroll - dy);
       this.cameras.main.scrollY = this.scrollTarget;
     });
     this.input.on('pointerup', () => {
@@ -104,7 +130,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     // (5th positional param) fixes this at the source, rather than papering over it with an
     // arbitrary multiplier or offset.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _currentlyOver: unknown, _deltaX: number, deltaY: number) => {
-      this.scrollTarget = Phaser.Math.Clamp(this.cameras.main.scrollY + deltaY * 0.5, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+      this.scrollTarget = this.clampScroll(this.cameras.main.scrollY + deltaY * 0.5);
       this.cameras.main.scrollY = this.scrollTarget;
     });
   }
@@ -116,12 +142,54 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     }
     const step = 6;
     if (this.keyUp.isDown) {
-      this.cameras.main.scrollY = Phaser.Math.Clamp(this.cameras.main.scrollY - step, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+      this.cameras.main.scrollY = this.clampScroll(this.cameras.main.scrollY - step);
     } else if (this.keyDown.isDown) {
-      this.cameras.main.scrollY = Phaser.Math.Clamp(this.cameras.main.scrollY + step, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+      this.cameras.main.scrollY = this.clampScroll(this.cameras.main.scrollY + step);
     }
     this.elapsedMs += delta;
     this.advanceLeaves(delta / 1000);
+  }
+
+  /**
+   * The valid scroll range, widened on each end by however much the *current* safe area crops
+   * off that edge. Under plain `FIT` (or a perfectly 16:9 device) `insets` are all `0` and this is
+   * exactly the original `[0, worldHeight - GAME_HEIGHT]` range. Under `ENVELOP` on a mismatched
+   * aspect ratio, scrolling into the extra `insets.top`/`insets.bottom` margin only ever reveals
+   * the *cropped-off, invisible* strip beyond the safe viewport -- never anything the player can
+   * actually see -- so it's free real estate that lets a node sitting close to the world's own
+   * top/bottom edge (apparition 1 sits only ~19px above `worldHeight`, see journeyRoute.ts) still
+   * be scrolled into the safe, visible portion of the screen instead of being permanently stuck
+   * just past it. This is the fix for "the first apparition circle is outside the visible area."
+   *
+   * This range is only ever *reachable* if `updateCameraBounds()` has widened `camera.setBounds()`
+   * to match -- Phaser's own `Camera#preRender()` re-clamps `scrollY` to the camera's bounds on
+   * every single frame regardless of how `scrollY` was last set (confirmed against Phaser's own
+   * source, not assumed), so extending this clamp alone, without also extending the bounds
+   * `useBounds` actually checks against, would have this value silently overridden back to the
+   * narrower range one frame later.
+   */
+  private clampScroll(y: number): number {
+    const min = -this.insets.top;
+    const max = Math.max(min, this.worldHeight - GAME_HEIGHT + this.insets.bottom);
+    return Phaser.Math.Clamp(y, min, max);
+  }
+
+  /** Widens the camera's own scrollable bounds to match `clampScroll()`'s range -- see that
+   * method's doc comment for why both are required together. */
+  private updateCameraBounds(): void {
+    this.cameras.main.setBounds(0, -this.insets.top, GAME_WIDTH, this.worldHeight + this.insets.top + this.insets.bottom);
+  }
+
+  /** Repositions every screen-pinned element against the *visible* screen edges -- see `insets`'s
+   * own doc comment. Same pattern as `HomeScene.ts`'s own `onSafeAreaChange` block. */
+  private layoutSafeAreaUI(): void {
+    const i = this.insets;
+    this.title.setPosition(GAME_WIDTH / 2, i.top + UI_MARGIN);
+    this.backBtn.setPosition(i.left + UI_MARGIN, i.top + UI_MARGIN);
+    this.upBtn.setPosition(GAME_WIDTH - i.right - UI_MARGIN, i.top + 2 * UI_MARGIN);
+    this.upBtnBackdrop.setPosition(GAME_WIDTH - i.right - UI_MARGIN, i.top + 2 * UI_MARGIN);
+    this.downBtn.setPosition(GAME_WIDTH - i.right - UI_MARGIN, GAME_HEIGHT - i.bottom - UI_MARGIN);
+    this.downBtnBackdrop.setPosition(GAME_WIDTH - i.right - UI_MARGIN, GAME_HEIGHT - i.bottom - UI_MARGIN);
   }
 
   private findCurrentMissionIndex(): number {
@@ -215,52 +283,55 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     return nodes;
   }
 
+  /** Every screen-pinned element here is created at a placeholder (0, 0) position — `create()`
+   * registers `onSafeAreaChange` right after `buildScrollControls()`, and its immediate first run
+   * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
+   * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
-    const title = this.add.text(
-      GAME_WIDTH / 2,
-      20,
+    this.title = this.add.text(
+      0,
+      0,
       Localization.t(K.JOURNEY_TITLE),
       textStyle({ fontSize: '16px', color: JOURNEY_PALETTE.cream, fontStyle: 'bold', stroke: JOURNEY_PALETTE.ink, strokeThickness: 3 }),
     );
-    title.setOrigin(0.5);
-    title.setScrollFactor(0);
-    title.setDepth(DEPTH.UI);
+    this.title.setOrigin(0.5);
+    this.title.setScrollFactor(0);
+    this.title.setDepth(DEPTH.UI);
 
     // A recognizable home icon (not an ambiguous rotated arrow) — always returns to Home.
-    const backBtn = this.add.image(20, 20, JOURNEY_ICON_KEYS.HOME).setScale(1.1).setInteractive({ useHandCursor: true });
-    backBtn.setScrollFactor(0);
-    backBtn.setDepth(DEPTH.UI);
-    backBtn.on('pointerover', () => backBtn.setTint(hex(JOURNEY_PALETTE.glowGold)));
-    backBtn.on('pointerout', () => backBtn.clearTint());
-    backBtn.on('pointerup', () => this.scene.start(SCENE_KEYS.HOME));
-  }
-
-  private scrollButtonBackdrop(x: number, y: number): void {
-    const plaque = this.add.circle(x, y, 13, hex(JOURNEY_PALETTE.ink), 0.45);
-    plaque.setStrokeStyle(1, hex(JOURNEY_PALETTE.cream), 0.5);
-    plaque.setScrollFactor(0);
-    plaque.setDepth(DEPTH.UI - 1);
+    this.backBtn = this.add.image(0, 0, JOURNEY_ICON_KEYS.HOME).setScale(1.1).setInteractive({ useHandCursor: true });
+    this.backBtn.setScrollFactor(0);
+    this.backBtn.setDepth(DEPTH.UI);
+    this.backBtn.on('pointerover', () => this.backBtn.setTint(hex(JOURNEY_PALETTE.glowGold)));
+    this.backBtn.on('pointerout', () => this.backBtn.clearTint());
+    this.backBtn.on('pointerup', () => this.scene.start(SCENE_KEYS.HOME));
   }
 
   private buildScrollControls(): void {
     // Arrow texture points up by default; flip for down. (The previous version used a
     // down-pointing chevron with no flip for "up" and a flip for "down" — backwards, which is
     // exactly the bug the maintainer reported. See journeyIcons.ts#arrowIcon().)
-    this.scrollButtonBackdrop(GAME_WIDTH - 20, 40);
-    const upBtn = this.add.image(GAME_WIDTH - 20, 40, JOURNEY_ICON_KEYS.ARROW).setScale(1.2).setInteractive({ useHandCursor: true });
-    upBtn.setScrollFactor(0);
-    upBtn.setDepth(DEPTH.UI);
-    upBtn.on('pointerdown', () => {
-      this.scrollTarget = Phaser.Math.Clamp(this.cameras.main.scrollY - 90, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+    this.upBtnBackdrop = this.add.circle(0, 0, 13, hex(JOURNEY_PALETTE.ink), 0.45);
+    this.upBtnBackdrop.setStrokeStyle(1, hex(JOURNEY_PALETTE.cream), 0.5);
+    this.upBtnBackdrop.setScrollFactor(0);
+    this.upBtnBackdrop.setDepth(DEPTH.UI - 1);
+    this.upBtn = this.add.image(0, 0, JOURNEY_ICON_KEYS.ARROW).setScale(1.2).setInteractive({ useHandCursor: true });
+    this.upBtn.setScrollFactor(0);
+    this.upBtn.setDepth(DEPTH.UI);
+    this.upBtn.on('pointerdown', () => {
+      this.scrollTarget = this.clampScroll(this.cameras.main.scrollY - 90);
       this.cameras.main.scrollY = this.scrollTarget;
     });
 
-    this.scrollButtonBackdrop(GAME_WIDTH - 20, GAME_HEIGHT - 20);
-    const downBtn = this.add.image(GAME_WIDTH - 20, GAME_HEIGHT - 20, JOURNEY_ICON_KEYS.ARROW).setScale(1.2).setFlipY(true).setInteractive({ useHandCursor: true });
-    downBtn.setScrollFactor(0);
-    downBtn.setDepth(DEPTH.UI);
-    downBtn.on('pointerdown', () => {
-      this.scrollTarget = Phaser.Math.Clamp(this.cameras.main.scrollY + 90, 0, Math.max(0, this.worldHeight - GAME_HEIGHT));
+    this.downBtnBackdrop = this.add.circle(0, 0, 13, hex(JOURNEY_PALETTE.ink), 0.45);
+    this.downBtnBackdrop.setStrokeStyle(1, hex(JOURNEY_PALETTE.cream), 0.5);
+    this.downBtnBackdrop.setScrollFactor(0);
+    this.downBtnBackdrop.setDepth(DEPTH.UI - 1);
+    this.downBtn = this.add.image(0, 0, JOURNEY_ICON_KEYS.ARROW).setScale(1.2).setFlipY(true).setInteractive({ useHandCursor: true });
+    this.downBtn.setScrollFactor(0);
+    this.downBtn.setDepth(DEPTH.UI);
+    this.downBtn.on('pointerdown', () => {
+      this.scrollTarget = this.clampScroll(this.cameras.main.scrollY + 90);
       this.cameras.main.scrollY = this.scrollTarget;
     });
   }
