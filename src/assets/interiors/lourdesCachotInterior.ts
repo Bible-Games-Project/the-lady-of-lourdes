@@ -1,64 +1,46 @@
 import Phaser from 'phaser';
 import cachotRoomUrl from './cachot_room.png';
-import cachotFrontWallUrl from './cachot_frontwall.png';
 
 /**
- * The maintainer's own artwork for Le Cachot's interior (isometric room: hearth, bed, dining
- * table, dresser, chest, spinning wheel, front door), used as the permanent backdrop. Recovered
- * byte-for-byte from the conversation that supplied it, then only cropped and resized — never
- * redrawn, recolored, or altered — per an explicit "preserve it faithfully" ask, restored exactly
- * (the maintainer flagged a previous pass's clone-stamp patch over the upper chair as an unwanted
- * "reconstruction"; `cachot_room.png` is now byte-for-byte the original supplied image again,
- * chair included).
+ * The maintainer's own second-pass artwork for Le Cachot's interior (isometric jail-cell room:
+ * barred window, cross and framed picture on the back wall, a shelf, the bed along the left wall,
+ * a wash basin/towel bench, the dining table and chair, a chest and jug, a woven rug under the
+ * window's light beam, and a closed wooden door at the south wall), used as the permanent
+ * backdrop. This **fully replaces** the previous room artwork per an explicit "completely replace
+ * the current interior artwork" ask — not a patch, not a recolor, not blended with the old image.
  *
- * **Two images, not one**, for the "walk behind the front wall" effect `CachotScene.ts` needs:
- * `CACHOT_ROOM_KEY` is the full room (used as the permanent backdrop, always behind the player),
- * and `CACHOT_FRONT_WALL_KEY` is a second copy of just the bottom strip (the low stone wall, door,
- * lantern, and wooden beam over the doorway) cropped from the *same* source pixels at the *same*
- * scale. The front-wall copy is positioned to sit exactly on top of where that same strip already
- * appears in the room backdrop, then Y-sorted against the player every frame the same way
- * `OverworldScene.ts#addFootprintBuilding()` already sorts the church/presbytery against her: one
- * depth value fixed from the wooden beam's own ground line, compared each frame against
- * `depthForY(player.y, ...)`. Since the wall copy is pixel-identical to what's already drawn
- * beneath it, there's no seam — it only adds the occlusion capability the single flat backdrop
- * can't provide on its own (she can walk through the open half of the doorway and appear behind
- * the beam as she does; she was never going to reach the solid stone either side of the door, so
- * the overlay covering that too is harmless). See `CachotScene.ts` for the actual placement/depth
- * math and for why this was deleted-then-restored: an earlier pass in this same session removed it
- * in favor of a plain solid wall, which the maintainer then asked to be reverted because it lost
- * the walk-behind-the-beam effect at the doorway.
+ * The supplied source arrived as a lossy WebP (360138-byte precedent: this is the same situation
+ * `assets/town/lourdesTown.ts` documents for the town PNG — the only copy available, already
+ * through one lossy encoding step before it ever reached this codebase, so "preserve exactly as
+ * provided" means preserving *this* file's own pixels, not chasing a losslessness the source
+ * never had). Converted straight to PNG, cropped tight to its own real content (the transparent
+ * margin around the isometric room shape — verified via an alpha-channel bounding-box scan, not
+ * eyeballed, native crop 915x1009), then given a single quality (`Image.LANCZOS`) downscale
+ * straight to final display size (214x236) — the same "resize once offline with a quality filter,
+ * never touch it again at runtime" rule every character sprite and the previous room art already
+ * followed. No recolor, no redraw, no patch, no added detail.
  *
- * **Why not color-quantized like `lourdesChurch.ts`/`lourdesPresbytery.ts`**: those assets
- * deliberately quantize to a small flat-color palette because they're small map-scale sprites
- * meant to read as pixel art at building scale. This room is the explicit subject of a "do not
- * change the colors... preserve the original pixel-art style" instruction, and quantizing would
- * measurably alter its colors — so this asset keeps its full original color range. The one
- * offline step taken is a single quality (`Image.LANCZOS`) resize straight to final display size,
- * matching the same "resize once with a quality filter, then never touch it again at runtime"
- * rule every character sprite in this game already follows — see `registerLourdesCachotInterior()`
- * below for why no `setFilter(LINEAR)` call happens either.
+ * **A single flat backdrop image, no separate front-wall overlay this time.** The previous room's
+ * `CACHOT_FRONT_WALL_KEY` duplicate existed for exactly one reason: that art's door was drawn
+ * half-open, with a genuine walkable gap onto visible steps, and Bernadette needed to visually
+ * disappear behind the wooden beam capping that gap as she walked through it. This new door is
+ * drawn fully closed (a solid door leaf, not an open gap — see `CachotScene.ts`'s own door
+ * measurements) with no walkable space behind any part of it, and nothing else in this room (no
+ * freestanding pillar, rail, or mid-room overhang) has a foreground element Bernadette could ever
+ * pass behind either — every piece of furniture sits flush against a wall or fully exposed on the
+ * open floor. The one‑depth-per-object rule this game already uses everywhere (the room backdrop
+ * fixed at `DEPTH.GROUND`, always behind the player's own always-higher `DEPTH.ACTORS`-based
+ * depth) already guarantees "the floor never covers her" on its own here, with nothing left for a
+ * second overlay layer to add. See `CachotScene.ts` for the full collider rebuild and this
+ * decision's own verification.
  */
 export const CACHOT_ROOM_KEY = 'lourdes_cachot_room';
-export const CACHOT_FRONT_WALL_KEY = 'lourdes_cachot_front_wall';
 
 /** Native/display pixel size of the room backdrop (pre-sized to this exact size offline, so no
  * runtime scaling is needed at all — avoids any nearest-neighbor downscale aliasing). */
-export const CACHOT_ROOM_WIDTH = 290;
+export const CACHOT_ROOM_WIDTH = 214;
 export const CACHOT_ROOM_HEIGHT = 236;
-
-/** The front-wall crop's own size, and the Y (in the *room backdrop's own local coordinates*,
- * i.e. relative to the room image's top-left) where it must be placed so it lines up exactly with
- * the matching strip already drawn in the room backdrop. Crop starts at local y158 (world y180) --
- * enough headroom above the wooden beam's own anchor line for Bernadette's sprite to have real
- * pixels to visually overlap/hide against as she approaches it, while staying south of the dining
- * table's own footprint so this copy can never affect sorting anywhere else in the room. Same
- * source pixels, same scale as the room backdrop; the extra floor at the top of this crop is
- * pixel-identical to what's already drawn there in the backdrop, so there's no seam. */
-export const CACHOT_FRONT_WALL_WIDTH = 290;
-export const CACHOT_FRONT_WALL_HEIGHT = 78;
-export const CACHOT_FRONT_WALL_LOCAL_Y = 158;
 
 export function preloadLourdesCachotInterior(scene: Phaser.Scene): void {
   scene.load.image(CACHOT_ROOM_KEY, cachotRoomUrl);
-  scene.load.image(CACHOT_FRONT_WALL_KEY, cachotFrontWallUrl);
 }

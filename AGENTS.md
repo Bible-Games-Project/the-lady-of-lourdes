@@ -2027,3 +2027,49 @@ digging into Phaser's own `Size`/`Camera` source to find behavior its public doc
      "excessive"), interacting with the vertical clamp math above; out of scope for this round,
      which was scoped to the specific reported bug (the *first* node, clipped by the *bottom* edge)
      — flagged here for whoever picks up a future "Journey map still clips on portrait" report.
+
+### Le Cachot interior, fully replaced (second-pass artwork)
+
+The maintainer supplied a brand-new interior painting (the previous room's own doc comment in
+`lourdesCachotInterior.ts` described *that* art's own history — this replaces it completely, not a
+patch). New native crop 915x1009 (tight alpha-bbox crop of the supplied WebP, same technique as
+`assets/town/lourdesTown.ts`'s own crops), displayed at 214x236 (a single offline LANCZOS resize,
+same "resize once, never touch again" rule every character sprite already follows). Room shape,
+furniture layout, and the door are all different from the old room, so every collider was
+re-measured from scratch against grid-overlay crops of the new art — none of the old numbers were
+reused or adapted.
+
+- **No walk-behind overlay this round, on purpose.** The old room's `CACHOT_FRONT_WALL_KEY`
+  duplicate existed because that door was drawn *half-open*, with a real walkable gap onto visible
+  steps, and Bernadette needed to visually vanish behind the wooden beam capping that gap as she
+  passed through it. This new door is drawn **fully closed** (confirmed via a close-up crop of the
+  doorway, not assumed) — solid door leaf, small round window, no gap at all — and nothing else in
+  the room has a foreground element she could ever walk behind either (every piece of furniture
+  sits flush against a wall or fully exposed on open floor, confirmed by checking each one's own
+  collider against the reachable floor around it). The single flat backdrop, fixed at
+  `DEPTH.GROUND` versus the player's own always-higher `DEPTH.ACTORS`-based depth, already
+  guarantees "the floor/furniture never covers her" by construction with nothing left for a second
+  overlay layer to add — verified live by standing her right at the edge of the bed and the table
+  and screenshotting, not just by reading the depth math.
+- **Real bug caught during testing, not just measuring**: the first cut of this room placed the
+  exit trigger on the steps *below* the door (mirroring the old room's own `SECOND_STEP_ZONE`,
+  which sat beyond its open gap). Since this door is solid for its *entire* depth, those steps are
+  permanently unreachable from inside the room — the trigger would never fire, silently breaking
+  the exit. Caught by testing the actual exit flow live (walk to the door, confirm the scene
+  transitions), not by inspecting the geometry alone. Fix: the exit trigger (`EXIT_ZONE`) sits
+  *north* of the door instead, on the open floor where Bernadette actually arrives when she walks
+  up to it — "approach the closed door to leave," matching how a closed door is actually used,
+  rather than reusing the previous room's "walk through a gap" mechanic on art that no longer has
+  one. `PLAYER_SPAWN` was moved to match (previously inside where the old open doorway was, now
+  also just north of this door). This is the kind of bug that measuring against a static image
+  can never catch — it only shows up by actually driving the interaction in the running game,
+  which is why every geometry change in this file gets verified that way before being called done.
+- **Furniture colliders**: bed, foot-of-bed stool, wash-basin bench, dining table+chair (merged,
+  same "no real gap between them" reasoning the old room's table/chair merge used), chest, and jug
+  each get their own small collider with an 8-native-px margin — not one room-spanning box. Verified
+  live: clean approaches into each one from open floor stop her at a sensible boundary, and a
+  perimeter walk around the whole room (bed → back wall → table → chest → back through the middle)
+  produced zero stuck/frozen segments.
+- Wall-mounted decoration (the cross, framed picture, shelf with its hanging cloth) gets no
+  separate collider, same as the old room's own wall dressing — it's within the back wall's own
+  footprint band and well above where the player's feet could ever be.
