@@ -17,9 +17,20 @@ import talkBlinkUrl from './boy_portrait_talkBlink.png';
  *                 the box's lower edge, where the mask nearly reaches the box boundary; a fixed
  *                 external sample row avoided that), with a thin closed-lid line drawn over the
  *                 mask's own per-column vertical center in the eyebrow's own dark tone.
- *   - `talk`      a bold open-mouth ellipse painted over the closed-mouth smile, tall/dark enough
- *                 to still read after the ~18x downscale to this portrait's 58x67 final size.
- *   - `talkBlink` both edits combined.
+ *   - `talk`      **not** a new shape painted over the face (a first pass that did this — a bold
+ *                 open-mouth ellipse — read as "a large black shape sitting almost on his nose,"
+ *                 because it was both mispositioned (his real closed-lip line sits at native
+ *                 y38-39, this sat at y37-38, overlapping the nose/philtrum shadow above it) and a
+ *                 uniform blob with no relation to the smile's own curve). Fixed by measuring his
+ *                 actual neutral-pose lip pixels directly (a `V = R+G+B` per-pixel darkness scan
+ *                 inside a tight box around the mouth only, `V < 520` at native y38-40 — deliberately
+ *                 excludes y37, which is nose/philtrum shading, not lip, the exact pixels the first
+ *                 attempt wrongly darkened) and darkening *only those already-existing lip pixels*
+ *                 in place by a fixed 0.6x multiplier — the same "thicken/darken the real lip line,
+ *                 don't paint a new one" technique `bernadettePortrait.ts`'s own talk edit already
+ *                 uses. The result is his own existing smile, read as parted, not a foreign mouth.
+ *   - `talkBlink` the same in-place darkening applied to `blink`'s own mouth pixels (identical to
+ *                 `neutral`'s there — confirmed by diffing them before reusing this technique).
  * Source bust crop: the supplied square reference image was center-cropped to the 58:67 aspect
  * ratio every other portrait in this game already uses (not a non-uniform stretch, which would
  * have distorted his proportions) before the final resize.

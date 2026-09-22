@@ -2215,3 +2215,90 @@ Verified live: walking into the back wall and into the bed both still stop the p
 immediately (small room, as expected); the full mother dialogue (3 lines) still completes and sets
 `motherTalkedTo`; standing in the exit zone afterward still fades to `OverworldScene` at the correct
 placeholder-door spawn point; zero console errors throughout.
+
+### Lourdes house PNGs still missing — `main` found to be a stale, unrelated placeholder
+
+A follow-up asked to investigate why the individual house PNGs (from the previous round's
+investigation) still weren't showing, specifically whether it was a branch/deployment mismatch
+rather than missing files. Checked exhaustively:
+
+- **The house PNGs still do not exist anywhere** — not in this repo's working tree on any branch,
+  not in the session transcript (re-scanned end to end again), not in the scratchpad's `images/`
+  directory (still only the same 6 files from two rounds ago: the already-used Cachot interior
+  source and 5 generically-named preview images, `2.webp`–`6.webp`, that were always previews, never
+  the real supply). Nothing was silently skipped or lost — there is simply nothing to add yet.
+- **A real, separate problem was found while checking this, though**: `origin/main` is still just
+  the original placeholder skeleton (`Initial commit` → a few doc-sync commits → "add placeholder
+  landing page" → "add placeholder package.json for build") — 7 commits, none of them game code.
+  Every single round of this entire session (all the way back to the very first town-PNG replacement)
+  has only ever been pushed to `claude/bernadette-lourdes-game-h396xi`; none of it has ever reached
+  `main`. `main` also carries `.github/workflows/preview-deploy.yml`, a Cloudflare Pages deploy that
+  triggers `on: push: branches: [main]` — so if the "preview" referenced when checking on this game
+  is that Cloudflare Pages deployment (as opposed to the Artifact link republished each round), it
+  has never once deployed anything beyond the placeholder landing page, regardless of what's been
+  built on the feature branch. Checked `git branch -r` for a third branch that might hold
+  independently-added house PNGs (in case of a lost/orphaned push) — there is no such branch; only
+  `main` and this feature branch exist on the remote.
+- This is a real, separate issue from the missing PNGs (fixing it would not make the houses appear,
+  since they don't exist on the feature branch either — but it does mean `main`'s own Cloudflare
+  preview, if that's what's being checked, has been showing stale/placeholder content this entire
+  session regardless of the house question). Left to the maintainer to confirm before merging
+  `claude/bernadette-lourdes-game-h396xi` into `main` and pushing there, per this project's own
+  standing "never push to a different branch without explicit permission" rule.
+
+### Le Cachot: Louise (the mother) repositioned beside the window
+
+Per an explicit "only change Louise's position, not the room's size/artwork/colliders" ask.
+`MOTHER_SPAWN` (the only thing touched) moved from the open floor between the rug and the door
+(native x445-475,y590-620) to the upper-right of the room, right of the window and below the shelf
+(native x600-640,y270-300) — measured against the same grid-overlay technique as every other
+collider in this file, not guessed.
+
+**A real geometric tension surfaced while placing her, inherent to last round's already-approved
+50%-size room reduction, not something this round changes**: every character sprite in this game
+(including hers, `MOTHER_FRAME_HEIGHT` = 42 world-px, same full-adult scale as Bernadette) renders
+at a *fixed* pixel height, unrelated to `CACHOT_ROOM_WIDTH`/`_HEIGHT` — only the room backdrop and
+its colliders were halved, not character sprites. In a room that's now only 118px tall total, a
+42px-tall standing character occupies over a third of it, so *any* position in the room's own upper
+portion puts her head at or slightly above the room artwork's own drawn top edge (into the dark
+`#15110e` background beyond it, not into another wall/object). Confirmed live via screenshot: an
+initial placement directly under/in front of the window read as visibly overlapping the window's own
+stonework; moving her to the *right* of the window instead (this round's final position) reads as
+clearly "standing beside the window," with only a small, acceptable amount of head/hair extending
+above the room's own top edge into the surrounding darkness — not into any object, and not
+overlapping any collider. Fixing that residual overlap further would mean either shrinking her
+sprite or growing the room again, both explicitly ruled out this round ("do not change its size").
+
+Verified live: dialogue with her still opens and completes correctly from her new position; walking
+around the room (including straight up toward the window) still moves and stops normally, confirming
+her new spot doesn't block the room's own thoroughfares; zero console errors.
+
+### Antoine's and Toinette's talking mouths, actually fixed this time
+
+Both characters' `talk`/`talkBlink` portrait frames had the exact bug reported: a synthetic
+"open-mouth ellipse" painted over the face by an earlier pass (documented in `boyPortrait.ts`'s and
+`sisterPortrait.ts`'s own — now corrected — doc comments), rather than a subtle edit of their real
+lips. Measuring precisely (a per-pixel `V = R+G+B` darkness scan against each character's own
+*neutral* pose, inside a tight bounding box around the mouth only, low enough to exclude the
+nose/philtrum shadow above and the jaw shadow below) found the previous edits didn't even land on
+the actual lip pixels:
+
+- **Antoine (boy)**: his real closed-lip line sits at native y38-40; the old edit painted a solid
+  block at y37-38, one row too high, overlapping the nose/philtrum shadow — exactly "too high, almost
+  on his nose."
+- **Toinette (sister)**: her real closed-lip line sits at native y38-39; the old edit painted at
+  y43-44, well *below* her mouth, inside her jaw/chin-shadow curve — exactly "does not match her
+  actual lips."
+
+Fixed the same way for both, matching the technique `bernadettePortrait.ts`'s own (correct) talk
+edit already uses: no new shape painted anywhere. Instead, the *already-existing* neutral-pose lip
+pixels (identified by the darkness scan above, not guessed) are darkened in place by a fixed 0.6x
+multiplier — same position, same smile-curve shape, same small size, just visibly darker/richer to
+read as "parted" rather than "closed." `talkBlink` for each reuses the identical mask against their
+own `blink` frame's mouth pixels (confirmed identical to `neutral`'s there first, since `blink` only
+differs in the eye region). Verified with a direct 6x-scaled neutral/old-talk/new-talk comparison
+image for each character (the old black-blob bug is obvious side-by-side; the new version reads as
+each character's own existing smile, subtly darkened) and again live in the actual dialogue box UI
+by forcing the portrait texture directly (`portrait_boy_talk`/`portrait_sister_talk`) and
+screenshotting — both show a small, correctly-positioned, non-round mouth in the real rendering
+pipeline, not just in the isolated source crop.

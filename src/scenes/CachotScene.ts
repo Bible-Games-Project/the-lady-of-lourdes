@@ -127,7 +127,14 @@ const EXIT_ZONE: FracRect = nativeFrac(370, 745, 550, 788);
 const DOOR_STOPPER: FracRect = nativeFrac(355, 995, 565, 1009);
 
 const PLAYER_SPAWN = nativeFrac(450, 745, 470, 765); // just inside the door, facing into the room
-const MOTHER_SPAWN = nativeFrac(445, 590, 475, 620); // open floor between the rug and the door
+// Louise (the mother): upper-right area of the room, beside the barred window -- positioned right
+// of the window's own right edge (~x545, clear of the light beam) and below the shelf (ends
+// ~y215), on the open floor strip before the table (collider starts y322). Clear of the room's two
+// main thoroughfares (the center rug leading to the window, and the table's own south-side
+// approach). Native-y kept as low (as far down the wall) as still reads as "upper" while giving her
+// fixed-height sprite (42 world-px, unrelated to the room's own halved display size) the most
+// headroom against the room's own now-much-shorter 118px-tall backdrop.
+const MOTHER_SPAWN = nativeFrac(600, 270, 640, 300);
 
 function fracCenter(r: FracRect): { x: number; y: number } {
   return { x: ROOM_OFFSET_X + (r.xFrac + r.wFrac / 2) * CACHOT_ROOM_WIDTH, y: ROOM_OFFSET_Y + (r.yFrac + r.hFrac / 2) * CACHOT_ROOM_HEIGHT };
