@@ -15,9 +15,20 @@ import cachotRoomUrl from './cachot_room.png';
  * never had. Converted straight to PNG, cropped tight to its own real content (the transparent
  * margin around the isometric room shape — verified via an alpha-channel bounding-box scan, not
  * eyeballed, native crop 915x1009), then given a single quality (`Image.LANCZOS`) downscale
- * straight to final display size (214x236) — the same "resize once offline with a quality filter,
- * never touch it again at runtime" rule every character sprite and the previous room art already
+ * straight to final display size — the same "resize once offline with a quality filter, never
+ * touch it again at runtime" rule every character sprite and the previous room art already
  * followed. No recolor, no redraw, no patch, no added detail.
+ *
+ * **Display size halved again** (214x236 → 107x118, exactly 50% on both axes) per an explicit "the
+ * interior is too large, reduce to 50%" ask — a real asset-level shrink, not a camera zoom. Kept a
+ * single clean resize rather than downscaling the already-214x236 file a second time (which would
+ * compound two lossy resizes): regenerated straight from the same tight 915x1009 native crop
+ * referenced above, one `Image.LANCZOS` pass straight to 107x118. `CachotScene.ts`'s own collider/
+ * door/spawn/exit geometry is entirely stored as *fractions* of `CACHOT_ROOM_WIDTH`/`_HEIGHT`
+ * (`FracRect`, `nativeFrac()`), so halving those two constants alone — no other file needs
+ * touching — scales every one of them (and the room's own screen position, `ROOM_OFFSET_X/Y` in
+ * `CachotScene.ts`, itself derived from these constants) to match automatically, preserving every
+ * relative proportion exactly.
  *
  * **A single flat backdrop image, no separate front-wall overlay this time.** The previous room's
  * `CACHOT_FRONT_WALL_KEY` duplicate existed for exactly one reason: that art's door was drawn
@@ -37,8 +48,8 @@ export const CACHOT_ROOM_KEY = 'lourdes_cachot_room';
 
 /** Native/display pixel size of the room backdrop (pre-sized to this exact size offline, so no
  * runtime scaling is needed at all — avoids any nearest-neighbor downscale aliasing). */
-export const CACHOT_ROOM_WIDTH = 214;
-export const CACHOT_ROOM_HEIGHT = 236;
+export const CACHOT_ROOM_WIDTH = 107;
+export const CACHOT_ROOM_HEIGHT = 118;
 
 export function preloadLourdesCachotInterior(scene: Phaser.Scene): void {
   scene.load.image(CACHOT_ROOM_KEY, cachotRoomUrl);

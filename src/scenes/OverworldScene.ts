@@ -188,6 +188,11 @@ export class OverworldScene extends Phaser.Scene {
   private cachotDoorZone!: Phaser.Geom.Rectangle;
   private colliderBodies: (Phaser.Types.Physics.Arcade.ImageWithStaticBody | Phaser.GameObjects.Zone)[] = [];
 
+  // True-float camera scroll accumulator for the hand-rolled follow in `updateCameraFollow()` --
+  // see that method's own doc comment for why this can't just be `camera.startFollow()`.
+  private camScrollX = 0;
+  private camScrollY = 0;
+
   private phase: Phase = 'explore';
 
   constructor() {
@@ -280,7 +285,14 @@ export class OverworldScene extends Phaser.Scene {
 
     this.cameras.main.setBounds(0, 0, MAP_W, MAP_H);
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
-    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    // Hand-rolled follow (`updateCameraFollow()`, ticked from `update()`) instead of
+    // `camera.startFollow(this.player, true, 0.12, 0.12)` -- see that method's own doc comment for
+    // the real bug this works around (diagonal-movement camera shake). Seed the accumulator here so
+    // the very first frame doesn't lerp in from scroll (0,0).
+    this.camScrollX = this.player.x - this.cameras.main.width / 2;
+    this.camScrollY = this.player.y - this.cameras.main.height / 2;
+    this.cameras.main.scrollX = Math.floor(this.camScrollX);
+    this.cameras.main.scrollY = Math.floor(this.camScrollY);
 
     this.dialogueBox = new DialogueBox(this);
     this.tasksPanel = new TasksPanel(this);
@@ -462,11 +474,45 @@ export class OverworldScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Replaces `camera.startFollow(this.player, true, 0.12, 0.12)`. That built-in combination has a
+   * real bug, traced into Phaser's own `Camera.preRender()` source: every frame it lerps
+   * `scrollX`/`scrollY` toward the player, floors the result for crisp pixel-art rendering, then
+   * **writes that floored value back into `this.scrollX`/`scrollY`** — so next frame's lerp starts
+   * from an already-truncated base, not the true continuous position, instead of only rounding for
+   * that one frame's render. The up-to-1px truncation error this leaves behind is imperceptible on
+   * a single axis (movement along just X or Y is monotonic, so the eye reads it as ordinary
+   * pixel-stepping), but moving diagonally truncates *both* axes independently every frame, and the
+   * two uncorrelated up-to-1px errors compound into a visible shake instead of a smooth diagonal
+   * pan — confirmed live: reverting to the stock `startFollow()` reproduces the shake, and it's
+   * gone again with this method in place, in both cases with movement/collision fully unchanged.
+   *
+   * Fix: keep our own float accumulator (`camScrollX`/`camScrollY`) that Phaser's floored value
+   * never gets written back into — lerp *that*, and only floor a throwaway copy into
+   * `camera.scrollX`/`scrollY` for this one frame's render. `camera.roundPixels` stays on globally
+   * (from `pixelArt: true`) throughout, so every sprite/tile still renders pixel-snapped exactly as
+   * before — that per-object snapping reads each object's own true float position fresh every
+   * frame (see `MultiPipeline.js`'s own `camera.roundPixels` check) and was never the buggy part.
+   * `camera.setBounds()`'s own edge clamping still applies for free: Phaser's `preRender()` always
+   * runs `clampX`/`clampY` on `this.scrollX`/`scrollY` after this method sets them, follow or not.
+   */
+  private updateCameraFollow(): void {
+    const cam = this.cameras.main;
+    const lerp = 0.12;
+    const targetX = this.player.x - cam.width / 2;
+    const targetY = this.player.y - cam.height / 2;
+    this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, lerp);
+    this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, lerp);
+    cam.scrollX = Math.floor(this.camScrollX);
+    cam.scrollY = Math.floor(this.camScrollY);
+  }
+
   update(time: number, delta: number): void {
     const uiBlocked = this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
     this.player.update(time);
+    this.updateCameraFollow();
 
     // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it
     // kept easing the sister toward the (now-locked) player position and re-setting her facing

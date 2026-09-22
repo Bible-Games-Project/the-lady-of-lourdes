@@ -2126,3 +2126,92 @@ the Le Cachot connection work (walking into the placeholder door zone and pressi
 `CachotScene`; calling its exit lands the player back in `OverworldScene` at `CACHOT_DOOR_Y - 24`,
 directly under the placeholder point, exactly as the pre-existing `fromCachot` logic expects).
 `bunx tsc --noEmit` and `bun run build` both pass clean.
+
+### Individual Lourdes house PNGs — investigated, not yet received
+
+A follow-up request asked why the individual per-building PNGs (meant to replace the removed town
+PNG, one file per building, filename as the sole source of truth for identity/placement — see the
+section above) weren't showing up in the Lourdes scene. Investigated by searching the actual
+session transcript and every asset/scratch directory for anything matching: **the only images this
+session ever received are `cachot_room.png`'s own WebP source (used in the Le Cachot interior
+rebuild) and the 5 generically-named preview images shown alongside the original "I'll send real
+building PNGs with descriptive filenames next" message** (`images/2.webp`–`6.webp` — sample
+tudor-manor/townhouse-row/ruined-building art, shown only to illustrate the *style* being supplied,
+explicitly *not* yet the real files). No individual house PNGs with descriptive, placement-bearing
+filenames were ever actually attached to this conversation, in this session or any prior one — they
+were never guessed at or silently skipped; they simply never arrived here. Nothing was added to
+`OverworldScene.ts` for this reason (adding placement code with no real asset and no real filename
+to key off would be exactly the "guess the identity/location" the maintainer explicitly ruled out).
+**Waiting on the maintainer to (re-)attach the actual individual building PNGs.**
+
+### Diagonal-movement camera shake, fixed
+
+A real, reproducible bug, root-caused by reading Phaser's own `Camera.js` source (not guessed): the
+overworld camera was set up with `this.cameras.main.startFollow(this.player, true, 0.12, 0.12)`,
+where that `true` is `startFollow`'s own `roundPixels` argument. Tracing `Camera.preRender()`
+(runs every frame) shows exactly what that flag does: it lerps `scrollX`/`scrollY` toward the
+player, **floors the result for that frame's render, then writes the floored value back into
+`this.scrollX`/`scrollY`** — so the *next* frame's lerp starts from an already-truncated base
+instead of the true continuous position. The up-to-1px truncation this leaves behind every frame is
+invisible on a single axis (pure up/down/left/right movement only ever changes one coordinate, and
+the eye reads a monotonic sequence of small truncation errors as ordinary pixel-stepping), but
+diagonal movement truncates *both* axes independently every frame, and the two uncorrelated errors
+compound into a visible wobble instead of a clean diagonal pan — matching the reported "shakes
+diagonally, fine on the 4 cardinal directions" symptom exactly.
+
+This is the same `camera.roundPixels` flag Phaser's WebGL pipeline reads to pixel-snap every
+sprite/tile for crisp `pixelArt: true` rendering (confirmed in `MultiPipeline.js`), so it can't just
+be turned off — that would trade the shake for blurry, non-pixel-snapped sprites everywhere. Fix:
+`OverworldScene.ts` no longer calls `startFollow()` at all. A new `updateCameraFollow()` (ticked
+every frame from `update()`) keeps its own private float accumulator (`camScrollX`/`camScrollY`)
+that Phaser's floored value can never write back into — it lerps *that* float toward the player
+every frame, and only floors a disposable copy into `camera.scrollX`/`scrollY` for that one frame's
+render. `camera.roundPixels` stays on globally the whole time, so every sprite/tile still renders
+pixel-snapped exactly as before (that per-object snapping reads each object's own true float
+position fresh every frame — it was never the buggy part). `camera.setBounds()`'s own edge clamping
+still applies for free, since Phaser's `preRender()` always clamps `scrollX`/`scrollY` after this
+method sets them, follow or not.
+
+Verified two ways: (1) structurally/deterministically — logging the private float accumulator every
+frame during sustained movement showed it holding a genuine fractional value on 100% of frames
+(e.g. `1757.669...`, `1760.028...`), proof the destructive floor-and-persist cycle is gone,
+independent of any test-environment timing noise; (2) live gameplay — walked all 8 directions,
+entered/exited Le Cachot, and ran the full mission-start flow with zero console errors and identical
+collision/movement feel to before. (A first attempt at empirically comparing raw scroll-jitter
+magnitude between the old and new code via Playwright was inconclusive — headless Chromium's own
+frame-pacing noise in this environment dominated the signal at the single-frame level being
+measured, showing similar-looking fluctuation in both axis and diagonal movement for both versions.
+The structural fix above doesn't depend on that noise at all, which is why it's the basis for this
+verification instead.)
+
+### Le Cachot interior, reduced to 50% size
+
+A real asset-level shrink, not a camera zoom, per an explicit "the interior is too large, reduce to
+50%" ask. `lourdesCachotInterior.ts`'s `CACHOT_ROOM_WIDTH`/`CACHOT_ROOM_HEIGHT` (214x236 → 107x118,
+exactly half on both axes) are the only two numbers that needed changing — every collider, wall,
+door, spawn point, and the exit zone in `CachotScene.ts` was already stored as a `FracRect`
+(fraction of these two constants, via `nativeFrac()`), and the room's own on-screen position
+(`ROOM_OFFSET_X`) is itself a formula off `CACHOT_ROOM_WIDTH`. Halving the two size constants alone
+therefore scales every one of those rects, and the room's own centered horizontal position,
+automatically and proportionally — no other geometry in the file needed touching, and no relative
+proportion could drift since nothing but the multiplier changed.
+
+The backdrop image itself was regenerated at the new size rather than just displayed smaller at
+runtime (`setDisplaySize`) — matching this codebase's own established "resize once offline with a
+quality filter, never touch it again at runtime" rule (see this file's own doc comment on why: it
+avoids nearest-neighbor downscale aliasing). Re-derived from the same tight 915x1009 native crop the
+214x236 version was originally made from (one clean `Image.LANCZOS` pass straight to 107x118),
+rather than downscaling the already-214x236 PNG a second time, which would have compounded two lossy
+resizes.
+
+`ROOM_OFFSET_Y` (a fixed 22px top margin, sized to leave room for the narration caption) was
+deliberately left untouched rather than recentering the now-smaller room vertically — it's a layout
+constant, not part of the room's own geometry, and repositioning it wasn't asked for. The room now
+sits near the top of the dark background with more visible margin below it than before; confirmed
+by screenshot that this reads fine (the background is a solid near-black `#15110e`, so the extra
+space doesn't look broken, just darker/roomier around a smaller cell).
+
+Verified live: walking into the back wall and into the bed both still stop the player almost
+immediately (small room, as expected); the full mother dialogue (3 lines) still completes and sets
+`motherTalkedTo`; standing in the exit zone afterward still fades to `OverworldScene` at the correct
+placeholder-door spawn point; zero console errors throughout.
