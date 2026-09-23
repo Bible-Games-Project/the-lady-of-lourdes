@@ -4,6 +4,7 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
+import { TOWN_TERRAIN_KEY, TOWN_TERRAIN_NATIVE_WIDTH, TOWN_TERRAIN_NATIVE_HEIGHT } from '../assets/terrain/lourdesTownTerrain';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -96,6 +97,22 @@ const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END *
 // move to sit at that art's own door instead of staying here.
 const CACHOT_DOOR_X = PATH_CENTER * TILE_SIZE;
 const CACHOT_DOOR_Y = (RIVER_H_BOTTOM + 10) * TILE_SIZE;
+
+// The new intermediate terrain layer (`assets/terrain/lourdesTownTerrain.ts`) — sits between the
+// grass (base layer, untouched) and the individual building PNGs still to come, per the
+// maintainer's explicit "grass -> new terrain -> buildings" layer order. Displayed at a "slight"
+// enlargement (1.2x native) so the patch has real surface for most future buildings to stand on,
+// still a uniform scale (never stretched). Horizontally centered on CACHOT_DOOR_X/PATH_CENTER —
+// the same anchor every other town landmark in this file already uses (Jeanne's spawn, the boy's
+// wander bounds), so the terrain sits under where the town's own activity is, not off to one side.
+// Its own top edge is kept a clear gap below the river's southern bank (row RIVER_H_BOTTOM+1) so it
+// never visually touches, let alone covers, the river — "the river must remain visually above this
+// lower-town terrain area."
+const TOWN_TERRAIN_SCALE = 1.2;
+const TOWN_TERRAIN_DISPLAY_W = TOWN_TERRAIN_NATIVE_WIDTH * TOWN_TERRAIN_SCALE;
+const TOWN_TERRAIN_DISPLAY_H = TOWN_TERRAIN_NATIVE_HEIGHT * TOWN_TERRAIN_SCALE;
+const TOWN_TERRAIN_X0 = CACHOT_DOOR_X - TOWN_TERRAIN_DISPLAY_W / 2;
+const TOWN_TERRAIN_Y0 = (RIVER_H_BOTTOM + 3) * TILE_SIZE;
 
 // Jeanne starts on the open grass near Le Cachot's placeholder entrance, waits for Bernadette to
 // meet her there, then leads her north up to the bridge and across to the ford, where she naturally
@@ -222,6 +239,7 @@ export class OverworldScene extends Phaser.Scene {
     const startY = data.fromCachot ? CACHOT_DOOR_Y - 24 : CACHOT_DOOR_Y + 30;
     this.player = new Player(this, CACHOT_DOOR_X, startY, this.touch);
 
+    this.buildTownTerrain();
     this.buildCachotEntrance();
     this.buildDecor();
     this.buildGrotto();
@@ -441,6 +459,21 @@ export class OverworldScene extends Phaser.Scene {
    * placement (image + footprint collider + depth anchor, one collider per solid part, matching
    * whatever new buildings get built alongside it) rather than extended in place.
    */
+  /**
+   * The new intermediate terrain layer, sat directly on top of the grass (`buildTerrain()`,
+   * `DEPTH.GROUND - 1`) and below everything else in the town area (the tile layer itself,
+   * `DEPTH.GROUND`, has nothing stamped south of the river — see `buildTerrain()`'s own comment —
+   * so there's no real ordering conflict there; matches the old town-PNG ground layer's own
+   * convention of sitting at `DEPTH.GROUND - 0.5`). Purely decorative ground art — no collider:
+   * buildings placed on top of it (once supplied) get their own footprint colliders the same way
+   * every other building in this game already does, not this layer.
+   */
+  private buildTownTerrain(): void {
+    const image = this.add.image(TOWN_TERRAIN_X0, TOWN_TERRAIN_Y0, TOWN_TERRAIN_KEY).setOrigin(0, 0);
+    image.setDisplaySize(TOWN_TERRAIN_DISPLAY_W, TOWN_TERRAIN_DISPLAY_H);
+    image.setDepth(DEPTH.GROUND - 0.5);
+  }
+
   private buildCachotEntrance(): void {
     const halfWidth = 24;
     this.cachotDoorZone = new Phaser.Geom.Rectangle(CACHOT_DOOR_X - halfWidth, CACHOT_DOOR_Y - 20, halfWidth * 2, 40);

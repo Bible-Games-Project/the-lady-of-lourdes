@@ -88,9 +88,25 @@ const FURNITURE_FOOTPRINTS: FracRect[] = [
  * the floor) is walk-behind-only in the sense that nothing needs to collide with it at all (it's
  * far above where the player's feet could ever be), so only the wall's own floor-contact band
  * needs a collider -- footprint-only collision, matching how building collision works elsewhere in
- * this game (a small collider on the solid base, not one box over the whole sprite). */
+ * this game (a small collider on the solid base, not one box over the whole sprite).
+ *
+ * **Back wall's southern edge extended from native y218 to y256** (a real, measured re-tuning, not
+ * a guessed number) -- the original y218 boundary matched the wall's own drawn floor line exactly,
+ * but let Bernadette's *feet* stop close enough to the wall that her fixed-height sprite (42
+ * world-px, unrelated to `CACHOT_ROOM_HEIGHT`'s own halved-last-round display size -- see
+ * `CachotScene.ts`'s own doc note on this tension, also referenced in `lourdesCachotInterior.ts`)
+ * still rendered with her head visibly above the room artwork's own top edge, reading as "walking
+ * on/through the wall." Solved the same way `MOTHER_SPAWN` below was re-tuned, not by inventing a
+ * new shape: computed exactly how far south the existing collider needs to reach so the *player's*
+ * own collision-body geometry (`Player.ts`'s `body.setSize(7,11)`/`setOffset(4,30)`) stops her feet
+ * at a y where her sprite's own top edge lands at/below the room's y22 top -- y256 is that solved
+ * value, verified live (screenshot before/after, walking straight up from an open-floor spawn).
+ * Still the same single flat band shape as before, still only covering the wall's own real
+ * footprint (not a room-spanning rectangle) -- only the one boundary's own position changed. The
+ * side walls' own upper-corner colliders (below) already reach y235, deep enough that this wider
+ * back-wall band supersedes them in the corners too -- no separate change needed there. */
 const WALL_FOOTPRINTS: FracRect[] = [
-  nativeFrac(20, 15, 895, 218), // back wall (window, cross, picture, shelf all mounted on it)
+  nativeFrac(20, 15, 895, 256), // back wall (window, cross, picture, shelf all mounted on it)
   nativeFrac(15, 15, 160, 235), // left wall, upper diagonal corner
   nativeFrac(15, 235, 90, 795), // left wall, lower vertical run
   nativeFrac(755, 15, 900, 235), // right wall, upper diagonal corner
@@ -127,14 +143,21 @@ const EXIT_ZONE: FracRect = nativeFrac(370, 745, 550, 788);
 const DOOR_STOPPER: FracRect = nativeFrac(355, 995, 565, 1009);
 
 const PLAYER_SPAWN = nativeFrac(450, 745, 470, 765); // just inside the door, facing into the room
-// Louise (the mother): upper-right area of the room, beside the barred window -- positioned right
-// of the window's own right edge (~x545, clear of the light beam) and below the shelf (ends
-// ~y215), on the open floor strip before the table (collider starts y322). Clear of the room's two
-// main thoroughfares (the center rug leading to the window, and the table's own south-side
-// approach). Native-y kept as low (as far down the wall) as still reads as "upper" while giving her
-// fixed-height sprite (42 world-px, unrelated to the room's own halved display size) the most
-// headroom against the room's own now-much-shorter 118px-tall backdrop.
-const MOTHER_SPAWN = nativeFrac(600, 270, 640, 300);
+// Louise (the mother): re-tuned down and left from an earlier position that put her too far
+// up/right -- her feet there (native y~285) sat well above the wall's own real floor line (y218
+// -> now y256, see WALL_FOOTPRINTS above), so her fixed-height 42-world-px sprite visibly floated
+// over the shelf/wall art instead of standing on the floor (confirmed live via screenshot, not
+// guessed). Moved to native x535-575 (left of the old x600-640, comfortably clear of the table's
+// own grown collider which starts x590) and y325-355 (well south of the wall's new y256 floor
+// line and the shelf's own bottom edge ~y215, onto real open floor -- verified against the room's
+// own grid-overlay measurement, not the shelf or wall). This cuts her own head/wall overlap from
+// ~8.7 world-px down to ~2.2 (the same "fixed character height vs the room's own halved size"
+// tension the wall-collider comment above describes -- a full 42-world-px character standing
+// anywhere in this room's own top ~42px, which includes the window, cannot have *zero* head
+// overlap without also standing outside the "beside the window" area entirely; this is the closest
+// balance of both asks). Still clearly in the room's own upper-right, still beside (not overlapping)
+// the window, still clear of every collider (table, wall).
+const MOTHER_SPAWN = nativeFrac(535, 325, 575, 355);
 
 function fracCenter(r: FracRect): { x: number; y: number } {
   return { x: ROOM_OFFSET_X + (r.xFrac + r.wFrac / 2) * CACHOT_ROOM_WIDTH, y: ROOM_OFFSET_Y + (r.yFrac + r.hFrac / 2) * CACHOT_ROOM_HEIGHT };

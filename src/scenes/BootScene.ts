@@ -30,6 +30,7 @@ import { preloadBoyPortrait } from '../assets/portraits/boyPortrait';
 import { preloadSisterPortrait } from '../assets/portraits/sisterPortrait';
 import { preloadMotherPortrait } from '../assets/portraits/motherPortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
+import { TOWN_TERRAIN_KEY, preloadLourdesTownTerrain } from '../assets/terrain/lourdesTownTerrain';
 import { preloadLourdesCachotInterior } from '../assets/interiors/lourdesCachotInterior';
 
 export class BootScene extends Phaser.Scene {
@@ -51,6 +52,7 @@ export class BootScene extends Phaser.Scene {
     preloadSisterPortrait(this);
     preloadMotherPortrait(this);
     preloadLourdesGrass(this);
+    preloadLourdesTownTerrain(this);
     preloadLourdesCachotInterior(this);
   }
 
@@ -72,15 +74,15 @@ export class BootScene extends Phaser.Scene {
     registerRosaryTextures(this);
     registerHomeEffectTextures(this);
 
-    // The Home background (and the small Bernadette torso cutout taken from it) and the journey map
-    // are the maintainer's own finished/rendered art (soft, anti-aliased), not the procedural pixel
-    // grids the rest of the game uses. The game runs with `pixelArt: true` (nearest-neighbor
-    // everywhere by default) — force linear filtering on these textures so they scale smoothly
-    // instead of going jagged/chunky. (The single large Lourdes town PNG that used to need the same
-    // treatment has been removed entirely — see `OverworldScene.ts`'s header comment. Individual
-    // building PNGs added in its place will each need this same per-texture filtering judgment call
-    // once they exist.)
-    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY, JOURNEY_MAP_KEY].forEach((key) => {
+    // The Home background (and the small Bernadette torso cutout taken from it), the journey map,
+    // and the new town-terrain layer are the maintainer's own finished/rendered art (soft,
+    // anti-aliased), not the procedural pixel grids the rest of the game uses. The game runs with
+    // `pixelArt: true` (nearest-neighbor everywhere by default) — force linear filtering on these
+    // textures so they scale smoothly instead of going jagged/chunky. (The single large Lourdes
+    // town PNG that used to need the same treatment has been removed entirely — see
+    // `OverworldScene.ts`'s header comment. Individual building PNGs added in its place will each
+    // need this same per-texture filtering judgment call once they exist.)
+    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY, JOURNEY_MAP_KEY, TOWN_TERRAIN_KEY].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 

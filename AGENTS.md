@@ -2302,3 +2302,79 @@ each character's own existing smile, subtly darkened) and again live in the actu
 by forcing the portrait texture directly (`portrait_boy_talk`/`portrait_sister_talk`) and
 screenshotting — both show a small, correctly-positioned, non-round mouth in the real rendering
 pipeline, not just in the isolated source crop.
+
+### Le Cachot: Louise re-tuned again, the wall collision actually fixed, and a new town-terrain layer
+
+A follow-up on the previous round's Louise placement and the Cachot resize, plus the first real
+asset for the individual-buildings rework.
+
+**Louise, moved down and left.** The previous position (native x600-640,y270-300) still had her
+feet well above the wall's own real floor line, so her fixed-height sprite visibly floated over the
+shelf/wall art instead of standing on the floor — confirmed by a full-room screenshot, not assumed.
+Moved to native x535-575,y325-355 (`MOTHER_SPAWN` in `CachotScene.ts`): left of the table's own
+grown collider (starts x590), well south of the wall's floor line and the shelf's own bottom edge,
+onto real open floor. This is the same "42-world-px character vs. the room's own halved 118px
+height" tension flagged in the previous round's notes — a full-height character standing anywhere
+in this room's own top ~42px (which includes the whole window) cannot have *zero* head overlap into
+the space above the room without also standing outside "beside the window" entirely. The new
+position cuts that overlap from ~8.7 world-px down to ~2.2, confirmed via a before/after screenshot
+rather than left as a guess.
+
+**The "walking through the walls" bug, actually fixed.** Root cause: `WALL_FOOTPRINTS`' back-wall
+collider (`nativeFrac(20, 15, 895, 218)`) correctly matched the wall's own drawn floor line, but
+that same "character taller than the room" tension meant Bernadette's feet could still stop close
+enough to it that her head rendered visibly above the room artwork's own top edge — reading as
+"walking on/through the wall" even though her collision box was, technically, being blocked
+correctly the whole time. Solved by working out exactly how far south the collider needs to reach
+so the *player's own* collision-body geometry (`Player.ts`'s `body.setSize(7,11)`/`setOffset(4,30)`,
+not guessed) stops her feet at a y where her sprite's own top edge lands at/below the room's top —
+y256 (native), replacing y218. Still the same single flat band shape, still only the wall's own real
+footprint, not a room-spanning rectangle — confirmed live (walked straight up from an open-floor
+spawn, screenshot before/after) that her head no longer visibly pokes above the room.
+
+**Louise's portrait, fixed for real this time.** Two separate, real bugs found by measuring against
+her own neutral pose (not assumed from the doc comment's stated intent):
+- `blink` only filled 2 of the 4 rows the *left* eye actually occupies (a mismeasured box), leaving
+  the other 2 rows still showing the open iris — an asymmetric, interlaced mask that read as
+  "blinking looks strange, closes from the side." The *right* eye's box was reasonably correct.
+  Rebuilt from scratch: an `R − B` per-pixel scan inside a tight box per eye (her iris/sclera-shadow
+  pixels are measurably cooler than the surrounding warm skin — same separation principle
+  `bernadettePortrait.ts`'s own blink edit uses), replacing only the pixels that scan actually finds
+  (not a filled rectangle — follows each eye's own organic shape, avoiding the hair strands at both
+  temples that contaminated an earlier wider-box attempt), donor skin resampled per-column from a
+  row below, thin lid-line drawn only across the columns each eye's own mask touched. Both eyes now
+  close fully, symmetrically, and only within their own pixels.
+- `talk` had the same "open-mouth ellipse painted in the wrong place" bug already found and fixed
+  for Antoine/Toinette — hers sat at native y38-39 while her real closed-lip line is at y37, inside
+  her chin-shadow rather than on her mouth. Fixed the same way: darken her own existing lip pixels
+  (measured, not guessed) in place by a fixed 0.6x multiplier.
+- Deliberately did **not** touch `PortraitAnimator.ts`'s shared blink-timing logic (randomized
+  1.8-4.6s intervals, ~16% chance of a quick double-blink) even though the ask also mentioned blink
+  *frequency* — that timer is shared by every character's portrait (Bernadette, Jeanne, the boy,
+  Toinette, Louise all use the same instance/logic), and the broken, asymmetric blink *art* itself
+  is the far more likely cause of "blinks too much and looks strange": a glitchy-looking blink draws
+  attention to itself and reads as more frequent than it is, and no other character's blink rate has
+  ever been flagged. If Louise's blinking still reads as too frequent after this art fix, that would
+  need a separate, explicit ask before touching shared timing code every other portrait depends on.
+
+**New town-terrain layer.** The maintainer's first real asset for the rebuilt individual-buildings
+town (`assets/terrain/lourdesTownTerrain.ts` / `lourdes_town_terrain.png`) — an organic dirt/clearing
+patch, supplied as a WebP with genuine alpha transparency, cropped tight to its own alpha bounding
+box (1536x1024 native -> 1518x1004) and converted straight to PNG, no redraw. Continuous-tone painted
+art (soft edges, color-noise texture) like the former town PNG and the Home background, so it needs
+LINEAR filtering — added to `BootScene.ts`'s existing filter list. Placed in `OverworldScene.ts`
+(`buildTownTerrain()`) as the layer order the maintainer specified: grass (untouched, `DEPTH.GROUND
+- 1`) -> this terrain (`DEPTH.GROUND - 0.5`, the same depth the old town-PNG ground layer used) ->
+buildings (not yet supplied). Displayed at a "slight" 1.2x native enlargement, centered horizontally
+on `CACHOT_DOOR_X`/`PATH_CENTER` (the same anchor every other town landmark in this file already
+uses), with its own top edge kept a clear ~2-tile gap below the river's southern bank so it never
+visually touches, let alone covers, the river. No collider — purely decorative ground art; buildings
+placed on it later get their own footprint colliders the same way every other building in this game
+already does. Verified live via screenshot at the river/terrain boundary (clear gap, no overlap) and
+zoomed out over the whole patch (comfortably below the river, plenty of surface for future buildings).
+
+**Individual building PNGs: re-confirmed, still genuinely absent.** Searched the full repository
+(every `.png`/`.webp`/`.jpg` file, plus a name-based search for "house"/"building"/"manor"/"church"/
+"mill"/"presbytery"/etc.) — the only art-asset addition this round is the terrain layer above; zero
+building files exist anywhere in the working tree. Not omitted, not overlooked — genuinely not
+present yet. Nothing invented or placeholder-substituted in their place, per explicit instruction.
