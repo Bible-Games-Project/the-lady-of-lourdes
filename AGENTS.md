@@ -2378,3 +2378,88 @@ zoomed out over the whole patch (comfortably below the river, plenty of surface 
 "mill"/"presbytery"/etc.) — the only art-asset addition this round is the terrain layer above; zero
 building files exist anywhere in the working tree. Not omitted, not overlooked — genuinely not
 present yet. Nothing invented or placeholder-substituted in their place, per explicit instruction.
+
+### Louise nudged down again, NPC "Talk" prompts fixed, Toinette's mouth/diagonal-facing fixed, and a deep dive into the diagonal-movement "shake" report
+
+**Louise:** a further small, deliberate nudge (+20 native px down, x unchanged) per a "still
+slightly too high" follow-up — see `MOTHER_SPAWN`'s own doc comment for the exact before/after.
+
+**NPC "Talk" prompt covering the NPC.** Root cause: `InteractionPrompt`'s text has origin `(0.5,
+1)`, so the `(x, y)` passed to `showAt()` is the label's own *bottom* edge, and every call site
+(Jeanne, the boy, Louise) used a flat, guessed offset (`-26`, `-20`, `-26`) well short of that
+character's real frame height (42, 34, 42) — so the label's bottom rendered partway down the
+character's body/face rather than above their head. Fixed by computing each offset as that
+character's own `*_FRAME_HEIGHT` constant plus a small fixed clearance (`PROMPT_CLEARANCE = 6`),
+added to both `OverworldScene.ts` (Jeanne, the boy) and `CachotScene.ts` (Louise). Fixing Louise's
+specifically surfaced a second-order issue unique to Le Cachot's own tiny room: with full clearance
+applied, her label rose high enough to overlap the narration caption above the room (`buildNarration()`)
+— text sitting on top of other text. Solved with a one-line clamp
+(`Math.max(computedY, ROOM_OFFSET_Y)`) so the label never rises above the room's own top edge,
+confirmed via screenshot to read cleanly above her head with the narration fully legible again.
+
+**Toinette's talk mouth, fixed a third time — this time by checking the *visual result*, not just
+the pixel measurement.** The previous round's fix (darkening native y38-39) measured a real lip
+row correctly, but at this portrait's actual 58x67 display size that row sits close enough to the
+nostril shadow just above it (y35-36, with only one mostly-untouched buffer row) that darkening it
+read as "the mouth merged into the nose" — confirmed by rendering old-vs-new at *realistic* display
+scale side by side (not just an exaggerated zoom, which had hidden the problem the first time).
+Her lips actually span native y37-42 with two natural dark bands separated by a bright highlight
+row (y40, the lower lip's own catch-light): y38-39 is the closed upper-lip seam (too close to the
+nose to safely darken further), y41-42 is the lower lip's own bottom shadow, a comfortable 5-6 rows
+clear of the nostrils. This pass leaves y38-39 completely untouched and darkens only y41-42 instead
+— still her own real lip pixels, just the part of her mouth with genuine visual clearance from her
+nose. **Lesson for any future portrait mouth fix**: verify the result at the real ~9-10x display
+scale the dialogue box actually uses, not only a 20-24x diagnostic zoom — a fix that measures
+correctly can still read wrong once nearby features (the nose, in this case) are visible at actual
+scale.
+
+**Toinette's diagonal movement flickering into the side pose.** Root cause:
+`Follower.ts#updateFollowerPosition` (which drives her while trailing Bernadette) had its own
+inline facing logic — `if (abs(dx) > abs(dy)) side else vertical` — which picks whichever axis's
+raw distance-to-target happens to be larger *that single frame*. During genuine diagonal following
+the two rarely sit at a clean 45°, so that comparison flips essentially at random frame-to-frame,
+visibly flickering her into the side pose mid-diagonal-walk. Fixed by reimplementing the same
+"prefer vertical on any diagonal" rule `Player.ts` already uses for Bernadette herself (via
+`spriteFacing.ts`'s `preferVerticalOnDiagonal` flag, not reachable from here directly since
+`Follower.ts` drives `NpcActor.setFacing()` rather than a raw `Sprite`): side pose only when
+movement is on a single axis, back/front unconditionally on any diagonal, using a small
+`AXIS_MOVE_THRESHOLD` (1px) rather than a strict `!== 0` check since `dx`/`dy` here are easing
+deltas that are almost never exactly zero. Verified live across up-left, down-right, down-left,
+up-right, pure-right, and pure-down chases — diagonals lock cleanly to back/front with no side-pose
+flicker, cardinal directions unaffected.
+
+**Diagonal camera/movement "shake" — investigated in depth again, no further code change made.**
+Re-confirmed the camera fix from two rounds ago (`OverworldScene.ts#updateCameraFollow()`, the
+private float accumulator immune to Phaser's own floor-and-persist bug) is still fully intact and
+unmodified. Went considerably deeper this time to find any *additional* cause:
+- Directly inspected `node_modules/phaser/src/physics/arcade/World.js`: Arcade Physics already
+  runs a deterministic **fixed 60Hz timestep** by default (`fixedStep: true`, `fps: 60`,
+  accumulator-based `_elapsed`/`msPerFrame` stepping), completely decoupled from render-frame
+  timing jitter — not something this game's own code controls or could improve on.
+- Sampled `body.velocity`/`body.deltaX()` at every individual physics `worldstep` event (bypassing
+  render-frame polling entirely): velocity is a rock-solid constant 70 the whole time, and every
+  single physics step advances position by *exactly* 1.1666666666667425 world-px for cardinal
+  movement — i.e., physics integration itself is provably exact and jitter-free, not merely
+  "probably fine."
+- The real, structural fact this surfaced: at 60fps, cardinal speed (70px/s) is **1.1667px per
+  physics step — always ≥1**, so cardinal movement's on-screen (floored) position advances every
+  single frame. Diagonal speed is normalized so the *combined* vector still totals 70px/s, meaning
+  each axis alone moves at `70/√2 ≈ 49.5px/s ≈ 0.825px per physics step` — **below 1px/frame**.
+  Nearest-neighbor/pixel-snapped rendering of any sub-1px/frame motion necessarily shows some
+  frames with zero visible movement on that axis (mathematically unavoidable — not a bug, not
+  something Phaser or this game's code does wrong), which is what reads as less smooth than
+  cardinal movement even though the underlying motion is exactly as precise.
+- This is a direct, unavoidable consequence of moving at one shared overall speed in all 8
+  directions on an integer pixel grid at 60fps — not fixable without either raising the overall
+  speed (so the diagonal component alone exceeds 1px/frame, ruled out by an explicit "keep the
+  current movement speed") or raising the base render resolution (a far larger change, not asked
+  for and likely to reintroduce other issues, e.g. UI/text scaling throughout the game).
+- No further code-level defect was found after this pass — every layer checked out exactly as
+  designed (velocity, fixed-step integration, the camera accumulator). A separate empirical test
+  that polled position once per `requestAnimationFrame` (rather than per physics `worldstep`)
+  showed a more irregular-looking pattern, but cross-checking against raw `worldstep` samples
+  showed this was `render-frame-vs-physics-step sampling misalignment under headless Chromium
+  automation` (multiple physics steps landing between two consecutive polled render frames, or
+  vice versa) — a testing-harness artifact, not evidence of an in-game defect, so it wasn't acted
+  on. Reported here transparently rather than either claiming a fix that couldn't be verified, or
+  silently doing nothing.

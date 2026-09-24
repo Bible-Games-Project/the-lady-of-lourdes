@@ -155,6 +155,13 @@ const DECOR: Array<{ key: string; col: number; row: number }> = [{ key: PROP_KEY
 
 const INTERACT_RADIUS = 26;
 
+// Clearance above an NPC's own head (not just an arbitrary offset from her feet) before the "Talk"
+// prompt's own bottom edge -- see `InteractionPrompt.ts`: its text origin is (0.5, 1), so the (x,y)
+// passed in is the label's own *bottom*. The old calls below used flat offsets (-26 for Jeanne,
+// -20 for the boy) well short of their real frame heights, so the label's bottom rendered partway
+// down their bodies instead of above their heads -- "the Talk box... partially covers them."
+const PROMPT_CLEARANCE = 6;
+
 // The shared NPC ground shadow (`SHADOW_KEY`) is sized for the ~28px-tall procedural character
 // grid (`personTemplate.ts`) every other NpcActor still uses. The sister's real-art frames are
 // SISTER_FRAME_HEIGHT (~36px, 85% of Bernadette's own 42px) tall -- scale her shadow by the same
@@ -609,7 +616,7 @@ export class OverworldScene extends Phaser.Scene {
     const player = this.player;
 
     if (!this.friendMet && isNear(player, this.friend, INTERACT_RADIUS)) {
-      this.interactionPrompt.showAt(this.friend.x, this.friend.y - 26, Localization.t(K.INTERACT_TALK));
+      this.interactionPrompt.showAt(this.friend.x, this.friend.y - JEANNE_FRAME_HEIGHT - PROMPT_CLEARANCE, Localization.t(K.INTERACT_TALK));
       return;
     }
 
@@ -617,7 +624,7 @@ export class OverworldScene extends Phaser.Scene {
     // Cachot door/building prompts below only because it's the more specific/closer target when both
     // happen to be in range at once; in practice the two are far enough apart that this rarely matters.
     if (isNear(player, this.boy, INTERACT_RADIUS)) {
-      this.interactionPrompt.showAt(this.boy.x, this.boy.y - 20, Localization.t(K.INTERACT_TALK));
+      this.interactionPrompt.showAt(this.boy.x, this.boy.y - BOY_FRAME_HEIGHT - PROMPT_CLEARANCE, Localization.t(K.INTERACT_TALK));
       return;
     }
 
