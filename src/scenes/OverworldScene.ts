@@ -525,34 +525,38 @@ export class OverworldScene extends Phaser.Scene {
    * that one frame's render. Fixed by keeping our own float accumulator (`camScrollX`/`camScrollY`)
    * that Phaser's floored value never gets written back into — lerp *that*, never the corrupted copy.
    *
-   * **A second, subtler rounding issue remained even after that fix, reported as "horizontal
-   * movement still looks slightly stuttery" — the *player's own* on-screen position relative to the
-   * scrolled world, not the world's own scroll smoothness.** `camera.roundPixels` makes Phaser's
-   * render pipeline floor *two* independent floats every frame: the player sprite's own `x`
-   * (`MultiPipeline.js`: `gx = Math.floor(gameObject.x)`) and whatever this method assigns to
-   * `camera.scrollX`. The player's on-screen pixel position is the *difference* of those two
-   * independently-floored values — and `floor(a) - floor(b)` can differ from the mathematically
-   * "correct" `round(a - b)` by a full pixel depending on how `a` and `b`'s own fractional parts
-   * happen to line up that frame. Since the camera's own float (`camScrollX`, lerping toward a
-   * *lagging* target) and the player's float (`player.x`, advancing at the *actual* movement speed)
-   * drift in and out of phase with each other continuously, that up-to-1px disagreement isn't
-   * constant — it silently flips back and forth as the two floats' fractional parts cross each
-   * other, which reads as the player twitching by a pixel relative to the world even though both
-   * underlying floats are individually perfectly smooth (confirmed by rendering
-   * `Math.floor(this.player.x) - Math.floor(this.camScrollX)` against `Math.round(this.player.x -
-   * this.camScrollX)` side by side while walking a straight horizontal line: the two sequences
-   * diverge by exactly ±1 at irregular points, never when computed the second way).
+   * **A second rounding issue was fixed after that** (reported as "horizontal movement still looks
+   * slightly stuttery"): `camera.roundPixels` makes Phaser's render pipeline floor the player
+   * sprite's own `x` (`MultiPipeline.js`: `gx = Math.floor(gameObject.x)`) independently of whatever
+   * this method assigns to `camera.scrollX` — and `floor(a) - floor(b)` can differ from the
+   * mathematically "correct" `round(a - b)` by a full pixel depending on how `a` and `b`'s own
+   * fractional parts happen to line up that frame, which read as the player twitching by a pixel
+   * relative to the world. That round was fixed by deriving scroll from `Math.floor(player.x) -
+   * Math.round(player.x - camScrollX)`, making the player's on-screen position exactly a single
+   * rounding of the smooth lerped gap — no second, independently-phased rounding left to disagree
+   * with it.
    *
-   * Fix: derive the *rendered* scroll from the player's own floor, not from an independently
-   * -floored copy of the camera's own float — `cam.scrollX = Math.floor(player.x) -
-   * Math.round(player.x - camScrollX)`. Algebraically this makes the player's on-screen position
-   * exactly `Math.round(player.x - camScrollX)`, a *single* rounding of the smooth lerped gap
-   * between them, with no second, independently-phased rounding left to disagree with it. The
-   * background/tiles (fixed integer world coordinates) still scroll at the same granularity as
-   * before — this only removes the *extra* jitter between the player sprite and that scroll, not
-   * the baseline pixel-grid quantization every pixel-art renderer has by construction. Verified live
-   * across all 8 directions: the player no longer visibly twitches relative to the panning world in
-   * any of them.
+   * **A diagonal-specific desync was suspected and ruled out here** (investigated after a report of
+   * "the character looks like it is slightly flickering/jittering/shaking from frame to frame" during
+   * diagonal walking only): the theory was that `camScrollX`/`camScrollY` are two independent lerp
+   * filters that can carry different residual lag from movement *before* a diagonal stroke began, so
+   * `round(player.x - camScrollX)` and `round(player.y - camScrollY)` might tick on different frames
+   * even during perfectly-locked-step diagonal motion. Tried replacing this method with
+   * `cam.scrollX = Math.round(camScrollX)` (rounding the accumulator directly, sidestepping the gap
+   * entirely) and measured both formulas from *inside* `updateCameraFollow()` itself (the only
+   * reliable technique — external probes read stale/torn state, see AGENTS.md) across a genuine
+   * constant-velocity **steady state** (the regime that matters — a sustained walk, not the brief
+   * transient right after a turn). Result: the *existing* formula below settles to **zero** further
+   * on-screen ticks once steady state is reached — mathematically inevitable, since for constant
+   * velocity input an exponential lerp filter's lag converges to an exact constant, making
+   * `player.pos - camScrollAxis` an exact constant too, so its rounding never changes again; the
+   * player sits rock-solid on screen while the world scrolls under her, which *is* the correct look
+   * for a camera locked onto constant-speed motion. The alternative (`round(camScrollX)` directly)
+   * re-introduced steady-state ticking instead (confirmed empirically, dozens of extra ticks over the
+   * same window) by recombining `Math.floor(player.x)` with an independently-rounded `camScrollX` —
+   * the exact class of bug the *previous* fix (below) exists to prevent. So the formula below is the
+   * more correct one; it was left unchanged. (The real cause of the diagonal-only flicker report
+   * turned out to be elsewhere — see `bernadetteSprite.ts`'s walk-frame alignment fix.)
    *
    * `camera.roundPixels` stays on globally (from `pixelArt: true`) throughout, so every sprite/tile
    * still renders pixel-snapped exactly as before. `camera.setBounds()`'s own edge clamping still

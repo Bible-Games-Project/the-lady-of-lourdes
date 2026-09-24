@@ -2506,3 +2506,88 @@ measurement that actually proved the fix (0/51 mismatches, vs. 13-21 mismatches 
 external probes) was logging the two quantities *from directly inside* `updateCameraFollow()`
 itself, in the same call, with no gap for anything else to run in between. Any future camera-math
 verification in this file should measure internally the same way, not via an external polling loop.
+
+### Diagonal flicker, round three: two more hypotheses tested and ruled out; the remaining cause is inherent to the current speed/resolution, not a code defect
+
+Follow-up report: diagonal walking *still* looked like it was "flickering/jittering/shaking" frame
+to frame, distinct from the player-vs-world rounding bug just fixed above. This round's brief was
+explicit: diagnose before changing anything, and specifically test with the camera held fixed to
+tell whether the cause is in the character itself or the camera/rendering. Two concrete new
+hypotheses were investigated, both with actual measurements, and both were ruled out — documented
+here in full since the *next* round investigating this should not re-tread this ground.
+
+**Hypothesis 1 — cross-axis camera rounding desync (tried, reverted, was a regression).** Theory:
+`camScrollX`/`camScrollY` are two independent lerp filters that can carry different residual lag
+(e.g. left over from movement *before* a diagonal stroke began), so `Math.round(player.x -
+camScrollX)` and `Math.round(player.y - camScrollY)` could tick on different frames even during
+perfectly locked-step diagonal motion, making the player step raggedly instead of cleanly
+diagonally. Replaced `updateCameraFollow()` with `cam.scrollX = Math.round(this.camScrollX)` (round
+the accumulator directly, removing the player-position term from the rounding decision entirely) and
+measured both the old and new formula from *inside* `updateCameraFollow()` (the only reliable
+technique — see the verification note above) across a genuine constant-velocity **steady state**
+reached after a long sustained diagonal walk. Result: the *existing* formula converges to **zero**
+further on-screen ticks once steady state is reached — this is mathematically inevitable, not
+coincidental: for constant-velocity input, an exponential lerp filter's lag converges to an *exact*
+constant, so `player.pos - camScrollAxis` becomes an exact constant too, and its rounding never
+changes again — the player sits rock-solid on screen while the world scrolls under her, which is the
+objectively correct look for a camera locked onto constant-speed motion. The `round(camScrollX)`
+alternative *reintroduced* steady-state ticking instead (dozens of extra ticks over the same
+measurement window, where the existing formula had zero) by recombining `Math.floor(player.x)` with
+an independently-rounded `camScrollX` — exactly the class of bug the *previous* round's fix (above)
+exists to prevent. **Reverted; the existing formula was already correct.** (First pass at this
+comparison was itself misleading — testing with a freshly-seeded camera at zero lag made both
+formulas look equally good, and testing right at a direction *transition* captured the camera's
+legitimate, expected catch-up transient rather than steady-state behavior; both are noted here so a
+future attempt doesn't waste time on the same two false starts.)
+
+**Hypothesis 2 — a baked-in per-frame vertical "bob" in the walk-cycle art (measured, ruled out).**
+`bernadetteSprite.ts`'s own doc comment mentions the walk_a/walk_b frames include "a sub-pixel
+vertical bob" as part of their deformation. Theory: cardinal movement always advances ≥1px/frame
+(`70/60 ≈ 1.1667`), so a small per-frame bob would just blend into the always-advancing motion and
+never draw attention; diagonal movement's per-axis speed (`70/√2/60 ≈ 0.825px/frame`) frequently
+advances 0px on a given axis for a whole frame, so on exactly those frames a baked-in bob would be
+the *only* visible vertical change that frame — no corresponding real motion to explain it — which
+matches "sometimes appears to jump or shift by a tiny amount" well. Measured it two ways: an
+alpha-weighted vertical centroid per frame (found small, inconsistent-direction shifts, ~0.25-0.3px,
+right at the noise floor) and a normalized cross-correlation search for the best-aligning whole-frame
+vertical shift (disagreed with the centroid measurement about which frame was offset). Per this
+file's own hard-learned lesson ("always verify at *real* display scale, not an exaggerated zoom" —
+see the Louise mouth-placement entry elsewhere in this file), rendered idle/walk_a/walk_b side by
+side at realistic scale with horizontal gridlines overlaid, for all three views (front/back/side).
+**No visible bob** — the head/torso/hairline sit on the exact same gridline across all three frames
+in every view; the only things that visibly move between frames are the deliberately-deformed
+regions (arm swing, boot alternation, skirt shear), exactly as the doc comment describes, with no
+whole-body vertical translation. The tiny centroid/correlation numbers are consistent with noise from
+those same deforming regions slightly changing the alpha-weighted average, not a real misalignment.
+**No frame-alignment fix was made — there was nothing to align.**
+
+**The camera-fixed diagnostic, run as explicitly requested.** With `updateCameraFollow()` bypassed
+entirely (scroll pinned to a constant) and the player driven through the exact same code path
+(`body.setVelocity` + `Player.update()`'s own facing logic) as real diagonal input, the player's own
+on-screen stepping (`Math.floor(player.x) - constant`) was clean: axes ticked together (a proper
+diagonal step) on nearly every tick, with a single isolated single-axis tick out of dozens sampled —
+consistent with an ordinary floating-point rounding tie-break, not a systemic pattern. This backs up
+both rulings above: neither the camera nor the character's raw position rounding, in isolation, is
+producing the reported flicker.
+
+**What's actually left, and why it wasn't changed.** With both leading hypotheses ruled out by
+measurement, what remains is the arithmetic itself: diagonal motion's normalized per-axis speed
+(`≈0.825px/frame`) is *below* 1 native game-pixel per physics frame, while cardinal motion's
+(`≈1.1667px/frame`) is always *above* 1 — so diagonal necessarily has physics frames with zero net
+pixel advancement on a given axis (checked: roughly 1 in 6 frames), which cardinal structurally
+cannot have at this speed. Even when perfectly computed (both axes ticking together, confirmed
+above), a "hold, hold, jump 1px, hold, jump 1px" motion pattern looks different from cardinal's
+near-continuous advance — and the effect is amplified because the game renders at a genuinely tiny
+native backbuffer (480×270, confirmed via `game.canvas.width`/`height` — not a logical coordinate
+system over a larger real backbuffer) that's then CSS-scaled up (`image-rendering: pixelated`) to
+fill the display, so one native-pixel "hold" is one *screen*-pixel hold, and one native-pixel "jump"
+becomes a multi-screen-pixel jump at whatever the browser's actual scale factor is. This is a direct,
+unavoidable consequence of the current `SPEED = 70` constant relative to the fixed 60Hz physics step
+and the game's native resolution — not a bug in the camera, the animation, or the facing logic, all
+three of which were independently re-verified clean this round. A real fix (rendering position at a
+finer-than-native-pixel grid, e.g. snapping to the *display's* actual pixel grid instead of the
+game's native one) would require raising the effective quantization precision — a real, substantial
+rendering-architecture change with its own tradeoffs, well outside "fix the diagonal flicker" in
+scope, and was not attempted without explicit sign-off given how much of this investigation has
+already turned up dead ends that looked promising at first. **No code was changed for this round's
+report; findings were reported back instead of guessing at another fix.**
