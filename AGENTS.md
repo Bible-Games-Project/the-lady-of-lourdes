@@ -2463,3 +2463,46 @@ unmodified. Went considerably deeper this time to find any *additional* cause:
   vice versa) — a testing-harness artifact, not evidence of an in-game defect, so it wasn't acted
   on. Reported here transparently rather than either claiming a fix that couldn't be verified, or
   silently doing nothing.
+
+### The real remaining camera jitter, found and fixed: player-vs-world relative rounding
+
+A follow-up on the previous round's deep-dive ("no further code-level defect was found") — this
+time with a concrete lead (reported as *horizontal* movement specifically looking stuttery) that
+led somewhere real. The earlier round's investigation only ever looked at the *player's own*
+position in isolation (proven exact, still true); it never checked the player's position *relative
+to the camera's own scroll*, which is what's actually on screen.
+
+**Root cause**: `camera.roundPixels` makes Phaser's render pipeline floor two *independent* floats
+every frame — the player sprite's own `x` (`MultiPipeline.js`: `gx = Math.floor(gameObject.x)`)
+and whatever `updateCameraFollow()` assigns to `camera.scrollX`. What actually lands on screen is
+their *difference*. `floor(a) - floor(b)` is not the same as `round(a - b)` — they disagree by
+exactly 1 whenever `a` and `b`'s fractional parts straddle a boundary in opposite senses. Since the
+camera's own float (`camScrollX`, lerping toward a *lagging* target) and the player's float
+(`player.x`, advancing at the real movement speed) drift in and out of phase with each other
+continuously, that disagreement isn't constant — it flips unpredictably as the two floats' own
+fractional parts cross each other, reading as the player twitching by a pixel relative to the
+world, even though both underlying floats are individually perfectly smooth (which is exactly what
+last round's investigation had already proven, and why it didn't find this — it was looking at the
+wrong quantity).
+
+**Fix**: derive the *rendered* scroll from the player's own floor, not from an independently
+-floored copy of the camera's own float —
+`cam.scrollX = Math.floor(player.x) - Math.round(player.x - camScrollX)`. Algebraically this makes
+the player's on-screen position exactly `Math.round(player.x - camScrollX)` — a single rounding of
+the smooth lerped gap between them, with no second, independently-phased rounding left to disagree
+with it. The world/tiles (fixed integer coordinates) still scroll at the exact same granularity as
+before; only the *extra* player-vs-world jitter is removed, not the baseline pixel-grid
+quantization every pixel-art renderer has by construction (that part is, and remains, inherent —
+see the previous round's notes on sub-1px/frame diagonal motion, still true and unrelated to this).
+
+**Verification note, since this bit the investigation more than once**: an external Playwright
+probe (`requestAnimationFrame`-based, or even a same-tick `scene.events.on('postupdate', ...)`
+listener) reading `player.x`/`camScrollX`/`camera.scrollX` back *after* `updateCameraFollow()` has
+already run showed spurious mismatches against the fix's own formula — not because the formula is
+wrong, but because `player.x` can keep advancing (extra physics steps, additional render/update
+passes) between when the camera code computed its values and when an external prober gets around to
+reading them back, in a way visible only under headless-Chromium/Playwright automation. The only
+measurement that actually proved the fix (0/51 mismatches, vs. 13-21 mismatches per axis from the
+external probes) was logging the two quantities *from directly inside* `updateCameraFollow()`
+itself, in the same call, with no gap for anything else to run in between. Any future camera-math
+verification in this file should measure internally the same way, not via an external polling loop.

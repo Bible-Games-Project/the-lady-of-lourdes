@@ -312,12 +312,14 @@ export class OverworldScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
     // Hand-rolled follow (`updateCameraFollow()`, ticked from `update()`) instead of
     // `camera.startFollow(this.player, true, 0.12, 0.12)` -- see that method's own doc comment for
-    // the real bug this works around (diagonal-movement camera shake). Seed the accumulator here so
-    // the very first frame doesn't lerp in from scroll (0,0).
+    // the real bugs this works around (diagonal-movement camera shake, and player-vs-world relative
+    // jitter). Seed the accumulator here so the very first frame doesn't lerp in from scroll (0,0);
+    // the gap is exactly width/2 at this instant, so the round-trip through updateCameraFollow()'s
+    // own formula is exact here too, not just an approximation.
     this.camScrollX = this.player.x - this.cameras.main.width / 2;
     this.camScrollY = this.player.y - this.cameras.main.height / 2;
-    this.cameras.main.scrollX = Math.floor(this.camScrollX);
-    this.cameras.main.scrollY = Math.floor(this.camScrollY);
+    this.cameras.main.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
+    this.cameras.main.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
 
     this.dialogueBox = new DialogueBox(this);
     this.tasksPanel = new TasksPanel(this);
@@ -520,21 +522,42 @@ export class OverworldScene extends Phaser.Scene {
    * `scrollX`/`scrollY` toward the player, floors the result for crisp pixel-art rendering, then
    * **writes that floored value back into `this.scrollX`/`scrollY`** — so next frame's lerp starts
    * from an already-truncated base, not the true continuous position, instead of only rounding for
-   * that one frame's render. The up-to-1px truncation error this leaves behind is imperceptible on
-   * a single axis (movement along just X or Y is monotonic, so the eye reads it as ordinary
-   * pixel-stepping), but moving diagonally truncates *both* axes independently every frame, and the
-   * two uncorrelated up-to-1px errors compound into a visible shake instead of a smooth diagonal
-   * pan — confirmed live: reverting to the stock `startFollow()` reproduces the shake, and it's
-   * gone again with this method in place, in both cases with movement/collision fully unchanged.
+   * that one frame's render. Fixed by keeping our own float accumulator (`camScrollX`/`camScrollY`)
+   * that Phaser's floored value never gets written back into — lerp *that*, never the corrupted copy.
    *
-   * Fix: keep our own float accumulator (`camScrollX`/`camScrollY`) that Phaser's floored value
-   * never gets written back into — lerp *that*, and only floor a throwaway copy into
-   * `camera.scrollX`/`scrollY` for this one frame's render. `camera.roundPixels` stays on globally
-   * (from `pixelArt: true`) throughout, so every sprite/tile still renders pixel-snapped exactly as
-   * before — that per-object snapping reads each object's own true float position fresh every
-   * frame (see `MultiPipeline.js`'s own `camera.roundPixels` check) and was never the buggy part.
-   * `camera.setBounds()`'s own edge clamping still applies for free: Phaser's `preRender()` always
-   * runs `clampX`/`clampY` on `this.scrollX`/`scrollY` after this method sets them, follow or not.
+   * **A second, subtler rounding issue remained even after that fix, reported as "horizontal
+   * movement still looks slightly stuttery" — the *player's own* on-screen position relative to the
+   * scrolled world, not the world's own scroll smoothness.** `camera.roundPixels` makes Phaser's
+   * render pipeline floor *two* independent floats every frame: the player sprite's own `x`
+   * (`MultiPipeline.js`: `gx = Math.floor(gameObject.x)`) and whatever this method assigns to
+   * `camera.scrollX`. The player's on-screen pixel position is the *difference* of those two
+   * independently-floored values — and `floor(a) - floor(b)` can differ from the mathematically
+   * "correct" `round(a - b)` by a full pixel depending on how `a` and `b`'s own fractional parts
+   * happen to line up that frame. Since the camera's own float (`camScrollX`, lerping toward a
+   * *lagging* target) and the player's float (`player.x`, advancing at the *actual* movement speed)
+   * drift in and out of phase with each other continuously, that up-to-1px disagreement isn't
+   * constant — it silently flips back and forth as the two floats' fractional parts cross each
+   * other, which reads as the player twitching by a pixel relative to the world even though both
+   * underlying floats are individually perfectly smooth (confirmed by rendering
+   * `Math.floor(this.player.x) - Math.floor(this.camScrollX)` against `Math.round(this.player.x -
+   * this.camScrollX)` side by side while walking a straight horizontal line: the two sequences
+   * diverge by exactly ±1 at irregular points, never when computed the second way).
+   *
+   * Fix: derive the *rendered* scroll from the player's own floor, not from an independently
+   * -floored copy of the camera's own float — `cam.scrollX = Math.floor(player.x) -
+   * Math.round(player.x - camScrollX)`. Algebraically this makes the player's on-screen position
+   * exactly `Math.round(player.x - camScrollX)`, a *single* rounding of the smooth lerped gap
+   * between them, with no second, independently-phased rounding left to disagree with it. The
+   * background/tiles (fixed integer world coordinates) still scroll at the same granularity as
+   * before — this only removes the *extra* jitter between the player sprite and that scroll, not
+   * the baseline pixel-grid quantization every pixel-art renderer has by construction. Verified live
+   * across all 8 directions: the player no longer visibly twitches relative to the panning world in
+   * any of them.
+   *
+   * `camera.roundPixels` stays on globally (from `pixelArt: true`) throughout, so every sprite/tile
+   * still renders pixel-snapped exactly as before. `camera.setBounds()`'s own edge clamping still
+   * applies for free: Phaser's `preRender()` always runs `clampX`/`clampY` on `this.scrollX`/
+   * `scrollY` after this method sets them, follow or not.
    */
   private updateCameraFollow(): void {
     const cam = this.cameras.main;
@@ -543,8 +566,8 @@ export class OverworldScene extends Phaser.Scene {
     const targetY = this.player.y - cam.height / 2;
     this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, lerp);
     this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, lerp);
-    cam.scrollX = Math.floor(this.camScrollX);
-    cam.scrollY = Math.floor(this.camScrollY);
+    cam.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
+    cam.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
   }
 
   update(time: number, delta: number): void {
