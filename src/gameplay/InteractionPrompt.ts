@@ -1,23 +1,18 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../core/constants';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 
 /** Small floating label ("Talk", "Pick up firewood"...) hovering above an interactable. */
 export class InteractionPrompt {
-  private text: Phaser.GameObjects.Text;
+  private text: Phaser.GameObjects.DOMElement;
 
   constructor(scene: Phaser.Scene) {
-    this.text = scene.add.text(
-      0,
-      0,
-      '',
-      textStyle({
-        fontSize: '11px',
-        color: '#fffaf0',
-        backgroundColor: '#3a3226cc',
-        padding: { x: 5, y: 2 },
-      }),
-    );
+    this.text = createText(scene, 0, 0, '', {
+      fontSize: '11px',
+      color: '#fffaf0',
+      backgroundColor: '#3a3226cc',
+      padding: { x: 5, y: 2 },
+    });
     this.text.setDepth(DEPTH.OVERLAY_LOW);
     this.text.setOrigin(0.5, 1);
     this.text.setVisible(false);

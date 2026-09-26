@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { UI_KEYS, UI_BUTTON_SLICE } from '../pixelart/ui';
-import { textStyle } from './text';
+import { createText } from './text';
 
 export interface ButtonStyle {
   textureKey?: string;
@@ -66,21 +66,22 @@ export function createButton(
   const strokeProps = style.textStroke
     ? { stroke: style.textStroke.color, strokeThickness: style.textStroke.thickness }
     : {};
-  const text = scene.add
-    .text(
-      localX,
-      localY,
-      label,
-      textStyle({
-        fontSize: '14px',
-        color: style.textColor ?? '#3a3226',
-        fontStyle: 'bold',
-        ...strokeProps,
-      }),
-    )
-    .setOrigin(0.5);
+  // DOM-based text (see `ui/text.ts`) can't be nested inside this `Container` the way `panel` is --
+  // confirmed empirically that a DOMElement added as a Container child never gets positioned at all
+  // (its transform sync relies on machinery the Container's own render path doesn't invoke). Kept
+  // independent instead, with the container's own `setPosition()` overridden below to move the
+  // label in step -- this button's container is the one Game Object in the codebase that gets
+  // repositioned *after* creation (see `HomeScene.ts`'s safe-area layout), so this can't be a
+  // one-time absolute-position computation the way `DialogueBox.ts`'s static panel is.
+  const text = createText(scene, x + localX, y + localY, label, {
+    fontSize: '14px',
+    color: style.textColor ?? '#3a3226',
+    fontStyle: 'bold',
+    ...strokeProps,
+  });
+  text.setOrigin(0.5);
 
-  const container = scene.add.container(x, y, [panel, text]);
+  const container = scene.add.container(x, y, [panel]);
   container.setSize(width, height);
   // Phaser's Container *always* offsets hit-testing by its own fixed displayOrigin
   // (`width/2, height/2` — Container's `originX`/`originY` are read-only 0.5, unlike
@@ -104,6 +105,17 @@ export function createButton(
     event.stopPropagation();
     onClick();
   });
+
+  // Keep the independent label in step with the container -- only `setPosition()` needs
+  // intercepting since that's the only mutator any call site in this codebase actually uses (see
+  // this function's own doc comment above).
+  const originalSetPosition = container.setPosition.bind(container);
+  container.setPosition = ((...args: Parameters<typeof originalSetPosition>) => {
+    originalSetPosition(...args);
+    text.setPosition(container.x + localX, container.y + localY);
+    return container;
+  }) as typeof container.setPosition;
+  container.once(Phaser.GameObjects.Events.DESTROY, () => text.destroy());
 
   return container;
 }

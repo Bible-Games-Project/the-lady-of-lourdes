@@ -785,7 +785,6 @@ export class OverworldScene extends Phaser.Scene {
 
   private async runHushSequence(): Promise<void> {
     const narration = new Caption(this, 40, {
-      fontFamily: 'Georgia, serif',
       fontSize: '13px',
       color: '#fffaf0',
       align: 'center',
@@ -833,13 +832,13 @@ export class OverworldScene extends Phaser.Scene {
     const dateCaption = new Caption(
       this,
       GAME_HEIGHT / 2 - 12,
-      { fontFamily: 'Georgia, serif', fontSize: '16px', color: '#fffaf0', align: 'center' },
+      { fontSize: '16px', color: '#fffaf0', align: 'center' },
       DEPTH.FADE + 1,
     );
     const titleCaption = new Caption(
       this,
       GAME_HEIGHT / 2 + 14,
-      { fontFamily: 'Georgia, serif', fontSize: '13px', color: '#c9beac', align: 'center' },
+      { fontSize: '13px', color: '#c9beac', align: 'center' },
       DEPTH.FADE + 1,
     );
 

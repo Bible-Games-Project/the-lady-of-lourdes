@@ -9,7 +9,7 @@ import { JOURNEY_PALETTE } from '../pixelart/journeyPalette';
 import { JOURNEY_MAP_KEY, JOURNEY_MAP_SIZE } from '../assets/journey/journeyMap';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { Toast } from '../gameplay/Toast';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange, type SafeAreaInsets } from '../core/safeArea';
 
@@ -23,7 +23,7 @@ interface NodeVisual {
   y: number;
   medallion: Phaser.GameObjects.Image;
   badge: Phaser.GameObjects.Image | null;
-  numberText: Phaser.GameObjects.Text;
+  numberText: Phaser.GameObjects.DOMElement;
 }
 
 interface JourneyLeaf {
@@ -60,7 +60,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
   // scroll range (so a node near the world's own top/bottom edge doesn't land in the cropped,
   // invisible strip) reads this instead of raw 0/GAME_HEIGHT.
   private insets: SafeAreaInsets = { left: 0, right: 0, top: 0, bottom: 0 };
-  private title!: Phaser.GameObjects.Text;
+  private title!: Phaser.GameObjects.DOMElement;
   private backBtn!: Phaser.GameObjects.Image;
   private upBtn!: Phaser.GameObjects.Image;
   private upBtnBackdrop!: Phaser.GameObjects.Arc;
@@ -285,15 +285,24 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         this.tweens.add({ targets: ring, scale: 1.18, alpha: 0.4, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
 
-      const numberText = this.add
-        .text(x, y, String(mission.index), textStyle({ fontSize: '12px', color: JOURNEY_PALETTE.cream, fontStyle: 'bold', stroke: JOURNEY_PALETTE.ink, strokeThickness: 3 }))
+      const numberText = createText(this, x, y, String(mission.index), {
+        fontSize: '12px',
+        color: JOURNEY_PALETTE.cream,
+        fontStyle: 'bold',
+        stroke: JOURNEY_PALETTE.ink,
+        strokeThickness: 3,
+      })
         .setOrigin(0.5)
         .setDepth(DEPTH.ACTORS + 1);
 
       if (mission.dateKey) {
         const dateSide = x < GAME_WIDTH / 2 ? 1 : -1;
-        this.add
-          .text(x + dateSide * 20, y, Localization.t(mission.dateKey), textStyle({ fontSize: '9px', color: JOURNEY_PALETTE.cream, stroke: JOURNEY_PALETTE.ink, strokeThickness: 2 }))
+        createText(this, x + dateSide * 20, y, Localization.t(mission.dateKey), {
+          fontSize: '9px',
+          color: JOURNEY_PALETTE.cream,
+          stroke: JOURNEY_PALETTE.ink,
+          strokeThickness: 2,
+        })
           .setOrigin(dateSide > 0 ? 0 : 1, 0.5)
           .setDepth(DEPTH.ACTORS);
       }
@@ -309,12 +318,13 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
    * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
-    this.title = this.add.text(
-      0,
-      0,
-      Localization.t(K.JOURNEY_TITLE),
-      textStyle({ fontSize: '16px', color: JOURNEY_PALETTE.cream, fontStyle: 'bold', stroke: JOURNEY_PALETTE.ink, strokeThickness: 3 }),
-    );
+    this.title = createText(this, 0, 0, Localization.t(K.JOURNEY_TITLE), {
+      fontSize: '16px',
+      color: JOURNEY_PALETTE.cream,
+      fontStyle: 'bold',
+      stroke: JOURNEY_PALETTE.ink,
+      strokeThickness: 3,
+    });
     this.title.setOrigin(0.5);
     this.title.setScrollFactor(0);
     this.title.setDepth(DEPTH.UI);

@@ -5,7 +5,7 @@ import { NPCS } from '../data/npc/npcRegistry';
 import type { DialogueSequence } from '../data/dialogue/types';
 import { portraitKeyFor } from '../pixelart/portraits';
 import { UI_KEYS, UI_PANEL_SLICE } from '../pixelart/ui';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 import { PortraitAnimator } from './PortraitAnimator';
 
 const CHAR_DELAY_MS = 35;
@@ -20,9 +20,9 @@ export class DialogueBox {
   private container: Phaser.GameObjects.Container;
   private portrait: Phaser.GameObjects.Image;
   private portraitAnimator: PortraitAnimator;
-  private nameText: Phaser.GameObjects.Text;
-  private bodyText: Phaser.GameObjects.Text;
-  private prompt: Phaser.GameObjects.Text;
+  private nameText: Phaser.GameObjects.DOMElement;
+  private bodyText: Phaser.GameObjects.DOMElement;
+  private prompt: Phaser.GameObjects.DOMElement;
 
   private sequence: DialogueSequence = [];
   private lineIndex = -1;
@@ -57,29 +57,36 @@ export class DialogueBox {
     this.portrait.setDisplaySize(58, 67);
     this.portraitAnimator = new PortraitAnimator(scene, this.portrait);
 
-    this.nameText = scene.add.text(
-      -boxWidth / 2 + 76,
-      -boxHeight / 2 + 10,
-      '',
-      textStyle({ fontSize: '13px', color: '#5a4d3a', fontStyle: 'bold' }),
-    );
+    // DOM-based text (see `ui/text.ts` for why) can't be nested inside this WebGL `Container` the
+    // way the panel/portrait are -- created as independent, absolutely-positioned elements instead.
+    // Safe to compute their absolute position as `container origin + local offset` directly (rather
+    // than tracking the container at runtime) because this container's own (x, y) is set once here
+    // and never moves afterward.
+    this.nameText = createText(scene, x - boxWidth / 2 + 76, y - boxHeight / 2 + 10, '', {
+      fontSize: '13px',
+      color: '#5a4d3a',
+      fontStyle: 'bold',
+    });
 
-    this.bodyText = scene.add.text(
-      -boxWidth / 2 + 76,
-      -boxHeight / 2 + 28,
-      '',
-      textStyle({ fontSize: '13px', color: '#3a3226', wordWrap: { width: boxWidth - 92 }, lineSpacing: 4 }),
-    );
+    this.bodyText = createText(scene, x - boxWidth / 2 + 76, y - boxHeight / 2 + 28, '', {
+      fontSize: '13px',
+      color: '#3a3226',
+      wordWrap: { width: boxWidth - 92 },
+      lineSpacing: 4,
+    });
 
-    this.prompt = scene.add.text(
-      boxWidth / 2 - 18,
-      boxHeight / 2 - 18,
-      '▼',
-      textStyle({ fontSize: '12px', color: '#5a4d3a' }),
-    );
-    this.prompt.setVisible(false);
+    this.prompt = createText(scene, x + boxWidth / 2 - 18, y + boxHeight / 2 - 18, '▼', {
+      fontSize: '12px',
+      color: '#5a4d3a',
+    });
 
-    this.container = scene.add.container(x, y, [panel, this.portrait, this.nameText, this.bodyText, this.prompt]);
+    [this.nameText, this.bodyText, this.prompt].forEach((t) => {
+      t.setDepth(DEPTH.DIALOGUE);
+      t.setScrollFactor(0);
+      t.setVisible(false);
+    });
+
+    this.container = scene.add.container(x, y, [panel, this.portrait]);
     this.container.setDepth(DEPTH.DIALOGUE);
     this.container.setScrollFactor(0);
     this.container.setVisible(false);
@@ -96,6 +103,8 @@ export class DialogueBox {
     this.onComplete = onComplete ?? null;
     this.active = true;
     this.container.setVisible(true);
+    this.nameText.setVisible(true);
+    this.bodyText.setVisible(true);
     this.nextLine();
   }
 
@@ -158,6 +167,9 @@ export class DialogueBox {
   private close(): void {
     this.active = false;
     this.container.setVisible(false);
+    this.nameText.setVisible(false);
+    this.bodyText.setVisible(false);
+    this.prompt.setVisible(false);
     this.typeTimer?.remove();
     this.typeTimer = null;
     this.portraitAnimator.destroy();
@@ -169,6 +181,9 @@ export class DialogueBox {
   destroy(): void {
     this.typeTimer?.remove();
     this.portraitAnimator.destroy();
+    this.nameText.destroy();
+    this.bodyText.destroy();
+    this.prompt.destroy();
     this.container.destroy();
   }
 }

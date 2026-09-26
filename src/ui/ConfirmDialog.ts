@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { DEPTH, GAME_HEIGHT, GAME_WIDTH } from '../core/constants';
 import { UI_KEYS, UI_PANEL_SLICE } from '../pixelart/ui';
 import { createButton } from './Button';
-import { textStyle, INK } from './text';
+import { createText, INK } from './text';
 
 export interface ConfirmOptions {
   title: string;
@@ -62,24 +62,21 @@ export class ConfirmDialog {
     panel.setScrollFactor(0);
     panel.setDepth(DEPTH.DIALOGUE + 10);
 
-    const titleText = this.scene.add
-      .text(
-        cx,
-        cy - panelH / 2 + 26,
-        options.title,
-        textStyle({ fontSize: '15px', color: options.danger ? '#8a3a2a' : INK.dark, fontStyle: 'bold' }),
-      )
+    const titleText = createText(this.scene, cx, cy - panelH / 2 + 26, options.title, {
+      fontSize: '15px',
+      color: options.danger ? '#8a3a2a' : INK.dark,
+      fontStyle: 'bold',
+    })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH.DIALOGUE + 10);
 
-    const messageText = this.scene.add
-      .text(
-        cx,
-        cy - 4,
-        options.message,
-        textStyle({ fontSize: '12px', color: INK.dark, align: 'center', wordWrap: { width: panelW - 44 } }),
-      )
+    const messageText = createText(this.scene, cx, cy - 4, options.message, {
+      fontSize: '12px',
+      color: INK.dark,
+      align: 'center',
+      wordWrap: { width: panelW - 44 },
+    })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH.DIALOGUE + 10);

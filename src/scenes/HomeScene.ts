@@ -11,7 +11,8 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
+import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
 
@@ -467,17 +468,17 @@ export class HomeScene extends Phaser.Scene {
    * regardless of what's behind it.
    */
   private buildTitle(): void {
-    const style = textStyle({
+    const style = {
       fontSize: '20px',
       color: HOME_PALETTE.cream,
-      fontStyle: 'bold',
+      fontStyle: 'bold' as const,
       stroke: HOME_PALETTE.ink,
       strokeThickness: 4,
-    });
-    const shadowStyle = textStyle({ fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' });
+    };
+    const shadowStyle = { fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' as const };
 
-    this.add.text(GAME_WIDTH / 2 + 2, 28, 'Our Lady of Lourdes', shadowStyle).setOrigin(0.5).setDepth(6);
-    this.add.text(GAME_WIDTH / 2, 26, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
+    createText(this, GAME_WIDTH / 2 + 2, 28, 'Our Lady of Lourdes', shadowStyle).setOrigin(0.5).setDepth(6);
+    createText(this, GAME_WIDTH / 2, 26, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
 
     const ruleY = 40;
     const ruleHalfWidth = 60;
@@ -490,6 +491,7 @@ export class HomeScene extends Phaser.Scene {
   }
 
   private openSettings(): void {
+    hideSceneDom(this);
     this.scene.launch(SCENE_KEYS.SETTINGS, { returnTo: SCENE_KEYS.HOME });
     this.scene.pause();
   }

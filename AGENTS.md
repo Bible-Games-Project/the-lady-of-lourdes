@@ -2694,3 +2694,82 @@ missing instead of pretending they exist"): **zero individual building PNG files
 repository.** Nothing was invented, no placeholder was added or wired up, and `OverworldScene.ts`'s
 town-terrain area is unchanged (still deliberately empty, per its own doc comments) — waiting on the
 actual files to be attached to a message before this can move forward at all.
+
+### Text rendering, take two: the WebGL fix wasn't (and couldn't be) enough — every text object is now a real DOM element
+
+The `LINEAR`-filter fix from the previous round (`core/textRendering.ts`) was a real improvement but
+not sufficient — reported again as "far too pixelated... barely understand." Root cause this round,
+confirmed by direct measurement rather than assumed: **no amount of WebGL-side tuning (supersampling
+amount, texture filter mode) can fix this, because the bottleneck was never inside Phaser's render at
+all.** `pixelArt: true` puts `image-rendering: pixelated` on the `<canvas>` element itself
+(`index.html`) — this is a *browser* CSS rule applied to the whole finished frame, *after* Phaser is
+completely done rendering, forcing a nearest-neighbor upscale of the entire canvas from its tiny
+native 480×270 resolution to the real display size. It cannot be scoped to "everything except this
+region" — text baked into that same canvas is blockified by this exact same step, no matter how
+smooth it was internally. Proved this empirically before touching anything: rendered the same real
+13px dialogue-sized sample text at `resolution: 1, 4, 8, 16` side by side (`resolution: 4` was the
+previous fix) at real display magnification — going 4x *higher* than the already-applied fix
+produced only marginal, diminishing-returns improvement, confirming supersampling amount was never
+the actual constraint.
+
+**Fix: every text object in the game is now a real DOM element** (`Phaser.GameObjects.DOMElement`,
+enabled via `dom.createContainer` in `main.ts`), not a WebGL `Text` texture. Phaser lays these out in
+a separate `<div>` it positions/scales/clips to track the canvas automatically — including through
+this game's own dynamic `FIT`/`ENVELOP` scale-mode switching and camera scroll/`scrollFactor`, all
+built-in Phaser behavior — via a CSS `transform: scale(...)` on that container rather than a raster
+resize. A CSS transform on real DOM text forces the browser to re-rasterize its glyphs at the final
+on-screen size using its own font engine, which is smooth by construction at *any* scale factor,
+unlike a bitmap. Confirmed empirically against the same 13px sample: dramatically sharper, properly
+anti-aliased letterforms, with zero change to any sprite/tile's own crisp nearest-neighbor edges
+(only text moved off the canvas — sprites/tiles were never touched).
+
+**New shared API**: `ui/text.ts#createText(scene, x, y, text, style)` replaces `scene.add.text(...)`
++ `textStyle(...)` everywhere in the game (every call site across ~16 files migrated) — returns a
+`Phaser.GameObjects.DOMElement` supporting the same `setOrigin()`/`setPosition()`/`setDepth()`/
+`setScrollFactor()`/`setText()`/`destroy()` calls existing code already used. `textStyle()`/
+`TEXT_RESOLUTION` are kept only as historical/fallback references — nothing new should use them.
+
+**Three real integration issues found and fixed while migrating, each confirmed via the live game
+(Playwright), not just reading the code:**
+
+1. **DOM Elements don't follow a `Container`'s transform.** Confirmed empirically: nesting a
+   DOMElement inside a `Phaser.GameObjects.Container` never positions it at all (its own transform
+   -sync relies on machinery the Container's render path doesn't invoke, despite Phaser's own docs
+   suggesting one level of nesting is supported). Every text object that used to live inside a
+   `Container` (`DialogueBox`'s name/body/prompt, `TasksPanel`'s button label) is now created as an
+   independent element instead. Most of these containers are positioned once and never move, so
+   their label's absolute position is just computed once (`container origin + local offset`) at
+   creation. `ui/Button.ts`'s button container is the *one* exception — `HomeScene.ts`'s safe-area
+   layout repositions Play/More Games *after* creation — so `createButton()` now overrides that
+   specific container instance's own `setPosition()` to also move its independent label in step,
+   and destroys the label when the container is destroyed (`Phaser.GameObjects.Events.DESTROY`).
+
+2. **`SettingsScene.redraw()`'s `this.children.removeAll(true)` doesn't touch DOM elements.** That
+   call only clears the WebGL scene's own display list; DOM elements live in Phaser's separate DOM
+   container and are untouched by it, so every DOM label created in `renderMainPanel()`/
+   `renderLanguageList()` would have leaked and stacked visually on every redraw (language change,
+   Esc, re-entering the language list) had this gone unnoticed. Fixed by tracking every DOM label
+   created in this scene (`domTexts`, via a small `label()` wrapper around `createText()`) and
+   explicitly destroying them at the top of `redraw()`, before the untouched-by-default WebGL clear.
+
+3. **A paused scene's own DOM text stays fully visible, overlapping whatever's launched on top of
+   it — confirmed live** (opened Settings from Home in a real headless run: Home's own title/Play
+   /More Games text rendered directly on top of the Settings panel, since DOM elements share one
+   flat layer with no per-scene depth relationship, and `scene.pause()` only stops a scene's
+   *WebGL* rendering/update, not its DOM elements). `SettingsScene` is the only place this game
+   overlays one scene on another (`HomeScene.ts`'s gear, and `GameplayTopBar.ts`'s, both
+   `scene.launch(SETTINGS, ...); scene.pause();`). Fixed generically via a new
+   `core/domPause.ts` (`hideSceneDom()`/`restoreSceneDom()`): hides every *currently-visible* DOM
+   element belonging to a scene right before it's paused, and restores *only the ones this same
+   call hid* when `SettingsScene.close()` resumes it — deliberately not a blanket show-everything,
+   since plenty of DOM elements (a closed `DialogueBox`'s text, an inactive `Toast`/
+   `InteractionPrompt`) are correctly invisible for their own independent reasons at any given
+   moment and must stay that way across an unrelated pause/resume.
+
+Verified live (not just read from source) across every category the maintainer listed: dialogue
+name/body text, the "Talk" interaction prompt, Home's title and Play/More Games buttons (including
+after a safe-area reposition on a narrow viewport, confirming the `Container` fix above), the Tasks
+panel, the Settings panel (sliders/toggles/labels/buttons), and the Apparitions map's node numbers
+and date labels — all read as sharp, properly anti-aliased text at real display magnification (both
+~2.7x and ~5.3x scale factors tested), while every sprite/tile in the same screenshots stayed
+crisp/blocky pixel art, unaffected.

@@ -4,6 +4,7 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { UI_KEYS } from '../pixelart/ui';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { hideSceneDom } from '../core/domPause';
 
 /**
  * Top-right in-gameplay controls: a settings gear and a home button. Home
@@ -20,6 +21,7 @@ export class GameplayTopBar {
     gear.setScrollFactor(0);
     gear.setDepth(DEPTH.UI);
     gear.on('pointerup', () => {
+      hideSceneDom(scene);
       scene.scene.launch(SCENE_KEYS.SETTINGS, { returnTo: scene.scene.key });
       scene.scene.pause();
     });
