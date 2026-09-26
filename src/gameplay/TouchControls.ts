@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_HEIGHT, GAME_WIDTH } from '../core/constants';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 
 /** On-screen virtual joystick + interact button for touch devices (mobile app builds). */
 export class TouchControls {
@@ -25,13 +25,12 @@ export class TouchControls {
     });
 
     const interactButton = scene.add.circle(GAME_WIDTH - 40, GAME_HEIGHT - 42, 20, 0xfffaf0, 0.4);
-    const interactLabel = scene.add
-      .text(GAME_WIDTH - 40, GAME_HEIGHT - 42, '●', textStyle({ fontSize: '14px', color: '#3a3226' }))
-      .setOrigin(0.5);
-    [interactButton, interactLabel].forEach((shape) => {
-      shape.setScrollFactor(0);
-      shape.setDepth(DEPTH.UI);
-    });
+    const interactLabel = createText(scene, GAME_WIDTH - 40, GAME_HEIGHT - 42, '●', { fontSize: '14px', color: '#3a3226' });
+    interactLabel.setOrigin(0.5);
+    interactButton.setScrollFactor(0);
+    interactButton.setDepth(DEPTH.UI);
+    interactLabel.setScrollFactor(0);
+    interactLabel.setDepth(DEPTH.UI);
     interactButton.setInteractive({ useHandCursor: false });
     interactButton.on('pointerdown', () => this.onInteract?.());
 

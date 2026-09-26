@@ -32,6 +32,7 @@ import { preloadMotherPortrait } from '../assets/portraits/motherPortrait';
 import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
 import { TOWN_TERRAIN_KEY, preloadLourdesTownTerrain } from '../assets/terrain/lourdesTownTerrain';
 import { preloadLourdesCachotInterior } from '../assets/interiors/lourdesCachotInterior';
+import { BUILDING_KEYS, preloadLourdesBuildings } from '../assets/buildings/lourdesBuildings';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -54,6 +55,7 @@ export class BootScene extends Phaser.Scene {
     preloadLourdesGrass(this);
     preloadLourdesTownTerrain(this);
     preloadLourdesCachotInterior(this);
+    preloadLourdesBuildings(this);
   }
 
   create(): void {
@@ -82,7 +84,13 @@ export class BootScene extends Phaser.Scene {
     // town PNG that used to need the same treatment has been removed entirely — see
     // `OverworldScene.ts`'s header comment. Individual building PNGs added in its place will each
     // need this same per-texture filtering judgment call once they exist.)
-    [HOME_BACKGROUND_KEY, HOME_BERNADETTE_TORSO_CUTOUT_KEY, JOURNEY_MAP_KEY, TOWN_TERRAIN_KEY].forEach((key) => {
+    [
+      HOME_BACKGROUND_KEY,
+      HOME_BERNADETTE_TORSO_CUTOUT_KEY,
+      JOURNEY_MAP_KEY,
+      TOWN_TERRAIN_KEY,
+      ...Object.values(BUILDING_KEYS),
+    ].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 

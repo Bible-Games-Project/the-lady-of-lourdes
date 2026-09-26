@@ -5,7 +5,7 @@ import { K } from '../core/i18n/keys';
 import { mission01 } from '../data/missions/mission01';
 import { PROP_KEYS } from '../pixelart/props';
 import { createButton } from '../ui/Button';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 import { useLetterboxScale } from '../core/scaleMode';
 
 export class MissionCompleteScene extends Phaser.Scene {
@@ -21,20 +21,14 @@ export class MissionCompleteScene extends Phaser.Scene {
     const bead = this.add.image(GAME_WIDTH / 2, 60, PROP_KEYS.ROSARY_BEAD);
     bead.setDisplaySize(28, 28);
 
-    this.add
-      .text(GAME_WIDTH / 2, 100, Localization.t(K.MISSION_COMPLETE_TITLE), textStyle({ fontSize: '22px', color: '#fffaf0' }))
-      .setOrigin(0.5);
+    createText(this, GAME_WIDTH / 2, 100, Localization.t(K.MISSION_COMPLETE_TITLE), { fontSize: '22px', color: '#fffaf0' }).setOrigin(0.5);
 
     if (mission01.titleKey) {
-      this.add
-        .text(GAME_WIDTH / 2, 130, Localization.t(mission01.titleKey), textStyle({ fontSize: '14px', color: '#d8c9a0' }))
-        .setOrigin(0.5);
+      createText(this, GAME_WIDTH / 2, 130, Localization.t(mission01.titleKey), { fontSize: '14px', color: '#d8c9a0' }).setOrigin(0.5);
     }
 
     if (mission01.dateKey) {
-      this.add
-        .text(GAME_WIDTH / 2, 150, Localization.t(mission01.dateKey), textStyle({ fontSize: '12px', color: '#c9beac' }))
-        .setOrigin(0.5);
+      createText(this, GAME_WIDTH / 2, 150, Localization.t(mission01.dateKey), { fontSize: '12px', color: '#c9beac' }).setOrigin(0.5);
     }
 
     createButton(this, GAME_WIDTH / 2, GAME_HEIGHT - 50, 200, 34, Localization.t(K.MISSION_COMPLETE_CONTINUE), () => {

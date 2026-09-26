@@ -2773,3 +2773,112 @@ panel, the Settings panel (sliders/toggles/labels/buttons), and the Apparitions 
 and date labels — all read as sharp, properly anti-aliased text at real display magnification (both
 ~2.7x and ~5.3x scale factors tested), while every sprite/tile in the same screenshots stayed
 crisp/blocky pixel art, unaffected.
+
+### Diagonal flicker, round four: re-verified with a camera-following-sprite-frame hypothesis specifically, same conclusion as round three
+
+Follow-up report, with a new specific hypothesis: that the camera follows Bernadette's *rendered*
+sprite/frame position rather than a stable logical point, so a walk-cycle frame swap (each "frame"
+here is a full texture-key swap, e.g. `char_bernadette_up_a` → `_b` — not a spritesheet sub-frame
+index, confirmed via `anims.currentFrame.textureKey`; `.textureFrame` is useless for this, it's
+always `"0"` since nothing here uses real spritesheet frames) with a slightly different visual
+center could tick the camera even though Bernadette's actual world position hadn't changed. Checked
+directly in code first: `updateCameraFollow()`'s target is `this.player.x/y` (the physics body's
+transform position), never anything frame- or texture-derived — there is no code path by which an
+animation-frame swap could feed into the camera target at all. Then re-verified live to be sure the
+code matched reality: drove Bernadette with real `page.keyboard.down('ArrowUp'/'ArrowRight')` input
+(not a synthetic velocity override — tried first, and failed, because `Player.update()` reads real
+keyboard state and would just freeze the animation on its idle texture) with the camera pinned fixed,
+and logged every `textureKey` change alongside screen-position deltas across all 8 directions. Result:
+**zero on-screen position changes coincided with any animation-frame-swap event**, cardinal or
+diagonal. This is the same underlying conclusion as the "round three" entry directly above (the
+residual diagonal stepping is the sub-1-native-pixel-per-frame arithmetic described there, not
+frame/camera coupling) — reached again this round via a different, independently-conclusive test
+rather than by re-citing the old one. No code was changed; findings were reported back per the
+maintainer's own explicit "diagnose before changing" instruction.
+
+### Le Cachot interior: vertical centering fixed
+
+Reported as sitting too high on screen. `ROOM_OFFSET_Y` was a flat `22` (a leftover from when it only
+needed to clear the top HUD, before the room's own final height was settled) — on the 270px-tall
+logical canvas this left 22px above the 118px-tall room but 130px below it. Changed to
+`Math.round((GAME_HEIGHT - CACHOT_ROOM_HEIGHT) / 2)`, splitting the remaining space evenly.
+Position-only, as requested: the room artwork, furniture, colliders, player position, interaction
+system, and exit behavior are all untouched. The narration caption above the room
+(`ROOM_OFFSET_Y - 12`) still clears the top HUD icons comfortably at the new, larger offset. Verified
+live at 960×540: balanced space above/below, no HUD overlap.
+
+### Text-DOM migration, gap-fix pass: 9 call sites across 6 files had been missed
+
+Re-reading `OverworldScene.ts`'s Cachot-entrance doc comment turned up a `this.add.text(...)` call
+that the "every UI label migrated to DOM text" work (two entries above) had claimed to be complete —
+it wasn't. The grep used at the time (`\.add\.text\(`) only matched the call on a single line; it
+missed Phaser's equally common method-chained style, `this.add` and `.text(...)` split across two
+lines. A corrected, multiline-aware search (`this\.add\s*\n\s*\.text\(|scene\.add\s*\n\s*\.text\(`)
+found 9 further instances across 6 files still rendering through the old blurry WebGL `Text` pipeline:
+`TouchControls.ts` (the touch interact-button glyph), `MissionCompleteScene.ts` (title/mission
+title/date, 3 calls), `LanguageSelectScene.ts` (title/subtitle, 2 calls — plus its own
+`redraw()`-on-every-tap pattern needed the same DOM-leak tracking `SettingsScene.ts` already has, via
+a `domTexts` array destroyed at the top of `redraw()`), `CachotScene.ts` (the intro narration
+caption), `OverworldScene.ts` (the Cachot door label), and `MoreGamesScene.ts` (title + "coming soon"
+body text, 2 calls). All 9 migrated to `createText()` the same way as every other call site; a
+second multiline-aware grep plus a plain `\.add\.text\(`/`textStyle` search afterward both came back
+with zero remaining matches anywhere in `src/`.
+
+### Lourdes town: first 3 real building PNGs placed (Le Cachot exterior, Moulin de Boly, Hospice); 4th (Grotto) and everything else still blocked on file access
+
+The maintainer supplied a reference map image (7 numbered historical locations, explicitly **not**
+to be used in-game — reference only) plus individual building PNGs, in batches, with detailed rules:
+real per-building footprint colliders (never one giant rectangle over the whole PNG), collision kept
+decoupled from visual Y-sort depth so the player can walk visually behind a building's upper body
+while still being blocked by its solid base, a non-walkable river crossable only via a supplied
+bridge, only the Grotto's lower plaza walkable (not the rock structure itself), and explicit
+instructions never to invent placeholder buildings for anything not actually supplied.
+
+**Hard environmental limitation, confirmed exhaustively:** only the very first batch of images (the
+reference map + 4 real building PNGs) ever materialized as files this session could read. Three
+further messages, each with more images (a new river/2 houses/church/bridge; then two batches of 5
+generic house/apartment buildings), rendered visibly in the conversation but never appeared as
+accessible files under the session's own image directory, checked via repeated exhaustive `find`
+sweeps of the whole filesystem with a delay in between. Per the maintainer's own explicit "do not
+create procedural or placeholder buildings" instruction, nothing was invented for these three
+batches — they remain entirely unplaced (Church, Presbytery, new river, bridge, and all 10 generic
+secondary houses/apartments).
+
+Of the first batch's 4 real assets, identification against the reference map is **inferred from
+visual match**, not filename (the uploads are generic `N.webp` names) — documented in
+`assets/buildings/lourdesBuildings.ts`'s own doc comment so it can be corrected: the cave → Grotto
+(location 1), the windmill → Moulin de Boly (2), the modest house+barn → Le Cachot (3), the mansion
+with cross/heart banners and no bell tower → Hospice (4, ruling out the Church specifically for
+lacking a spire). Each was cropped to its own alpha bounding box (Python/PIL) rather than kept at
+full canvas size with transparent padding, so `setDisplaySize()` scaling and footprint-collider math
+both operate on the real artwork bounds.
+
+**3 of the 4 (Le Cachot, Moulin de Boly, Hospice) are now placed** in `OverworldScene.ts`, south of
+the river around the pre-existing `CACHOT_DOOR_X/Y` interaction point, via a small data-driven
+`TOWN_BUILDINGS`/`buildTownBuildings()` pair: each entry gets a bottom-center-anchored `Image`
+(`setOrigin(0.5, 1)`, Y-sort depth via the same `depthForY()` every other prop in this file uses) and
+a **separate** invisible static-physics `Zone` (`gameplay/utils.ts#createBlocker`, not derived from
+the texture at all) sized to a fraction of the display box and centered near the building's own
+base — deliberately not the whole tall sprite — so the player is blocked by the solid footprint but
+can still render behind the upper/roof portion when standing above it. Le Cachot is anchored so its
+own painted door lines up with the pre-existing `CACHOT_DOOR_X/Y` zone, so `CachotScene.ts`'s
+enter/exit plumbing needed no changes. Positions were chosen with a clear gap from each other and
+from the existing NPC wander/waypoint zones (`BOY_WANDER_BOUNDS`, `JEANNE_SPAWN`/waypoints), and
+deliberately don't fill the whole town-terrain patch, per the maintainer's own "leave room for more
+buildings" instruction — plenty of open ground remains for the still-missing batches.
+
+**The 4th real asset (Grotto) was deliberately not swapped in this round** — it would replace the
+existing procedural `PROP_KEYS.GROTTO` texture, but `NICHE_X/Y` (the scripted apparition point),
+`FORD_ZONE`, and the cave-floor tile placement are all precisely tuned to that texture's own current
+96×64 internal layout, and this file's own header comment establishes the river/Massabielle/grotto
+system as untouched-by-default from earlier rounds. Re-anchoring those to new art's proportions
+safely needs either explicit sign-off or careful dedicated alignment work, not a same-round swap
+alongside three unrelated building placements.
+
+Verified live (Playwright, real keyboard input, not just reading the code): all 3 buildings render
+at reasonable positions/scale with no overlap; walking straight at Le Cachot's base stops the player
+well short of the artwork (collision confirmed) while the pre-existing "Talk" interaction prompt for
+its door still fires correctly (untouched enter/exit plumbing confirmed); standing above the
+building's roofline renders the player's lower body behind it (Y-sort depth confirmed, collision
+footprint confirmed independent of the visual sprite's full height, since that position is inside the
+sprite's bounds but outside its collider).

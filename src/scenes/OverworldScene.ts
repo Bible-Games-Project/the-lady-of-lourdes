@@ -9,6 +9,7 @@ import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
 import { PROP_KEYS } from '../pixelart/props';
+import { BUILDING_KEYS, BUILDING_NATIVE_SIZE } from '../assets/buildings/lourdesBuildings';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { TouchControls } from '../gameplay/TouchControls';
@@ -27,7 +28,7 @@ import { boyAmbientDialogue } from '../data/dialogue/ambientDialogue';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
 import { wait, tweenPromise } from '../gameplay/async';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 import { useLetterboxScale } from '../core/scaleMode';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
@@ -88,15 +89,75 @@ const FIREWOOD_SPOTS = [
 const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
 const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
-// Le Cachot's connection point to `CachotScene` — a placeholder location, not derived from any
-// building art, since the removed town PNG's own Le Cachot crop is gone and no replacement PNG has
-// been supplied yet (its filename is what will identify and place it — see the doc comment above).
-// Sits on open grass just south of the bridge so the player's own scene-start spawn and the
-// interior enter/exit plumbing (`buildCachotEntrance()` below, `CachotScene.ts`'s `fromCachot` exit)
-// keep working end-to-end in the meantime. Once the real Le Cachot exterior PNG arrives, this should
-// move to sit at that art's own door instead of staying here.
+// Le Cachot's connection point to `CachotScene` — kept exactly where it was when it was still a
+// placeholder (no derived building art existed yet), rather than moved to wherever the real
+// exterior's own painted door happens to sit. The real `LE_CACHOT_EXTERIOR` art (see
+// `buildTownBuildings()` below) is now anchored so its own door lines up with this existing zone
+// instead, so the enter/exit plumbing (`buildCachotEntrance()` below, `CachotScene.ts`'s
+// `fromCachot` exit) needed no changes at all.
 const CACHOT_DOOR_X = PATH_CENTER * TILE_SIZE;
 const CACHOT_DOOR_Y = (RIVER_H_BOTTOM + 10) * TILE_SIZE;
+
+// Individual building placements in the town area — see `buildTownBuildings()`'s own doc comment
+// for the footprint-collider convention every entry here follows, and `assets/buildings/
+// lourdesBuildings.ts` for which reference-map location each key is inferred to be. Positions are
+// spaced around CACHOT_DOOR_X/Y with clear gaps from each other and from the existing NPC
+// wander/waypoint zones (BOY_WANDER_BOUNDS, JEANNE_SPAWN/JEANNE_WAYPOINTS below), and deliberately
+// don't fill the whole town-terrain patch — plenty of open ground is left for the further building
+// batches the maintainer has said are still coming.
+interface TownBuildingSpec {
+  key: string;
+  x: number;
+  y: number;
+  displayWidth: number;
+  displayHeight: number;
+  /** Footprint collider, as fractions of the *display* size, centered on the building's own
+   * horizontal center and sitting just above its bottom edge (see `buildTownBuildings()`). */
+  footprintWidthFrac: number;
+  footprintHeightFrac: number;
+}
+
+const LE_CACHOT_DISPLAY_H = 76;
+const LE_CACHOT_DISPLAY_W = (LE_CACHOT_DISPLAY_H * BUILDING_NATIVE_SIZE[BUILDING_KEYS.LE_CACHOT_EXTERIOR].width) / BUILDING_NATIVE_SIZE[BUILDING_KEYS.LE_CACHOT_EXTERIOR].height;
+
+const MOULIN_DISPLAY_H = 132;
+const MOULIN_DISPLAY_W = (MOULIN_DISPLAY_H * BUILDING_NATIVE_SIZE[BUILDING_KEYS.MOULIN_DE_BOLY].width) / BUILDING_NATIVE_SIZE[BUILDING_KEYS.MOULIN_DE_BOLY].height;
+
+const HOSPICE_DISPLAY_H = 104;
+const HOSPICE_DISPLAY_W = (HOSPICE_DISPLAY_H * BUILDING_NATIVE_SIZE[BUILDING_KEYS.HOSPICE].width) / BUILDING_NATIVE_SIZE[BUILDING_KEYS.HOSPICE].height;
+
+const TOWN_BUILDINGS: TownBuildingSpec[] = [
+  // Anchored so the art's own door sits at the pre-existing CACHOT_DOOR_X/Y interaction zone.
+  {
+    key: BUILDING_KEYS.LE_CACHOT_EXTERIOR,
+    x: CACHOT_DOOR_X,
+    y: CACHOT_DOOR_Y + 22,
+    displayWidth: LE_CACHOT_DISPLAY_W,
+    displayHeight: LE_CACHOT_DISPLAY_H,
+    footprintWidthFrac: 0.7,
+    footprintHeightFrac: 0.16,
+  },
+  // West of Le Cachot, clear of BOY_WANDER_BOUNDS (CACHOT_DOOR_X-140..-40).
+  {
+    key: BUILDING_KEYS.MOULIN_DE_BOLY,
+    x: CACHOT_DOOR_X - 230,
+    y: CACHOT_DOOR_Y - 30,
+    displayWidth: MOULIN_DISPLAY_W,
+    displayHeight: MOULIN_DISPLAY_H,
+    footprintWidthFrac: 0.38,
+    footprintHeightFrac: 0.12,
+  },
+  // East of Le Cachot, clear of JEANNE_SPAWN (CACHOT_DOOR_X+80).
+  {
+    key: BUILDING_KEYS.HOSPICE,
+    x: CACHOT_DOOR_X + 240,
+    y: CACHOT_DOOR_Y - 10,
+    displayWidth: HOSPICE_DISPLAY_W,
+    displayHeight: HOSPICE_DISPLAY_H,
+    footprintWidthFrac: 0.68,
+    footprintHeightFrac: 0.14,
+  },
+];
 
 // The new intermediate terrain layer (`assets/terrain/lourdesTownTerrain.ts`) — sits between the
 // grass (base layer, untouched) and the individual building PNGs still to come, per the
@@ -247,6 +308,7 @@ export class OverworldScene extends Phaser.Scene {
     this.player = new Player(this, CACHOT_DOOR_X, startY, this.touch);
 
     this.buildTownTerrain();
+    this.buildTownBuildings();
     this.buildCachotEntrance();
     this.buildDecor();
     this.buildGrotto();
@@ -486,10 +548,35 @@ export class OverworldScene extends Phaser.Scene {
   private buildCachotEntrance(): void {
     const halfWidth = 24;
     this.cachotDoorZone = new Phaser.Geom.Rectangle(CACHOT_DOOR_X - halfWidth, CACHOT_DOOR_Y - 20, halfWidth * 2, 40);
-    this.add
-      .text(CACHOT_DOOR_X, CACHOT_DOOR_Y - 26, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
+    createText(this, CACHOT_DOOR_X, CACHOT_DOOR_Y - 26, Localization.t(K.LOCATION_CACHOT), { fontSize: '9px', color: '#3a3226' })
       .setOrigin(0.5)
       .setDepth(DEPTH.OVERLAY_LOW);
+  }
+
+  /**
+   * Places each supplied building PNG from `TOWN_BUILDINGS` (see that array's own doc comment for
+   * placement/spacing rationale). Each building is: (1) a visible `Image`, bottom-center anchored
+   * (`setOrigin(0.5, 1)`) so `x,y` is the building's own ground-contact point, Y-sort depth via
+   * `depthForY()` so the player renders in front when below it and behind when above it -- same
+   * convention as every other prop in this file (`addStaticProp`, `buildGrotto`); (2) a SEPARATE
+   * invisible static-physics `Zone` (`createBlocker`) sized to a fraction of the display box and
+   * centered on the building's own footprint (near its base, not the whole tall sprite) -- this is
+   * the "don't use one giant rectangular collider" requirement: the collider only covers the
+   * solid/base part, so the player can still walk visually behind the upper/roof portion of the art
+   * while being blocked by the base, and depth/occlusion (the Image + its Y-sort) stays entirely
+   * decoupled from collision (the Zone).
+   */
+  private buildTownBuildings(): void {
+    TOWN_BUILDINGS.forEach((spec) => {
+      const image = this.add.image(spec.x, spec.y, spec.key).setOrigin(0.5, 1);
+      image.setDisplaySize(spec.displayWidth, spec.displayHeight);
+      image.setDepth(depthForY(spec.y, DEPTH.ACTORS));
+
+      const footprintWidth = spec.displayWidth * spec.footprintWidthFrac;
+      const footprintHeight = spec.displayHeight * spec.footprintHeightFrac;
+      const footprintCenterY = spec.y - footprintHeight / 2;
+      this.colliderBodies.push(createBlocker(this, spec.x, footprintCenterY, footprintWidth, footprintHeight));
+    });
   }
 
   private buildDecor(): void {

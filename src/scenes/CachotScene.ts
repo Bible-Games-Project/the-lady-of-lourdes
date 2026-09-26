@@ -15,7 +15,7 @@ import { MissionManager } from '../gameplay/MissionManager';
 import { mission01, mission01Dialogue } from '../data/missions/mission01';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 import { useLetterboxScale } from '../core/scaleMode';
 
 const INTERACT_RADIUS = 26;
@@ -258,8 +258,7 @@ export class CachotScene extends Phaser.Scene {
   }
 
   private buildNarration(): void {
-    this.add
-      .text(GAME_WIDTH / 2, ROOM_OFFSET_Y - 12, Localization.t(K.NARRATION_CACHOT_INTRO), textStyle({ fontSize: '11px', color: '#c9beac' }))
+    createText(this, GAME_WIDTH / 2, ROOM_OFFSET_Y - 12, Localization.t(K.NARRATION_CACHOT_INTRO), { fontSize: '11px', color: '#c9beac' })
       .setOrigin(0.5)
       .setDepth(DEPTH.UI);
   }
