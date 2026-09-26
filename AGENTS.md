@@ -2882,3 +2882,76 @@ its door still fires correctly (untouched enter/exit plumbing confirmed); standi
 building's roofline renders the player's lower body behind it (Y-sort depth confirmed, collision
 footprint confirmed independent of the visual sprite's full height, since that position is inside the
 sprite's bounds but outside its collider).
+
+### Lourdes town: real river + bridge PNGs placed, replacing the tile-stamped horizontal river arm; ten further batches of building images still blocked on the same file-access issue
+
+The maintainer sent a real river PNG and a real bridge PNG as a follow-up to the buildings work
+above — both landed as accessible files this time (unlike most later building batches, see below).
+**Scope check first:** this map has *two* river arms — a vertical one beside the grotto (crossed only
+via a scripted "ford" cutscene) and a horizontal one forming the town's northern edge (crossed via an
+ordinary bridge). Only the horizontal arm matches the single "Gave de Pau" band in the maintainer's
+own reference map and is what "replace the existing river/bridge" refers to; the vertical arm and its
+scripted ford system are a standing untouched-by-default constraint from earlier rounds and were left
+alone entirely.
+
+**Exact-footprint swap, not a resize.** The horizontal arm's old tile-stamped band (`TILE.WATER`/
+`TILE.RIVERBANK` rows 60–65, `TILE.STONE_PATH` bridge stripe at `PATH_CENTER`) occupied rows 60–65 of
+the tilemap — a 96px-tall band centered at `y=1008`. Rather than pick a new size from the art's own
+native proportions (which would have meant either distorting it or growing the band tall enough to
+collide with the buildings placed just south of it in the previous round), the new `buildRiverAndBridge()`
+reuses that *exact* band (`RIVER_BAND_Y`/`RIVER_BAND_HEIGHT`, 1008/96, computed from the same
+`RIVER_H_TOP`/`RIVER_H_BOTTOM` constants as before) — every spatial relationship that assumed this
+band's position (the town-terrain patch's clear gap below it, Jeanne's waypoints just south of it)
+still holds unchanged. The old tile stamps for this arm (and its bridge stripe) were removed entirely
+rather than left underneath — every cell defaults to `-1`/empty per `buildTerrain()`'s own header
+comment, letting the real grass layer underneath show through exactly as the maintainer asked
+("keep the existing grass/ground underneath").
+
+**River is a `TileSprite`, not a single `Image`.** The supplied art is a single continuous winding
+piece, ~2000×382px natively — scaled *up* to span the map's full 2560px width in one piece would
+either distort it (non-uniform scale) or, kept proportional, blow past the 96px band into the
+buildings south of it (proportional-at-full-width comes out ~489px tall). Scaled *down* uniformly to
+fit the 96px band instead (`riverTileScale ≈ 0.251`), a single copy is only ~503px wide — nowhere near
+the map's width — so it's tiled via `add.tileSprite()` or set `tileScale` to repeat across the full
+`MAP_W`. Honest tradeoff, not hidden: the source art is one continuous piece, not authored as a
+seamless tile, so there's a visible repeat seam roughly every 500px. Verified live: at the game's
+actual camera width (480 logical px), most views show less than one seam, and the river reads as
+continuous winding water with rock/lichen banks; a future round could ask the maintainer for either a
+seamless tileable segment or a single hero piece pre-sized to the map's real width if the seam bothers
+them in play.
+
+**Bridge is a single `Image`,** height-matched to the same 96px band (no tiling needed, it's one
+crossing) — its width falls out of that same uniform scale (~52px), landing almost exactly on the old
+tile-stamped bridge's own width (48px), so the walkable gap in the collision is barely changed from
+before. Its portrait native orientation (532×991, taller than wide) needed no rotation: this game's
+bridge already runs north–south across an east–west river, which is exactly what the art depicts.
+Collision rebuilt the same way as the code it replaced — two `createBlocker` zones covering the full
+band width on either side of the bridge's own gap — so the river is non-walkable everywhere except the
+bridge, and the bridge itself is walkable.
+
+**One further, purely cosmetic seam found and left alone (out of scope for this request):** where the
+new painted river meets the old procedurally tile-stamped vertical arm at their shared bend, the two
+art styles (soft painted shading vs. blocky procedural tiles) sit directly next to each other with no
+blending — visible in a wide screenshot of the bend, not a collision or gameplay issue, just a style
+seam at the junction of "new art" and "old, deliberately untouched art." Not fixed this round since the
+vertical arm is explicitly off-limits without further instruction.
+
+Verified live via Playwright: river and bridge render with no console errors; walking into the river
+away from the bridge stops the player right at the water's edge; walking down the bridge's own column
+crosses the full band into the town on the other side without ever stopping; the player renders
+correctly on top of the bridge (not occluded), and the 3 previously-placed buildings next to the
+crossing are unaffected.
+
+**Ten further messages arrived in the same turn with more building images** (a re-sent Grotto/Moulin
+de Boly/Le Cachot batch — apparently intended as higher-fidelity replacements for this session's own
+best-guess crops from the very first batch; Hospice/Church/Presbytery; Maison Cénac/the interrogation
+house; and ten "random house" PNGs across four separate messages). **None of them landed as
+accessible files** — checked exhaustively after every single one of these ten messages (a fresh
+whole-filesystem sweep each time, not just once), and the file count never moved past the 15 files
+already accessible before any of them arrived (the first building batch, plus this round's river and
+bridge). This is the same hard environmental limitation recorded earlier in this file, now confirmed
+across an unusually large and repeated sample. Nothing was invented for any of these ten batches, per
+the maintainer's own standing "do not create placeholder buildings" instruction — they remain
+completely unplaced (Church, Presbytery, Maison Cénac, all 10 generic houses, and the re-sent
+Grotto/Moulin de Boly/Le Cachot are still using this session's original best-guess crops, not
+whatever the maintainer intended to replace them with).

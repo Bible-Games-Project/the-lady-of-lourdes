@@ -10,6 +10,7 @@ import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
 import { PROP_KEYS } from '../pixelart/props';
 import { BUILDING_KEYS, BUILDING_NATIVE_SIZE } from '../assets/buildings/lourdesBuildings';
+import { RIVER_KEYS, RIVER_NATIVE_SIZE, BRIDGE_NATIVE_SIZE } from '../assets/terrain/lourdesRiver';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { TouchControls } from '../gameplay/TouchControls';
@@ -57,7 +58,6 @@ const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
 
 const PATH_CENTER = 32 + OFFSET_X_TILES;
-const PATH_HALF_WIDTH = 1;
 
 // Vertical arm of the river, beside the grotto. Fully blocks the player — the only crossing is
 // the scripted ford cutscene, where the companions wade across and Bernadette stays behind.
@@ -299,6 +299,7 @@ export class OverworldScene extends Phaser.Scene {
     this.firewoodSprites = [];
 
     this.buildTerrain();
+    this.buildRiverAndBridge();
 
     this.touch = new TouchControls(this);
 
@@ -473,18 +474,12 @@ export class OverworldScene extends Phaser.Scene {
       for (let c = RIVER_V_START; c <= RIVER_V_END; c++) data[r][c] = TILE.WATER;
     }
 
-    // Horizontal arm — the river bends to form the town's northern edge.
-    for (let c = 0; c < COLS; c++) {
-      data[RIVER_H_TOP - 1][c] = TILE.RIVERBANK;
-      data[RIVER_H_BOTTOM + 1][c] = TILE.RIVERBANK;
-      for (let r = RIVER_H_TOP; r <= RIVER_H_BOTTOM; r++) data[r][c] = TILE.WATER;
-    }
-    // The bridge itself stays a plain fixed-width stone crossing (it's a built structure, not a
-    // worn footpath -- an organic edge here would just look like a crumbling bridge) at the
-    // original PATH_HALF_WIDTH, not the wider organic trail either side of it.
-    for (let r = RIVER_H_TOP - 1; r <= RIVER_H_BOTTOM + 1; r++) {
-      for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.STONE_PATH;
-    }
+    // The horizontal arm (the river's bend forming the town's northern edge) is no longer
+    // tile-stamped here at all -- its real PNG art (`assets/terrain/lourdesRiver.ts`) is drawn as a
+    // separate layer in `buildRiverAndBridge()` below, over the real grass layer this leaves showing
+    // through (every cell here defaults to `-1`/empty, per this method's own header comment). The
+    // vertical arm above (the scripted ford crossing) is untouched real tile art, unrelated to this
+    // swap.
 
     // No tile-stamped path south of the bridge: that whole band is now plain open grass (the town
     // PNG that used to occupy it has been removed entirely — see this file's header comment), with
@@ -504,13 +499,50 @@ export class OverworldScene extends Phaser.Scene {
       createBlocker(this, vRiverX, vRiverHeight / 2, (RIVER_V_END - RIVER_V_START + 1) * TILE_SIZE, vRiverHeight),
     );
 
-    // The horizontal arm is only crossable through the bridge gap at the path.
-    const hRiverY = ((RIVER_H_TOP + RIVER_H_BOTTOM + 1) / 2) * TILE_SIZE;
-    const hRiverHeight = (RIVER_H_BOTTOM - RIVER_H_TOP + 1) * TILE_SIZE;
-    const bridgeLeft = (PATH_CENTER - PATH_HALF_WIDTH) * TILE_SIZE;
-    const bridgeRight = (PATH_CENTER + PATH_HALF_WIDTH + 1) * TILE_SIZE;
-    this.colliderBodies.push(createBlocker(this, bridgeLeft / 2, hRiverY, bridgeLeft, hRiverHeight));
-    this.colliderBodies.push(createBlocker(this, (bridgeRight + MAP_W) / 2, hRiverY, MAP_W - bridgeRight, hRiverHeight));
+    // The horizontal arm's own collision is built in `buildRiverAndBridge()` below, alongside its
+    // real PNG art, rather than here alongside the (now-removed) tile stamps.
+  }
+
+  /**
+   * Real PNG river + bridge art (`assets/terrain/lourdesRiver.ts`), replacing the old tile-stamped
+   * horizontal river arm at the *exact* same footprint (`RIVER_BAND_Y`/`RIVER_BAND_HEIGHT` below
+   * reuse the old band's own top/bottom edges, `960`-`1056`, unchanged) — deliberately not resized,
+   * so every existing spatial relationship that assumes this band's position (the town-terrain
+   * patch's clear gap below it, Jeanne's waypoints just south of it) still holds exactly as before.
+   * The river is a `TileSprite` (not a single stretched `Image`): the supplied PNG is ~2000px wide
+   * natively and this map is 2560px wide, so a single copy scaled to fill the whole width would
+   * either distort its proportions or (kept proportional) blow past the band height into the
+   * buildings south of it -- tiling at a uniform scale keeps the art undistorted and the collision
+   * band's height exactly as before, at the cost of a visible repeat seam every ~500px (the source
+   * art is one continuous winding piece, not authored as a seamless tile -- flagged to the
+   * maintainer as a known limitation, not hidden). The bridge is a single `Image` (no tiling needed,
+   * it's one crossing) sized so its height matches the same band, which happens to land its width
+   * (~52px) almost exactly on the old bridge's own tile-stamped width (48px) -- the walkable gap in
+   * the collision below is barely changed from before.
+   */
+  private buildRiverAndBridge(): void {
+    const RIVER_BAND_Y = ((RIVER_H_TOP + RIVER_H_BOTTOM + 1) / 2) * TILE_SIZE;
+    const RIVER_BAND_HEIGHT = (RIVER_H_BOTTOM - RIVER_H_TOP + 3) * TILE_SIZE;
+
+    const riverTileScale = RIVER_BAND_HEIGHT / RIVER_NATIVE_SIZE.height;
+    const river = this.add.tileSprite(MAP_W / 2, RIVER_BAND_Y, MAP_W, RIVER_BAND_HEIGHT, RIVER_KEYS.RIVER);
+    river.setTileScale(riverTileScale, riverTileScale);
+    river.setDepth(DEPTH.GROUND + 1);
+
+    const bridgeDisplayHeight = RIVER_BAND_HEIGHT;
+    const bridgeDisplayWidth = (bridgeDisplayHeight * BRIDGE_NATIVE_SIZE.width) / BRIDGE_NATIVE_SIZE.height;
+    const bridgeX = PATH_CENTER * TILE_SIZE;
+    const bridge = this.add.image(bridgeX, RIVER_BAND_Y, RIVER_KEYS.BRIDGE);
+    bridge.setDisplaySize(bridgeDisplayWidth, bridgeDisplayHeight);
+    bridge.setDepth(DEPTH.GROUND + 2);
+
+    // Only crossable through the bridge gap, same as the tile-stamped version this replaces.
+    const bridgeLeft = bridgeX - bridgeDisplayWidth / 2;
+    const bridgeRight = bridgeX + bridgeDisplayWidth / 2;
+    this.colliderBodies.push(createBlocker(this, bridgeLeft / 2, RIVER_BAND_Y, bridgeLeft, RIVER_BAND_HEIGHT));
+    this.colliderBodies.push(
+      createBlocker(this, (bridgeRight + MAP_W) / 2, RIVER_BAND_Y, MAP_W - bridgeRight, RIVER_BAND_HEIGHT),
+    );
   }
 
   private addStaticProp(key: string, x: number, y: number, width: number, height: number, colliderHeight?: number): void {

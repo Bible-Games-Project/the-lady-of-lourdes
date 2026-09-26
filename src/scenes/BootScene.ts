@@ -33,6 +33,7 @@ import { preloadLourdesGrass } from '../assets/terrain/lourdesGrass';
 import { TOWN_TERRAIN_KEY, preloadLourdesTownTerrain } from '../assets/terrain/lourdesTownTerrain';
 import { preloadLourdesCachotInterior } from '../assets/interiors/lourdesCachotInterior';
 import { BUILDING_KEYS, preloadLourdesBuildings } from '../assets/buildings/lourdesBuildings';
+import { RIVER_KEYS, preloadLourdesRiver } from '../assets/terrain/lourdesRiver';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -56,6 +57,7 @@ export class BootScene extends Phaser.Scene {
     preloadLourdesTownTerrain(this);
     preloadLourdesCachotInterior(this);
     preloadLourdesBuildings(this);
+    preloadLourdesRiver(this);
   }
 
   create(): void {
@@ -90,6 +92,7 @@ export class BootScene extends Phaser.Scene {
       JOURNEY_MAP_KEY,
       TOWN_TERRAIN_KEY,
       ...Object.values(BUILDING_KEYS),
+      ...Object.values(RIVER_KEYS),
     ].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
