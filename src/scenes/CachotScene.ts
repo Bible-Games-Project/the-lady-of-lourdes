@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SCENE_KEYS, GAME_WIDTH, DEPTH } from '../core/constants';
+import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { CACHOT_ROOM_KEY, CACHOT_ROOM_WIDTH, CACHOT_ROOM_HEIGHT } from '../assets/interiors/lourdesCachotInterior';
@@ -33,10 +33,15 @@ const PROMPT_CLEARANCE = 6;
 // same ratio so it keeps the same size-to-character relationship the baseline characters have.
 const MOTHER_SHADOW_SCALE = MOTHER_FRAME_HEIGHT / 28;
 
-// Where the room backdrop sits on the 480x270 logical canvas. Centered horizontally; a modest top
-// margin leaves room for the narration caption above the room (see buildNarration() below).
+// Where the room backdrop sits on the 480x270 logical canvas. Centered horizontally *and*
+// vertically -- the room is CACHOT_ROOM_HEIGHT (118) tall on a 270-tall canvas, so
+// `(270 - 118) / 2` splits the remaining space evenly above/below it. Previously a flat `22`, which
+// left only 22px above the room but 130px below it -- reported as "positioned too high... needs a
+// more balanced amount of space above and below". The narration caption above the room (see
+// buildNarration() below, `ROOM_OFFSET_Y - 12`) still lands comfortably below the top HUD icons at
+// this larger offset.
 const ROOM_OFFSET_X = Math.round((GAME_WIDTH - CACHOT_ROOM_WIDTH) / 2);
-const ROOM_OFFSET_Y = 22;
+const ROOM_OFFSET_Y = Math.round((GAME_HEIGHT - CACHOT_ROOM_HEIGHT) / 2);
 
 /**
  * A collision/interaction rectangle, stored as a fraction of the room backdrop's own *displayed*
