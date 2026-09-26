@@ -476,8 +476,8 @@ export class HomeScene extends Phaser.Scene {
     });
     const shadowStyle = textStyle({ fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' });
 
-    this.add.text(GAME_WIDTH / 2 + 2, 28, 'The Lady of Lourdes', shadowStyle).setOrigin(0.5).setDepth(6);
-    this.add.text(GAME_WIDTH / 2, 26, 'The Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
+    this.add.text(GAME_WIDTH / 2 + 2, 28, 'Our Lady of Lourdes', shadowStyle).setOrigin(0.5).setDepth(6);
+    this.add.text(GAME_WIDTH / 2, 26, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
 
     const ruleY = 40;
     const ruleHalfWidth = 60;

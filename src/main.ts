@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from './core/constants';
+import { installCrispTextFilter } from './core/textRendering';
 import { BootScene } from './scenes/BootScene';
 import { LanguageSelectScene } from './scenes/LanguageSelectScene';
 import { HomeScene } from './scenes/HomeScene';
@@ -9,6 +10,8 @@ import { ApparitionJourneyScene } from './scenes/ApparitionJourneyScene';
 import { OverworldScene } from './scenes/OverworldScene';
 import { CachotScene } from './scenes/CachotScene';
 import { MissionCompleteScene } from './scenes/MissionCompleteScene';
+
+installCrispTextFilter();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,

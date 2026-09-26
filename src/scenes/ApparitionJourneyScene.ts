@@ -175,9 +175,30 @@ export class ApparitionJourneyScene extends Phaser.Scene {
   }
 
   /** Widens the camera's own scrollable bounds to match `clampScroll()`'s range -- see that
-   * method's doc comment for why both are required together. */
+   * method's doc comment for why both are required together.
+   *
+   * Also anchors the camera horizontally so the map's own *left* edge (world x = 0, where the
+   * route begins and apparitions 1/2/3 sit -- see `buildPath()`'s doc comment) is always the
+   * left-most thing visible, instead of the plain, un-shifted `scrollX = 0` every other scene
+   * uses. The map's world width is scaled to exactly `GAME_WIDTH` (`buildBackground()`), so under
+   * plain `FIT` (or a 16:9 device) the camera's own `GAME_WIDTH`-wide view already shows the whole
+   * map edge-to-edge and this is a no-op (`insets.left` is `0`). Under `ENVELOP` on a
+   * narrower-than-16:9 device, though, `insets.left`/`insets.right` crop *symmetric* strips off
+   * both edges of that same view -- with the camera un-shifted, that crop eats into the map's own
+   * left edge exactly as much as its right, silently pushing node 1 (and often 2/3) into the
+   * cropped-off, invisible strip with no way to scroll back to it (unlike the vertical direction,
+   * which already has up/down scroll for exactly this reason). Shifting `scrollX` left by
+   * `insets.left` moves the *visible* window to start at world x = 0 instead of x = insets.left,
+   * so the left edge is never cropped -- the map's own right edge absorbs the *entire* crop
+   * instead of splitting it, which is the explicitly correct trade-off here (the beginning of the
+   * journey is the priority; the right edge extending off-screen on a narrow device is
+   * acceptable). `setBounds()`'s left edge must widen to match, or `Camera#preRender()`'s own
+   * per-frame bounds-clamp (see `clampScroll()`'s doc comment for why this isn't just assumed)
+   * would silently snap `scrollX` straight back to 0.
+   */
   private updateCameraBounds(): void {
-    this.cameras.main.setBounds(0, -this.insets.top, GAME_WIDTH, this.worldHeight + this.insets.top + this.insets.bottom);
+    this.cameras.main.setBounds(-this.insets.left, -this.insets.top, GAME_WIDTH + this.insets.left, this.worldHeight + this.insets.top + this.insets.bottom);
+    this.cameras.main.scrollX = -this.insets.left;
   }
 
   /** Repositions every screen-pinned element against the *visible* screen edges -- see `insets`'s

@@ -2591,3 +2591,106 @@ rendering-architecture change with its own tradeoffs, well outside "fix the diag
 scope, and was not attempted without explicit sign-off given how much of this investigation has
 already turned up dead ends that looked promising at first. **No code was changed for this round's
 report; findings were reported back instead of guessing at another fix.**
+
+### Home screen title text, Play button clip, Apparitions map left-crop, blurry UI text, and a re-confirmed building-PNG check
+
+Five requests bundled together; each investigated from the actual current implementation first, per
+the maintainer's own standing instruction.
+
+**1. Title text** — trivial: `HomeScene.ts#buildTitle()`'s two hardcoded strings ("shadow" copy and
+the real one) changed from "The Lady of Lourdes" to "Our Lady of Lourdes". Typography/position/style
+untouched.
+
+**2. Play button clipped on narrow screens — root cause was a double-centering bug, not the button's own anchor logic.** The anchor system (`onSafeAreaChange`, safe-area insets, `Button.ts`'s
+edge-origin anchoring) already looked correct by inspection, and its own history (`safeArea.ts`'s doc
+comment) says this exact bug was fixed before. Live-tested at a narrow viewport anyway rather than
+trusting that — and Play really was invisible, not just badly anchored. Traced it with a Playwright
+harness: `canvas.getBoundingClientRect().x` measured `-645` at a 420-wide viewport, where the
+insets-based math (and Phaser's own `autoCenter`) both assume `-430` (the canvas's overflow evenly
+split either side). The extra offset came from **`index.html`'s `#app` rule
+(`display:flex; align-items:center; justify-content:center`) double-centering the canvas on top of
+Phaser's own `autoCenter: CENTER_BOTH`** — Phaser's `ScaleManager` sets an inline `margin-left`/
+`margin-top` on the canvas assuming *it* is the only thing centering it; the parent's flexbox
+centers it *again* on top of that, and the two don't cancel — they compound, shifting the visible
+window asymmetrically. `getSafeAreaInsets()`'s formula (a single symmetric `insetX` value) was
+computed correctly the whole time; it just described a *different, hypothetical* centered canvas
+than the one actually on screen. `More Games`/gear (anchored to the right) happened to still have
+enough slack to read as "working"; `Play` (anchored to the left, a wider anchor-to-edge distance at
+this viewport) didn't. Fix: removed the flex centering from `#app` in `index.html`, leaving Phaser's
+own `autoCenter` as the sole mechanism (confirmed via the same harness: canvas rect became exactly
+`-430` afterward, and `Play` is now fully visible from ~500px width down to 320px, overlapping
+`More Games` only at the most extreme portrait ratios tested — the documented, accepted trade-off,
+not a clip). Also re-verified `Phaser.Scale.FIT` (the letterboxed gameplay scenes) still centers
+correctly — that mode was never broken by the double-centering (its margin math doesn't depend on
+whether the *parent* also centers, since a smaller-than-parent canvas doesn't overflow either way);
+this only ever affected `ENVELOP` (Home/Settings/Journey) on a device narrower than the flex
+overflow could hide.
+
+**3. Apparitions map cropping the start of the journey on narrow screens.** `ApparitionJourneyScene`
+already had a full solution for *vertical* safe-area cropping (`clampScroll()`/`updateCameraBounds()`
+widen the scroll range by `insets.top`/`insets.bottom` so a node near the world's own top/bottom edge
+can still be scrolled into view) — but nothing analogous existed *horizontally*, and the map has no
+horizontal scroll/pan at all (world width is scaled to exactly `GAME_WIDTH`). Under `ENVELOP` on a
+narrower-than-16:9 device, `insets.left`/`insets.right` crop a *symmetric* strip off both edges of
+the camera's fixed 480-wide view with the camera un-shifted (`scrollX` always `0`) — cropping into
+the map's own left edge (where apparitions 1/2/3 sit — the route "begins from the bottom-left", per
+`buildPath()`'s own doc comment) by exactly as much as the right, with no way to scroll back to it.
+Fixed the same way the vertical case already was: widened the camera's horizontal bounds
+(`setBounds()`'s x0 to `-insets.left`) and anchored `scrollX = -insets.left` in
+`updateCameraBounds()` (called from the existing `onSafeAreaChange` hook), so the visible window
+always starts at world x = 0 — the map's own right edge absorbs the entire crop instead of splitting
+it. No per-node repositioning; the route/medallions are untouched. Verified at 1280 (unaffected,
+`insets.left` is `0`), 420, and 320px wide — apparitions 1-3 (and more) stay fully on screen at every
+width tested, with the river/waterfall on the right cropping further as the device gets narrower,
+which is the explicitly-requested trade-off.
+
+**4. Text looked "blurry and heavily pixelated" despite `ui/text.ts`'s existing `TEXT_RESOLUTION = 4`
+supersampling fix.** That fix (rasterize each Text object's own canvas at 4x its logical size, for
+smoother glyph edges) is real and was already applied everywhere (every call site in the game goes
+through `textStyle()`, confirmed by inspection). The bug was one layer deeper, in Phaser's own
+renderer: `WebGLRenderer#canvasToTexture()` (used for every canvas-derived texture, which is exactly
+what a `Text` object's internal texture is) hardcodes `gl.NEAREST` for both min/mag filter *unless*
+`this.config.antialias` is true — and this game's `pixelArt: true` (`main.ts`) implies
+`antialias: false` globally, intentionally, so sprites/tiles stay crisp. That same global flag was
+silently forcing every Text object's *own* texture to NEAREST too, with no per-object override
+anywhere. NEAREST-filtering the shrink from a 4x-supersampled canvas back down to the glyph's actual
+on-screen size doesn't blend those extra samples — it point-samples one in four, throwing away
+exactly the averaging supersampling exists to provide, and reproducing the same jagged/aliased
+"mush" the resolution trick was supposed to prevent. This explains why cardinal art (deliberately
+`LINEAR`-filtered backgrounds, deliberately-`NEAREST` character sprites) always looked correct while
+text didn't, regardless of how high `TEXT_RESOLUTION` went — no amount of source supersampling
+survives a NEAREST-filtered downscale.
+
+Confirmed empirically before changing anything: patched one live scene's Text objects to
+`texture.setFilter(Phaser.Textures.FilterMode.LINEAR)` and compared a high-magnification screenshot
+crop against the unpatched version — visibly smoother, properly anti-aliased letterforms with the
+patch; same jagged block edges without it, at both a moderate (2.667x) and a large (5.33x, simulating
+a big desktop monitor) scale factor.
+
+Fix: **`src/core/textRendering.ts`** (`installCrispTextFilter()`, called once from `main.ts` before
+`new Phaser.Game()`) wraps `Phaser.GameObjects.GameObjectFactory.prototype.text` — the single choke
+point every `scene.add.text(...)` call already goes through, across all ~16 files and ~25+ call sites
+that create text in this game — so every current *and future* Text object gets `LINEAR` filtering
+applied to its own texture immediately after creation, automatically, with no call site able to
+forget it (unlike a discipline-only convention like `textStyle()`, which nothing enforces if a future
+call site skips it). Deliberately scoped to `Text`'s own texture only via `setFilter()` — the game's
+global `antialias`/`pixelArt` config is completely untouched, so every sprite, tile, and hand-authored
+pixel-art texture keeps its own NEAREST filtering exactly as before. Verified after the fix: Home's
+title/button text and Overworld's "Le Cachot" label/"Tasks" button text all read visibly smoother at
+high magnification, while Bernadette/NPC sprites in the same screenshots remain crisp, hard-edged
+pixel art — confirming the fix is scoped correctly and doesn't leak into the art style.
+
+**5. Lourdes building PNGs — re-confirmed, still genuinely absent, for at least the third time.**
+Exhaustively re-searched the entire repository (every `.png`/`.webp`/`.jpg` under `src/assets`, plus
+the whole working tree, plus `docs/`) — no building-named file of any kind exists anywhere. The two
+only building-adjacent things in the codebase are `PROP_KEYS.CACHOT_EXTERIOR`/`TOWN_BUILDING` in
+`pixelart/props.ts` — simple procedurally-generated placeholder rectangles, confirmed **not** placed
+or referenced anywhere else in the game (registered but unused) — so no placeholder building is even
+being silently displayed. This matches, and does not contradict, the last two rounds' own findings
+recorded above ("Individual Lourdes house PNGs — investigated, not yet received" /
+"re-confirmed, still genuinely absent") — no new files have been supplied since either of those. Per
+the maintainer's own explicit instruction ("if genuinely not present, tell me exactly which files are
+missing instead of pretending they exist"): **zero individual building PNG files exist in this
+repository.** Nothing was invented, no placeholder was added or wired up, and `OverworldScene.ts`'s
+town-terrain area is unchanged (still deliberately empty, per its own doc comments) — waiting on the
+actual files to be attached to a message before this can move forward at all.
