@@ -11,6 +11,8 @@ export interface ButtonStyle {
   panelAlpha?: number;
   /** Outline around the label, for readability when the panel itself is very transparent. */
   textStroke?: { color: string; thickness: number };
+  /** Label font size. Defaults to '14px', matching every existing call site's own buttons. */
+  fontSize?: string;
 }
 
 /**
@@ -74,7 +76,7 @@ export function createButton(
   // repositioned *after* creation (see `HomeScene.ts`'s safe-area layout), so this can't be a
   // one-time absolute-position computation the way `DialogueBox.ts`'s static panel is.
   const text = createText(scene, x + localX, y + localY, label, {
-    fontSize: '14px',
+    fontSize: style.fontSize ?? '14px',
     color: style.textColor ?? '#3a3226',
     fontStyle: 'bold',
     ...strokeProps,
@@ -106,15 +108,36 @@ export function createButton(
     onClick();
   });
 
-  // Keep the independent label in step with the container -- only `setPosition()` needs
-  // intercepting since that's the only mutator any call site in this codebase actually uses (see
-  // this function's own doc comment above).
+  // Keep the independent label in step with the container -- `text` isn't a child of `container`
+  // (see this function's own doc comment above on why), so every mutator a call site actually uses
+  // on the returned button needs its own override here, or the label silently drifts out of sync
+  // with the container it's supposed to belong to.
   const originalSetPosition = container.setPosition.bind(container);
   container.setPosition = ((...args: Parameters<typeof originalSetPosition>) => {
     originalSetPosition(...args);
     text.setPosition(container.x + localX, container.y + localY);
     return container;
   }) as typeof container.setPosition;
+  // Same reasoning as `setPosition` above: `text` isn't a child of `container`, so a plain
+  // `btn.setScrollFactor(0)` at a call site (every existing one does this, to pin a button to the
+  // screen in a scrolling scene) only affects the container's own panel graphic — the independent
+  // label keeps its default `scrollFactor = 1` and drifts in world space as the camera scrolls,
+  // landing far off-screen the moment the player has moved. Mirror the override so both move
+  // together, the same way `setPosition` already does.
+  const originalSetScrollFactor = container.setScrollFactor.bind(container);
+  container.setScrollFactor = ((...args: Parameters<typeof originalSetScrollFactor>) => {
+    originalSetScrollFactor(...args);
+    // DOMElement's own setScrollFactor only takes (x, y) -- Container's 3rd `updateChildren`
+    // param doesn't apply to `text` (it isn't a child of `container` at all).
+    text.setScrollFactor(args[0], args[1]);
+    return container;
+  }) as typeof container.setScrollFactor;
+  const originalSetVisible = container.setVisible.bind(container);
+  container.setVisible = ((...args: Parameters<typeof originalSetVisible>) => {
+    originalSetVisible(...args);
+    text.setVisible(args[0]);
+    return container;
+  }) as typeof container.setVisible;
   container.once(Phaser.GameObjects.Events.DESTROY, () => text.destroy());
 
   return container;

@@ -31,6 +31,15 @@ import { fadeToScene } from '../gameplay/transitions';
 import { wait, tweenPromise } from '../gameplay/async';
 import { createText } from '../ui/text';
 import { useLetterboxScale } from '../core/scaleMode';
+import { DEV_MODE } from '../core/devMode';
+import { MapEditorPanel } from '../editor/MapEditorPanel';
+import { createEditorAssetInstance, type EditorAssetRegistry } from '../editor/editorAssetRender';
+import {
+  type EditorZoneRegistry,
+  type EditorZoneColliderRegistry,
+  addZoneCollider as addEditorZoneCollider,
+} from '../editor/editorZoneRender';
+import { loadEditorMapData } from '../editor/mapEditorData';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
@@ -273,6 +282,16 @@ export class OverworldScene extends Phaser.Scene {
   private cachotDoorZone!: Phaser.Geom.Rectangle;
   private colliderBodies: (Phaser.Types.Physics.Arcade.ImageWithStaticBody | Phaser.GameObjects.Zone)[] = [];
 
+  // Whatever the map editor (dev-mode-only, see `core/devMode.ts`) has saved -- loaded here
+  // unconditionally (a saved layout, including a BLOCKED zone's real collision, is part of the map
+  // every player sees/is bound by, not an editor-only artifact) and additive only: none of this
+  // reads or touches `TOWN_BUILDINGS`/the river/NPC waypoints above. The editing UI/input itself
+  // (`mapEditorPanel` below) is the only piece actually gated by DEV_MODE.
+  private editorAssets: EditorAssetRegistry = new Map();
+  private editorZones: EditorZoneRegistry = new Map();
+  private editorZoneColliders: EditorZoneColliderRegistry = new Map();
+  private mapEditorPanel: MapEditorPanel | null = null;
+
   // True-float camera scroll accumulator for the hand-rolled follow in `updateCameraFollow()` --
   // see that method's own doc comment for why this can't just be `camera.startFollow()`.
   private camScrollX = 0;
@@ -297,6 +316,10 @@ export class OverworldScene extends Phaser.Scene {
     this.boyDialogueJustClosed = false;
     this.colliderBodies = [];
     this.firewoodSprites = [];
+    this.editorAssets = new Map();
+    this.editorZones = new Map();
+    this.editorZoneColliders = new Map();
+    this.mapEditorPanel = null;
 
     this.buildTerrain();
     this.buildRiverAndBridge();
@@ -314,6 +337,15 @@ export class OverworldScene extends Phaser.Scene {
     this.buildDecor();
     this.buildGrotto();
     this.buildFirewood();
+    this.loadEditorPlacedAssets();
+    this.loadEditorZones();
+    // The editor's own UI/input is the only DEV_MODE-gated piece here -- the assets/zones it has
+    // already saved were just loaded above unconditionally (see loadEditorPlacedAssets()/
+    // loadEditorZones()'s own doc comments) and stay in effect for every player regardless of this
+    // flag; only the ability to add/move/paint more of them is gated.
+    if (DEV_MODE) {
+      this.mapEditorPanel = new MapEditorPanel(this, this.editorAssets, this.colliderBodies, this.editorZones, this.editorZoneColliders);
+    }
     this.physics.add.collider(this.player, this.colliderBodies);
 
     this.sister = new NpcActor(this, CACHOT_DOOR_X - 30, CACHOT_DOOR_Y + 26, 'sister', 'down', SISTER_SHADOW_SCALE);
@@ -636,6 +668,40 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
+   * Renders whatever the map editor (`editor/MapEditorPanel.ts`, DEV_MODE-only) has saved to
+   * `localStorage` -- called unconditionally, regardless of `DEV_MODE`, since a saved layout is part
+   * of the map every player should see, not an editor-only artifact. Purely additive: this reads
+   * `editor/mapEditorData.ts`'s own storage key and only ever adds new `Image`s into `editorAssets`
+   * (visual only, same as this file's own `buildTownBuildings()` visuals -- collision for anything
+   * the editor places comes entirely from its own painted BLOCKED zones, not from this method).
+   */
+  private loadEditorPlacedAssets(): void {
+    const saved = loadEditorMapData();
+    saved.assets.forEach((data) => {
+      const instance = createEditorAssetInstance(this, data);
+      if (instance) this.editorAssets.set(data.id, instance);
+    });
+  }
+
+  /**
+   * Loads whatever zones the map editor has saved, into `editorZones` -- called unconditionally,
+   * regardless of `DEV_MODE`, same reasoning as `loadEditorPlacedAssets()` above. This one matters
+   * even more to get right: a saved BLOCKED zone's collider is real gameplay collision (the only
+   * thing stopping a player from walking through it), not just a visual, so it must exist whether or
+   * not `MapEditorPanel` itself was ever constructed this session. WALKABLE/WALK_BEHIND zones are
+   * loaded into the registry too (so `MapEditorPanel`, if it exists, has the full saved set to work
+   * with) but get no collider -- see `MapEditorPanel.ts`'s own doc comment on why those two are
+   * editor-visualization-only.
+   */
+  private loadEditorZones(): void {
+    const saved = loadEditorMapData();
+    saved.zones.forEach((zone) => {
+      this.editorZones.set(zone.id, zone);
+      if (zone.type === 'blocked') addEditorZoneCollider(this, zone, this.editorZoneColliders, this.colliderBodies);
+    });
+  }
+
+  /**
    * Replaces `camera.startFollow(this.player, true, 0.12, 0.12)`. That built-in combination has a
    * real bug, traced into Phaser's own `Camera.preRender()` source: every frame it lerps
    * `scrollX`/`scrollY` toward the player, floors the result for crisp pixel-art rendering, then
@@ -694,7 +760,8 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    const uiBlocked = this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
+    const uiBlocked =
+      this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking() || (this.mapEditorPanel?.isOpen() ?? false);
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
     this.player.update(time);

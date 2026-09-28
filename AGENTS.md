@@ -2955,3 +2955,84 @@ the maintainer's own standing "do not create placeholder buildings" instruction 
 completely unplaced (Church, Presbytery, Maison Cénac, all 10 generic houses, and the re-sent
 Grotto/Moulin de Boly/Le Cachot are still using this session's original best-guess crops, not
 whatever the maintainer intended to replace them with).
+
+### A small, developer-only in-game map editor, built on top of the existing map/collision/depth systems
+
+The maintainer asked for a simple RPG-Maker-inspired editor to place real building PNGs and paint
+walkable/walk-behind/blocked zones themselves, without needing a code round-trip every time — MVP
+only (no tilemap painting, autotiling, undo/redo, events, etc.), explicitly gated behind a
+`DEV_MODE` flag they can flip off before publishing, and explicitly required to not rewrite the
+existing map/collision/depth systems. Read `OverworldScene.ts`, `gameplay/utils.ts`
+(`createBlocker`/`depthForY`), the buildings/river asset pipelines, and `ui/Button.ts`/`ui/text.ts`
+before writing anything, per that instruction.
+
+**Architecture: additive-only, never touches the hand-tuned map.** `TOWN_BUILDINGS`, the river/
+bridge band, NPC waypoints — none of that is read or modified. Two new live registries
+(`editorAssets`, `editorZones`) sit alongside `OverworldScene.ts`'s existing `colliderBodies` array
+and are loaded into the running scene from a `localStorage`-backed JSON store
+(`editor/mapEditorData.ts`) *unconditionally on every scene create, regardless of `DEV_MODE`* — a
+saved layout (including a BLOCKED zone's real collision) is part of the map every player is subject
+to, not an editor-only artifact. Only the editing UI/input itself (`editor/MapEditorPanel.ts`, plus
+the "MAP EDITOR" toggle button) is constructed behind `if (DEV_MODE)`; with `DEV_MODE = false`
+(`core/devMode.ts`), no button renders, no panel exists, and nothing about normal play changes.
+Deliberately a *separate* flag from `SaveData`'s own pre-existing `gameDevMode` (a player-facing
+runtime toggle for the Apparition Journey's mission-select) — different purpose and audience, not
+merged with it.
+
+**Asset catalog is real textures only.** `editor/mapAssetCatalog.ts` lists exactly the real PNGs
+already loaded by `BootScene.ts` (Le Cachot, Moulin de Boly, Hospice, the still-unplaced-in-the-real-
+map Grotto, the river segment, the bridge) — no placeholder/generated entries; a new building becomes
+placeable by adding one catalog entry once its real PNG is actually loaded, never by inventing art.
+
+**Walkability: only BLOCKED has a real runtime effect, by design.** Per the feature's own spec
+("these symbols... do not need to appear in the actual game"), WALKABLE and WALK_BEHIND zones are
+editor-visualization aids only — WALK_BEHIND in particular needs no new mechanic at all, since the
+existing per-object Y-sort (`depthForY`, unchanged) already makes the player render behind a
+building based on its own Y position; painting one just shows the developer roughly where that
+boundary is while placing things. Only BLOCKED zones get a real Arcade Physics collider. Painted
+shapes are arbitrary polygons (click to add a vertex, "Finish" to commit) for visual/authoring
+fidelity, but the *collision* for a BLOCKED zone is its axis-aligned bounding box, not the exact
+polygon — Arcade Physics (what every other collider in this game already runs on) has no native
+polygon body, and adding one (e.g. switching to Matter) was well outside this MVP's scope; documented
+in `editor/editorZoneRender.ts` as a known approximation, not hidden.
+
+**A real bug found and fixed in `ui/Button.ts` along the way, not scoped to just the editor.**
+`createButton()`'s label is a DOM element kept independent of its `Container` (an established,
+correct pattern — DOM elements don't follow a Container's transform at all, see the text-crispness
+work earlier in this file) — but the container's `setPosition()` was the *only* mutator this file
+overrode to keep the label in sync. Every call site that does `btn.setScrollFactor(0)` (every one of
+them, to pin a button to the screen) was silently leaving the label at its default `scrollFactor = 1`
+— invisible off-screen the moment the camera scrolls away from world origin, since the label ends up
+rendered in world-space while the container it's supposed to belong to stays screen-pinned. This had
+already been happening unnoticed in `ConfirmDialog.ts` (used inside scrolling gameplay scenes via
+`GameplayTopBar`'s Home confirmation) — nobody had reported it because leaving to Home mid-map,
+specifically after the camera had scrolled away from spawn, is an easy case to never happen to hit.
+Confirmed directly: a button label's `getBoundingClientRect()` was at `(-1227, -2002)`, hundreds of
+world-scroll-pixels off in the corresponding direction. Fixed once, centrally, by mirroring the same
+override pattern for `setScrollFactor()` and `setVisible()` (the latter needed too — the editor's own
+toggle button needs to hide itself while its panel is open) — every existing call site is fixed for
+free, nothing about their own code changed. Also added an optional `fontSize` to `ButtonStyle`
+(defaults to the existing `'14px'` everywhere else) since the editor's own compact rows needed
+smaller labels than any previous use of this shared button.
+
+**A real gap found and fixed during verification, not just at write time.** The first pass created a
+saved BLOCKED zone's collider *inside `MapEditorPanel`'s own constructor* — meaning it only ever
+existed when `DEV_MODE` was on, exactly the class of bug this feature's own "must not affect
+published play" requirement exists to prevent. Caught by testing the actual combination that matters
+(`DEV_MODE = false` plus a zone saved during an earlier `DEV_MODE = true` session, not either alone):
+walking a player straight through a supposedly-blocked area with zero resistance. Fixed by moving
+zone-loading and blocked-zone-collider creation into `OverworldScene.ts#loadEditorZones()` (called
+unconditionally, alongside the pre-existing `loadEditorPlacedAssets()`), refactored into a shared
+`editor/editorZoneRender.ts` so `MapEditorPanel` (still `DEV_MODE`-only) adds/removes from the same
+live registries rather than re-creating what's already there.
+
+Verified live via Playwright, mixing real mouse interaction (open/close, palette-click-to-place,
+click-and-drag to move, real multi-click zone painting followed by an actual player walking into the
+result) with direct method calls where camera-settle timing made synthetic mouse coordinates
+unreliable across steps (confirmed those failures were test-timing artifacts, not product bugs, by
+reproducing the same result identically both ways): placing, dragging, and scaling a building all
+work and persist to `data`; a painted BLOCKED zone produces a real collider that stops the player at
+its exact boundary; Save writes to `localStorage` and triggers a JSON download, and a full page
+reload alone (no editor interaction at all) re-renders whatever was saved; `DEV_MODE = false` leaves
+zero "EDITOR" text anywhere in the DOM and `mapEditorPanel` is never constructed, while a zone saved
+under `DEV_MODE = true` still blocks the player exactly as before.
