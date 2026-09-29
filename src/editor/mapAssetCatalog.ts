@@ -2,6 +2,7 @@ import { BUILDING_KEYS, BUILDING_NATIVE_SIZE } from '../assets/buildings/lourdes
 import { RIVER_KEYS, RIVER_NATIVE_SIZE, BRIDGE_NATIVE_SIZE } from '../assets/terrain/lourdesRiver';
 import { ORANGE_TREE_KEYS, ORANGE_TREE_NATIVE_SIZE } from '../assets/decorations/orangeTrees';
 import { PINE_TREE_KEYS, PINE_TREE_NATIVE_SIZE } from '../assets/decorations/pineTrees';
+import { OAK_TREE_KEYS, OAK_TREE_NATIVE_SIZE } from '../assets/decorations/oakTrees';
 import type { EditorLayerId } from './mapEditorData';
 
 /**
@@ -170,6 +171,27 @@ export const MAP_ASSET_CATALOG: MapAssetDef[] = [
     nativeWidth: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_5].width,
     nativeHeight: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_5].height,
     defaultDisplayHeight: 110,
+    defaultLayer: 'decorations',
+  },
+  // Two oak trees (robles), third and last of the ordered decoration batches -- same manual
+  // -placement-only treatment. Wide, rounded canopies (both supplied images are landscape
+  // orientation) -- a shorter default height than the pines reads more naturally for that shape.
+  {
+    id: 'oak_tree_1',
+    label: 'Oak Tree 1',
+    textureKey: OAK_TREE_KEYS.TREE_1,
+    nativeWidth: OAK_TREE_NATIVE_SIZE[OAK_TREE_KEYS.TREE_1].width,
+    nativeHeight: OAK_TREE_NATIVE_SIZE[OAK_TREE_KEYS.TREE_1].height,
+    defaultDisplayHeight: 100,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'oak_tree_2',
+    label: 'Oak Tree 2',
+    textureKey: OAK_TREE_KEYS.TREE_2,
+    nativeWidth: OAK_TREE_NATIVE_SIZE[OAK_TREE_KEYS.TREE_2].width,
+    nativeHeight: OAK_TREE_NATIVE_SIZE[OAK_TREE_KEYS.TREE_2].height,
+    defaultDisplayHeight: 100,
     defaultLayer: 'decorations',
   },
 ];

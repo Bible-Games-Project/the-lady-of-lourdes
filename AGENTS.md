@@ -3372,3 +3372,25 @@ overflows (page 1 shows Orange 1-4 with no Prev, since offset starts at 0), page
 confirmed page 2 shows Orange 5 + Pine 1-3, page 3 (offset correctly clamped to the last full window,
 not run past the end) shows Pine 2-5 with `Next >` now visibly disabled, and placed Pine Tree 1 from
 mid-pagination to confirm the scroll state doesn't interfere with normal place/select/scale/delete.
+
+### Decorations layer, third and last batch: 2 oak trees — all 12 supplied trees now in the editor
+
+Same treatment as the two batches above: `assets/decorations/oakTrees.ts`, `.webp`→`.png` via a
+straight re-encode cropped to each one's own alpha bounding box (verified pixel-identical to source
+afterward), not added to `BootScene.ts`'s LINEAR list, 2 new `mapAssetCatalog.ts` entries at
+`defaultLayer: 'decorations'`. Both supplied images are wide/landscape (rounded, spreading canopies)
+— given a shorter `defaultDisplayHeight` (100) than the pines (110) since that shape reads more
+naturally shorter-and-wider rather than forced to the same height as a narrow pine.
+
+With all 12 trees now in the one `decorations` layer, this also exercises the palette paging fix
+from the pine-tree round at its actual full size: `VISIBLE_ITEM_ROWS = 4` over 12 entries gives 3
+full pages (`maxOffset = 12 - 4 = 8`). Verified live via Playwright: paged forward three times from
+the top (more clicks than there are pages, to confirm clamping doesn't run past the end) and landed
+on the correct final page (Pine 4, Pine 5, Oak 1, Oak 2) with `Next >` visibly disabled; placed Oak
+Tree 2 directly from that end-of-list page to confirm placement still works correctly regardless of
+scroll position.
+
+All three maintainer-requested batches (5 orange, 5 pine, 2 oak — 12 trees total) are now in the map
+editor's Decorations palette, available for manual placement only, using the existing generic
+asset-instance system (place/select/drag-to-move/scale/delete, Y-sort depth against Bernadette and
+NPCs) with zero special-casing needed per tree.
