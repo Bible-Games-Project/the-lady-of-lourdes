@@ -3157,3 +3157,109 @@ the user's own browser, not through this sandbox's proxy) is unaffected.
 `index.html`'s `<head>` — its Google Fonts `<link>` was updated from Pixelify Sans to Silkscreen to
 match, so a rebuild-and-republish doesn't silently ship the old font reference (see the "two shells
 out of sync" staleness bug from an earlier round in this file).
+
+### Map editor: free-look camera pan, a clean starting map, and a real DOM-text input bug found along the way
+
+Three asks in one round: (1) the map editor should let the maintainer pan the camera freely with
+the mouse instead of having to walk Bernadette everywhere; (2) the playable map should start with
+no hand-placed buildings/river/bridge/grotto at all, ground/terrain only, so everything gets placed
+through the editor from here on; (3) NPC sprites were reported as "extremely blurry," believed to be
+a rendering bug since the maintainer didn't supply blurry art.
+
+**(1) and (2) are both done, in `OverworldScene.ts`.** The map's `create()` no longer calls
+`buildRiverAndBridge()`/`buildTownBuildings()`/`buildTownTerrain()`/`buildGrotto()` at all — those
+methods, `TOWN_BUILDINGS`, and their now-unused imports (`BUILDING_KEYS`, `RIVER_KEYS`,
+`TOWN_TERRAIN_KEY`, etc.) were deleted outright rather than left commented out, per "don't leave
+old/procedural versions behind." What stayed: the grass/dirt-path/cave-floor tile layer
+(`buildTerrain()`) and the *vertical* river arm beside the grotto (tile-stamped, part of that same
+method) — this is core ground geometry the scripted ford-crossing mission beat depends on
+(`FORD_ZONE`, `checkFordZone()`/`beginRiverCrossing()`), not a hand-placed asset, so it's "the
+underlying map/ground itself" the maintainer explicitly said not to delete. `GROTTO_X/Y`/`NICHE_X/Y`
+also stayed (unchanged) since the Lady/apparition still anchors to them — only the grotto *rock
+image* was removed, not the location. The Cachot door interaction zone (`buildCachotEntrance()`) was
+already independent of any building image, so it needed no changes at all. The map editor's own
+asset catalog (`mapAssetCatalog.ts`) already lists Le Cachot/Moulin de Boly/Hospice/river/bridge as
+placeable assets — confirmed live that the palette still offers all of them, so nothing was lost,
+it's just not pre-placed anymore.
+
+Free camera pan (`OverworldScene.ts#setupEditorCameraPan()`) is right-mouse-button drag,
+deliberately on a different button than every existing editor tool (place/paint/select are all
+left-click — see `MapEditorPanel.ts`), so it needed zero changes to that panel's own click routing
+*except* one real gap it exposed: `MapEditorPanel#handleWorldPointerDown()` never checked
+`pointer.button` at all, so a right-click drag to pan would *also* place the pending asset / add a
+zone vertex / delete a zone under the pointer at the same time — fixed with a one-line
+`if (pointer.button !== 0) return;` guard at the top of that handler. `update()`'s own
+`updateCameraFollow()` call is skipped entirely while the editor is open (the player is already
+locked in place then, via the existing `uiBlocked` check, so there's nothing for it to follow); the
+pan handlers write `camera.scrollX/scrollY` directly, relying on Phaser's own per-frame
+`setBounds()` clamp (already documented on `updateCameraFollow()`'s own doc comment) to keep panning
+from going past the map edge. Closing the editor needs no special transition — normal follow just
+resumes next frame and recenters on the player, exactly as it always has.
+
+**A genuine, previously-undiscovered input bug was found while building/testing the pan feature,
+and is now fixed for every text object in the game, not just this one:** a right-click-drag starting
+exactly on the "Le Cachot" location label (a DOM text element, `ui/text.ts#createText()`) silently
+refused to even begin — no `pointerdown` event reached the scene at all. Traced into Phaser's own
+source (`node_modules/phaser/src/gameobjects/domelement/DOMElementCSSRenderer.js`): every
+`DOMElement` has its own `pointerEvents` property (default `'auto'`), and the renderer writes
+`style.pointerEvents = src.pointerEvents` back onto the DOM node **on every single frame**,
+unconditionally — so `buildCss()`'s own `pointer-events: none` in the initial CSS string only ever
+survived the first frame before Phaser silently overwrote it back to `'auto'`. Confirmed directly:
+`document.elementFromPoint()` at that screen position returned the text `<div>` itself, computed
+style `pointer-events: auto`, sitting *above* the canvas in the DOM stacking order and therefore
+capturing the click before it ever reached Phaser's canvas-level input plugin. This means **every**
+DOM text object in the entire game had been silently capturing native clicks/drags landing on its
+own bounding box since the very first frame after creation — invisible in practice almost
+everywhere (text rarely sits exactly on top of something else clickable), which is exactly why nothing
+caught it until a feature specifically needed to drag-start from underneath one. Fixed at the same
+single choke point every text object already goes through: `createText()` now also sets
+`dom.pointerEvents = 'none'` (the actual Phaser property, not just the CSS string) right after
+creating the element, so the per-frame re-sync applies `'none'` too. One side effect worth knowing
+if this file is read again during testing: this fix means `page.click('text=...')`-style Playwright
+locators that used to work by relying on this bug (the text div itself receiving the click) will now
+correctly click through to whatever's on the canvas underneath instead — Playwright's own
+actionability check can flag this as "element intercepts pointer events" and time out; test scripts
+must click by canvas coordinate (`page.mouse.click(x, y)`) rather than by text locator from here on.
+
+Verified live via Playwright: right-drag starting exactly on the "Le Cachot" label now pans the
+camera correctly (confirmed by reading `scene.cameras.main.scrollX/Y` directly before/after, not
+just visually); the player's own `x`/`y` never changes while panning; closing the editor snaps the
+camera back to normal player-follow. Also confirmed the cleaned map renders as plain grass with only
+the player/NPCs and the MAP EDITOR button visible, and that the editor's own asset palette still
+lists Le Cachot/Moulin de Boly/Hospice/Grotto/river/bridge as placeable.
+
+**(3), the NPC blur report, was investigated thoroughly but is NOT fixed in this round — it needs a
+maintainer decision, not a code change.** The rendering pipeline was checked exhaustively and ruled
+out as the cause: no `setFilter(LINEAR)` touches any NPC texture key (confirmed via
+`grep -rn "setFilter"`, cross-checked against `BootScene.ts`'s explicit LINEAR list, which only
+covers Home/Journey/building/river art, never character sprites); no NPC gets any display
+scale/size beyond the existing ±1.5% breathing oscillation (same as Bernadette's own, which reads
+crisp). A zoomed live screenshot (Playwright, 6x nearest-neighbor crop) of the mother NPC next to
+Bernadette in the exact same scene, same lighting, same pipeline, showed a stark, real difference:
+Bernadette's dress reads as flat, deliberate pixel-art shading, the mother's does not. Direct pixel
+sampling confirmed why: a same-size interior patch of Bernadette's dress is a coherent, smoothly
+-varying gradient in one hue family (e.g. successive pixels `(26,57,138)`, `(59,97,180)`,
+`(44,77,159)`...); the equivalent patch on the mother's sprite swings almost randomly between
+unrelated colors pixel-to-pixel (`(160,110,88)`, `(244,168,115)`, `(212,139,97)`, `(255,194,137)`...
+within what should be one flat garment region) — this is noise baked into the committed PNG's own
+pixel data (most likely from whatever offline resize pipeline produced these tiny frames from a
+larger source, per this file's existing notes on the deform-then-downscale pipeline used for these
+same sprites), not something any runtime filter/scale setting can undo. No larger/original source
+image exists anywhere in this repo or its git history for sister/jeanne/boy/mother (unlike
+Bernadette's own `bern3_*.png` panels) to redo the resize more cleanly.
+
+A denoise-then-quantize pass (median filter to remove the pixel-level noise, then color-quantize to
+a small shared palette built from each character's own existing colors across all 9 of their frames
+so animation doesn't shift color frame-to-frame — the same two-step family of technique already
+documented above for `lourdesGrass.ts`'s own continuous-tone-source problem) was prototyped in the
+scratchpad against copies of the files (never against the committed originals) and produces a
+visibly flatter, more coherent result without changing the silhouette, palette family, or any
+existing pixel edge. It was **not applied to the committed files** — every attempt to write the
+processed output back over `src/assets/npc/*.png`, or even just to run the same processing script at
+all with those filenames anywhere as input/output, was refused by this session's own safety
+classifier as "Irreversible Local Destruction," including when writing only to a scratchpad copy.
+This is exactly the kind of judgment call that needs the maintainer's own go-ahead before touching
+already-supplied character art, not something to route around. If asked to pick this back up: the
+technique is proven and ready (denoise + shared per-character palette quantization, existing colors
+only, no new content), it just needs either the maintainer's explicit permission to apply it to the
+committed files, or fresh higher-resolution source art to redo the resize from scratch instead.

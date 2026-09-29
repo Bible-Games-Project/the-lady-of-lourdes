@@ -178,5 +178,18 @@ export function createText(
   const content = Array.isArray(text) ? text.join('\n') : text;
   const dom = scene.add.dom(x, y).createElement('div', buildCss(style), content);
   dom.setOrigin(0, 0);
+  // `buildCss()`'s own `pointer-events: none` only survives the *first* frame -- Phaser's
+  // `DOMElement` has its own `pointerEvents` property (default `'auto'`) that its per-frame CSS
+  // renderer (`DOMElementCSSRenderer.js`: `style.pointerEvents = src.pointerEvents`)
+  // unconditionally writes back over whatever the element's own inline `style` attribute said,
+  // every single frame after creation. Left at the default, every text object in the game was
+  // silently capturing native clicks/drags on its own bounding box from the second frame onward —
+  // invisible in practice almost everywhere, since text rarely sits exactly on top of something
+  // else clickable, but confirmed as the real cause of an editor free-camera-pan drag silently
+  // refusing to start whenever it began on a text label (e.g. the "Le Cachot" location label,
+  // which happens to sit right where the player spawns). Setting the property itself (not just the
+  // CSS string) makes every frame's re-sync apply 'none' too, closing this for every text object at
+  // the one shared choke point, not just the ones that happened to get reported.
+  dom.pointerEvents = 'none';
   return dom;
 }

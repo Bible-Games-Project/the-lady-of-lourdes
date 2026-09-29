@@ -454,6 +454,11 @@ export class MapEditorPanel {
 
   private handleWorldPointerDown(pointer: Phaser.Input.Pointer): void {
     if (!this.open) return;
+    // The right mouse button drives free-camera panning instead (see
+    // `OverworldScene.ts#setupEditorCameraPan()`) -- without this guard, a right-click/drag to pan
+    // would *also* place the pending asset, add a zone vertex, or delete a zone under the pointer,
+    // since this handler (like every other tool click below) previously fired for any button.
+    if (pointer.button !== 0) return;
     if (this.isPointerOverPanel(pointer)) return;
 
     if (this.tool === 'place' && this.pendingAssetId) {

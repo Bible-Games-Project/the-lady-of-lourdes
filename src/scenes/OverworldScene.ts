@@ -4,13 +4,10 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
-import { TOWN_TERRAIN_KEY, TOWN_TERRAIN_NATIVE_WIDTH, TOWN_TERRAIN_NATIVE_HEIGHT } from '../assets/terrain/lourdesTownTerrain';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
 import { PROP_KEYS } from '../pixelart/props';
-import { BUILDING_KEYS, BUILDING_NATIVE_SIZE } from '../assets/buildings/lourdesBuildings';
-import { RIVER_KEYS, RIVER_NATIVE_SIZE, BRIDGE_NATIVE_SIZE } from '../assets/terrain/lourdesRiver';
 import { Player } from '../gameplay/Player';
 import { NpcActor } from '../gameplay/NpcActor';
 import { TouchControls } from '../gameplay/TouchControls';
@@ -45,19 +42,20 @@ import { loadEditorMapData } from '../editor/mapEditorData';
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
 // northern edge (crossable only via the bridge), and the town sits south of that.
 //
-// **The single large painted town PNG has been removed entirely** (per an explicit "I do NOT want
-// to use the single large town/city PNG anymore" ask — a full reversal of that earlier approach,
-// not a patch on top of it). The area south of the river is now plain open grass — the same grass
-// layer built in `buildTerrain()` below, completely untouched — with no buildings, no fountain, and
-// no colliders placed in it. Individual building PNGs (each with a filename that is the sole source
-// of truth for what it is and where it goes — never guessed from the artwork) will be added here
-// one at a time in a future pass; until then this whole band is intentionally empty.
+// **The map starts with only base ground/terrain -- no hand-placed buildings, river, bridge, or
+// grotto PNGs.** All of those (the single large town PNG, then later the individual building PNGs,
+// the real river+bridge art, and the grotto rock) were tried and then explicitly removed at the
+// maintainer's request so the in-game map editor (DEV_MODE-only, see `core/devMode.ts`) is the one
+// place everything gets placed from now on. The area south of the river is plain open grass — the
+// same grass layer built in `buildTerrain()` below — with no buildings and no colliders placed in
+// it; the vertical river arm beside the grotto (tile-stamped, part of `buildTerrain()`) stays, since
+// it's core map/ground geometry the scripted ford-crossing mission beat depends on, not a
+// hand-placed asset.
 //
-// **The north cluster (path, river, grotto, ford) keeps the eastward shift (OFFSET_X_TILES) left
-// over from when it was aligned under the removed town PNG's own painted path opening.** That
-// cluster — and every coordinate below that adds OFFSET_X_TILES/OFFSET_X — is explicitly out of
-// scope for this cleanup (the river/Massabielle/grotto system must stay untouched), so the offset
-// stays exactly as-is rather than being re-tuned for a town layout that doesn't exist yet.
+// **The north cluster's eastward shift (OFFSET_X_TILES) is unrelated to any of the above removals**
+// and is explicitly out of scope here (the river/Massabielle/grotto *position* system must stay
+// untouched) — every coordinate below that adds OFFSET_X_TILES/OFFSET_X keeps this offset exactly
+// as-is.
 const OFFSET_X_TILES = 45;
 const OFFSET_X = OFFSET_X_TILES * TILE_SIZE;
 
@@ -98,91 +96,12 @@ const FIREWOOD_SPOTS = [
 const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
 const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
-// Le Cachot's connection point to `CachotScene` — kept exactly where it was when it was still a
-// placeholder (no derived building art existed yet), rather than moved to wherever the real
-// exterior's own painted door happens to sit. The real `LE_CACHOT_EXTERIOR` art (see
-// `buildTownBuildings()` below) is now anchored so its own door lines up with this existing zone
-// instead, so the enter/exit plumbing (`buildCachotEntrance()` below, `CachotScene.ts`'s
-// `fromCachot` exit) needed no changes at all.
+// Le Cachot's connection point to `CachotScene` — independent of whatever building art (if any)
+// the map editor currently has placed over it, so the enter/exit plumbing
+// (`buildCachotEntrance()` below, `CachotScene.ts`'s `fromCachot` exit) never needs to change no
+// matter what's visually standing here.
 const CACHOT_DOOR_X = PATH_CENTER * TILE_SIZE;
 const CACHOT_DOOR_Y = (RIVER_H_BOTTOM + 10) * TILE_SIZE;
-
-// Individual building placements in the town area — see `buildTownBuildings()`'s own doc comment
-// for the footprint-collider convention every entry here follows, and `assets/buildings/
-// lourdesBuildings.ts` for which reference-map location each key is inferred to be. Positions are
-// spaced around CACHOT_DOOR_X/Y with clear gaps from each other and from the existing NPC
-// wander/waypoint zones (BOY_WANDER_BOUNDS, JEANNE_SPAWN/JEANNE_WAYPOINTS below), and deliberately
-// don't fill the whole town-terrain patch — plenty of open ground is left for the further building
-// batches the maintainer has said are still coming.
-interface TownBuildingSpec {
-  key: string;
-  x: number;
-  y: number;
-  displayWidth: number;
-  displayHeight: number;
-  /** Footprint collider, as fractions of the *display* size, centered on the building's own
-   * horizontal center and sitting just above its bottom edge (see `buildTownBuildings()`). */
-  footprintWidthFrac: number;
-  footprintHeightFrac: number;
-}
-
-const LE_CACHOT_DISPLAY_H = 76;
-const LE_CACHOT_DISPLAY_W = (LE_CACHOT_DISPLAY_H * BUILDING_NATIVE_SIZE[BUILDING_KEYS.LE_CACHOT_EXTERIOR].width) / BUILDING_NATIVE_SIZE[BUILDING_KEYS.LE_CACHOT_EXTERIOR].height;
-
-const MOULIN_DISPLAY_H = 132;
-const MOULIN_DISPLAY_W = (MOULIN_DISPLAY_H * BUILDING_NATIVE_SIZE[BUILDING_KEYS.MOULIN_DE_BOLY].width) / BUILDING_NATIVE_SIZE[BUILDING_KEYS.MOULIN_DE_BOLY].height;
-
-const HOSPICE_DISPLAY_H = 104;
-const HOSPICE_DISPLAY_W = (HOSPICE_DISPLAY_H * BUILDING_NATIVE_SIZE[BUILDING_KEYS.HOSPICE].width) / BUILDING_NATIVE_SIZE[BUILDING_KEYS.HOSPICE].height;
-
-const TOWN_BUILDINGS: TownBuildingSpec[] = [
-  // Anchored so the art's own door sits at the pre-existing CACHOT_DOOR_X/Y interaction zone.
-  {
-    key: BUILDING_KEYS.LE_CACHOT_EXTERIOR,
-    x: CACHOT_DOOR_X,
-    y: CACHOT_DOOR_Y + 22,
-    displayWidth: LE_CACHOT_DISPLAY_W,
-    displayHeight: LE_CACHOT_DISPLAY_H,
-    footprintWidthFrac: 0.7,
-    footprintHeightFrac: 0.16,
-  },
-  // West of Le Cachot, clear of BOY_WANDER_BOUNDS (CACHOT_DOOR_X-140..-40).
-  {
-    key: BUILDING_KEYS.MOULIN_DE_BOLY,
-    x: CACHOT_DOOR_X - 230,
-    y: CACHOT_DOOR_Y - 30,
-    displayWidth: MOULIN_DISPLAY_W,
-    displayHeight: MOULIN_DISPLAY_H,
-    footprintWidthFrac: 0.38,
-    footprintHeightFrac: 0.12,
-  },
-  // East of Le Cachot, clear of JEANNE_SPAWN (CACHOT_DOOR_X+80).
-  {
-    key: BUILDING_KEYS.HOSPICE,
-    x: CACHOT_DOOR_X + 240,
-    y: CACHOT_DOOR_Y - 10,
-    displayWidth: HOSPICE_DISPLAY_W,
-    displayHeight: HOSPICE_DISPLAY_H,
-    footprintWidthFrac: 0.68,
-    footprintHeightFrac: 0.14,
-  },
-];
-
-// The new intermediate terrain layer (`assets/terrain/lourdesTownTerrain.ts`) — sits between the
-// grass (base layer, untouched) and the individual building PNGs still to come, per the
-// maintainer's explicit "grass -> new terrain -> buildings" layer order. Displayed at a "slight"
-// enlargement (1.2x native) so the patch has real surface for most future buildings to stand on,
-// still a uniform scale (never stretched). Horizontally centered on CACHOT_DOOR_X/PATH_CENTER —
-// the same anchor every other town landmark in this file already uses (Jeanne's spawn, the boy's
-// wander bounds), so the terrain sits under where the town's own activity is, not off to one side.
-// Its own top edge is kept a clear gap below the river's southern bank (row RIVER_H_BOTTOM+1) so it
-// never visually touches, let alone covers, the river — "the river must remain visually above this
-// lower-town terrain area."
-const TOWN_TERRAIN_SCALE = 1.2;
-const TOWN_TERRAIN_DISPLAY_W = TOWN_TERRAIN_NATIVE_WIDTH * TOWN_TERRAIN_SCALE;
-const TOWN_TERRAIN_DISPLAY_H = TOWN_TERRAIN_NATIVE_HEIGHT * TOWN_TERRAIN_SCALE;
-const TOWN_TERRAIN_X0 = CACHOT_DOOR_X - TOWN_TERRAIN_DISPLAY_W / 2;
-const TOWN_TERRAIN_Y0 = (RIVER_H_BOTTOM + 3) * TILE_SIZE;
 
 // Jeanne starts on the open grass near Le Cachot's placeholder entrance, waits for Bernadette to
 // meet her there, then leads her north up to the bridge and across to the ford, where she naturally
@@ -285,8 +204,8 @@ export class OverworldScene extends Phaser.Scene {
   // Whatever the map editor (dev-mode-only, see `core/devMode.ts`) has saved -- loaded here
   // unconditionally (a saved layout, including a BLOCKED zone's real collision, is part of the map
   // every player sees/is bound by, not an editor-only artifact) and additive only: none of this
-  // reads or touches `TOWN_BUILDINGS`/the river/NPC waypoints above. The editing UI/input itself
-  // (`mapEditorPanel` below) is the only piece actually gated by DEV_MODE.
+  // reads or touches the river/NPC waypoints above. The editing UI/input itself (`mapEditorPanel`
+  // below) is the only piece actually gated by DEV_MODE.
   private editorAssets: EditorAssetRegistry = new Map();
   private editorZones: EditorZoneRegistry = new Map();
   private editorZoneColliders: EditorZoneColliderRegistry = new Map();
@@ -296,6 +215,11 @@ export class OverworldScene extends Phaser.Scene {
   // see that method's own doc comment for why this can't just be `camera.startFollow()`.
   private camScrollX = 0;
   private camScrollY = 0;
+
+  // Free-look camera panning, map-editor-only (see `setupEditorCameraPan()`) -- right-mouse-button
+  // drag, tracked as the pointer position and camera scroll at drag-start so pan math is a plain
+  // delta regardless of how long the drag has been going. `null` whenever no such drag is active.
+  private editorPanStart: { pointerX: number; pointerY: number; scrollX: number; scrollY: number } | null = null;
 
   private phase: Phase = 'explore';
 
@@ -320,9 +244,9 @@ export class OverworldScene extends Phaser.Scene {
     this.editorZones = new Map();
     this.editorZoneColliders = new Map();
     this.mapEditorPanel = null;
+    this.editorPanStart = null;
 
     this.buildTerrain();
-    this.buildRiverAndBridge();
 
     this.touch = new TouchControls(this);
 
@@ -331,11 +255,13 @@ export class OverworldScene extends Phaser.Scene {
     const startY = data.fromCachot ? CACHOT_DOOR_Y - 24 : CACHOT_DOOR_Y + 30;
     this.player = new Player(this, CACHOT_DOOR_X, startY, this.touch);
 
-    this.buildTownTerrain();
-    this.buildTownBuildings();
+    // Every previously hand-placed building/river/bridge/grotto PNG has been removed on purpose
+    // (see git history around this comment) -- the map now starts as clean ground/terrain only, so
+    // the map editor (DEV_MODE-only, below) is the sole way anything gets placed on it from here.
+    // The door interaction zone (buildCachotEntrance()) and the mission-critical ford river tiles
+    // (buildTerrain()) are unrelated to those removed PNGs and stay untouched.
     this.buildCachotEntrance();
     this.buildDecor();
-    this.buildGrotto();
     this.buildFirewood();
     this.loadEditorPlacedAssets();
     this.loadEditorZones();
@@ -424,6 +350,8 @@ export class OverworldScene extends Phaser.Scene {
 
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
+
+    this.setupEditorCameraPan();
   }
 
   private tileToPixelCenter(col: number, row: number): { x: number; y: number } {
@@ -506,12 +434,11 @@ export class OverworldScene extends Phaser.Scene {
       for (let c = RIVER_V_START; c <= RIVER_V_END; c++) data[r][c] = TILE.WATER;
     }
 
-    // The horizontal arm (the river's bend forming the town's northern edge) is no longer
-    // tile-stamped here at all -- its real PNG art (`assets/terrain/lourdesRiver.ts`) is drawn as a
-    // separate layer in `buildRiverAndBridge()` below, over the real grass layer this leaves showing
-    // through (every cell here defaults to `-1`/empty, per this method's own header comment). The
-    // vertical arm above (the scripted ford crossing) is untouched real tile art, unrelated to this
-    // swap.
+    // The horizontal arm (the river's bend forming the town's northern edge) is not tile-stamped
+    // here at all -- it has no PNG river/bridge art placed either (removed, see this file's header
+    // comment), so this band is plain grass showing through (every cell here defaults to
+    // `-1`/empty, per this method's own header comment) until the map editor places something. The
+    // vertical arm above (the scripted ford crossing) is untouched real tile art, unrelated.
 
     // No tile-stamped path south of the bridge: that whole band is now plain open grass (the town
     // PNG that used to occupy it has been removed entirely — see this file's header comment), with
@@ -531,50 +458,9 @@ export class OverworldScene extends Phaser.Scene {
       createBlocker(this, vRiverX, vRiverHeight / 2, (RIVER_V_END - RIVER_V_START + 1) * TILE_SIZE, vRiverHeight),
     );
 
-    // The horizontal arm's own collision is built in `buildRiverAndBridge()` below, alongside its
-    // real PNG art, rather than here alongside the (now-removed) tile stamps.
-  }
-
-  /**
-   * Real PNG river + bridge art (`assets/terrain/lourdesRiver.ts`), replacing the old tile-stamped
-   * horizontal river arm at the *exact* same footprint (`RIVER_BAND_Y`/`RIVER_BAND_HEIGHT` below
-   * reuse the old band's own top/bottom edges, `960`-`1056`, unchanged) — deliberately not resized,
-   * so every existing spatial relationship that assumes this band's position (the town-terrain
-   * patch's clear gap below it, Jeanne's waypoints just south of it) still holds exactly as before.
-   * The river is a `TileSprite` (not a single stretched `Image`): the supplied PNG is ~2000px wide
-   * natively and this map is 2560px wide, so a single copy scaled to fill the whole width would
-   * either distort its proportions or (kept proportional) blow past the band height into the
-   * buildings south of it -- tiling at a uniform scale keeps the art undistorted and the collision
-   * band's height exactly as before, at the cost of a visible repeat seam every ~500px (the source
-   * art is one continuous winding piece, not authored as a seamless tile -- flagged to the
-   * maintainer as a known limitation, not hidden). The bridge is a single `Image` (no tiling needed,
-   * it's one crossing) sized so its height matches the same band, which happens to land its width
-   * (~52px) almost exactly on the old bridge's own tile-stamped width (48px) -- the walkable gap in
-   * the collision below is barely changed from before.
-   */
-  private buildRiverAndBridge(): void {
-    const RIVER_BAND_Y = ((RIVER_H_TOP + RIVER_H_BOTTOM + 1) / 2) * TILE_SIZE;
-    const RIVER_BAND_HEIGHT = (RIVER_H_BOTTOM - RIVER_H_TOP + 3) * TILE_SIZE;
-
-    const riverTileScale = RIVER_BAND_HEIGHT / RIVER_NATIVE_SIZE.height;
-    const river = this.add.tileSprite(MAP_W / 2, RIVER_BAND_Y, MAP_W, RIVER_BAND_HEIGHT, RIVER_KEYS.RIVER);
-    river.setTileScale(riverTileScale, riverTileScale);
-    river.setDepth(DEPTH.GROUND + 1);
-
-    const bridgeDisplayHeight = RIVER_BAND_HEIGHT;
-    const bridgeDisplayWidth = (bridgeDisplayHeight * BRIDGE_NATIVE_SIZE.width) / BRIDGE_NATIVE_SIZE.height;
-    const bridgeX = PATH_CENTER * TILE_SIZE;
-    const bridge = this.add.image(bridgeX, RIVER_BAND_Y, RIVER_KEYS.BRIDGE);
-    bridge.setDisplaySize(bridgeDisplayWidth, bridgeDisplayHeight);
-    bridge.setDepth(DEPTH.GROUND + 2);
-
-    // Only crossable through the bridge gap, same as the tile-stamped version this replaces.
-    const bridgeLeft = bridgeX - bridgeDisplayWidth / 2;
-    const bridgeRight = bridgeX + bridgeDisplayWidth / 2;
-    this.colliderBodies.push(createBlocker(this, bridgeLeft / 2, RIVER_BAND_Y, bridgeLeft, RIVER_BAND_HEIGHT));
-    this.colliderBodies.push(
-      createBlocker(this, (bridgeRight + MAP_W) / 2, RIVER_BAND_Y, MAP_W - bridgeRight, RIVER_BAND_HEIGHT),
-    );
+    // The horizontal arm no longer has its own PNG river/bridge art or collision here -- both were
+    // removed on purpose (see the comment in `create()` above the remaining build*() calls) so the
+    // town's northern edge is plain open grass until the map editor places a river/bridge again.
   }
 
   private addStaticProp(key: string, x: number, y: number, width: number, height: number, colliderHeight?: number): void {
@@ -588,27 +474,11 @@ export class OverworldScene extends Phaser.Scene {
 
   /**
    * Placeholder Le Cachot entrance: no image, no collider — just the interaction zone (and its
-   * label) that keeps the enter/exit connection to `CachotScene.ts` working while no exterior
-   * building art has been supplied yet (see `CACHOT_DOOR_X/Y`'s own doc comment above). Once the
-   * real Le Cachot PNG is identified by filename, this should be replaced with a real per-building
-   * placement (image + footprint collider + depth anchor, one collider per solid part, matching
-   * whatever new buildings get built alongside it) rather than extended in place.
+   * label) that keeps the enter/exit connection to `CachotScene.ts` working regardless of whatever
+   * exterior building art the map editor does or doesn't currently have placed over it (see
+   * `CACHOT_DOOR_X/Y`'s own doc comment above) -- this zone is deliberately independent of any
+   * visual building asset.
    */
-  /**
-   * The new intermediate terrain layer, sat directly on top of the grass (`buildTerrain()`,
-   * `DEPTH.GROUND - 1`) and below everything else in the town area (the tile layer itself,
-   * `DEPTH.GROUND`, has nothing stamped south of the river — see `buildTerrain()`'s own comment —
-   * so there's no real ordering conflict there; matches the old town-PNG ground layer's own
-   * convention of sitting at `DEPTH.GROUND - 0.5`). Purely decorative ground art — no collider:
-   * buildings placed on top of it (once supplied) get their own footprint colliders the same way
-   * every other building in this game already does, not this layer.
-   */
-  private buildTownTerrain(): void {
-    const image = this.add.image(TOWN_TERRAIN_X0, TOWN_TERRAIN_Y0, TOWN_TERRAIN_KEY).setOrigin(0, 0);
-    image.setDisplaySize(TOWN_TERRAIN_DISPLAY_W, TOWN_TERRAIN_DISPLAY_H);
-    image.setDepth(DEPTH.GROUND - 0.5);
-  }
-
   private buildCachotEntrance(): void {
     const halfWidth = 24;
     this.cachotDoorZone = new Phaser.Geom.Rectangle(CACHOT_DOOR_X - halfWidth, CACHOT_DOOR_Y - 20, halfWidth * 2, 40);
@@ -617,46 +487,11 @@ export class OverworldScene extends Phaser.Scene {
       .setDepth(DEPTH.OVERLAY_LOW);
   }
 
-  /**
-   * Places each supplied building PNG from `TOWN_BUILDINGS` (see that array's own doc comment for
-   * placement/spacing rationale). Each building is: (1) a visible `Image`, bottom-center anchored
-   * (`setOrigin(0.5, 1)`) so `x,y` is the building's own ground-contact point, Y-sort depth via
-   * `depthForY()` so the player renders in front when below it and behind when above it -- same
-   * convention as every other prop in this file (`addStaticProp`, `buildGrotto`); (2) a SEPARATE
-   * invisible static-physics `Zone` (`createBlocker`) sized to a fraction of the display box and
-   * centered on the building's own footprint (near its base, not the whole tall sprite) -- this is
-   * the "don't use one giant rectangular collider" requirement: the collider only covers the
-   * solid/base part, so the player can still walk visually behind the upper/roof portion of the art
-   * while being blocked by the base, and depth/occlusion (the Image + its Y-sort) stays entirely
-   * decoupled from collision (the Zone).
-   */
-  private buildTownBuildings(): void {
-    TOWN_BUILDINGS.forEach((spec) => {
-      const image = this.add.image(spec.x, spec.y, spec.key).setOrigin(0.5, 1);
-      image.setDisplaySize(spec.displayWidth, spec.displayHeight);
-      image.setDepth(depthForY(spec.y, DEPTH.ACTORS));
-
-      const footprintWidth = spec.displayWidth * spec.footprintWidthFrac;
-      const footprintHeight = spec.displayHeight * spec.footprintHeightFrac;
-      const footprintCenterY = spec.y - footprintHeight / 2;
-      this.colliderBodies.push(createBlocker(this, spec.x, footprintCenterY, footprintWidth, footprintHeight));
-    });
-  }
-
   private buildDecor(): void {
     DECOR.forEach(({ key, col, row }) => {
       const px = this.tileToPixelCenter(col, row);
       this.addStaticProp(key, px.x, px.y, TILE_SIZE, TILE_SIZE * 1.5);
     });
-  }
-
-  private buildGrotto(): void {
-    const image = this.add.image(GROTTO_X, GROTTO_Y, PROP_KEYS.GROTTO).setOrigin(0, 0);
-    image.setDepth(depthForY(GROTTO_Y + 64, DEPTH.ACTORS));
-    const body = this.physics.add.staticImage(GROTTO_X + 48, GROTTO_Y + 40, PROP_KEYS.GROTTO);
-    body.setVisible(false);
-    body.body.setSize(90, 50);
-    this.colliderBodies.push(body);
   }
 
   private buildFirewood(): void {
@@ -672,8 +507,8 @@ export class OverworldScene extends Phaser.Scene {
    * `localStorage` -- called unconditionally, regardless of `DEV_MODE`, since a saved layout is part
    * of the map every player should see, not an editor-only artifact. Purely additive: this reads
    * `editor/mapEditorData.ts`'s own storage key and only ever adds new `Image`s into `editorAssets`
-   * (visual only, same as this file's own `buildTownBuildings()` visuals -- collision for anything
-   * the editor places comes entirely from its own painted BLOCKED zones, not from this method).
+   * (visual only -- collision for anything the editor places comes entirely from its own painted
+   * BLOCKED zones, not from this method).
    */
   private loadEditorPlacedAssets(): void {
     const saved = loadEditorMapData();
@@ -759,13 +594,69 @@ export class OverworldScene extends Phaser.Scene {
     cam.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
   }
 
+  /**
+   * Free-look camera panning for the map editor only (`MapEditorPanel`, DEV_MODE-only) — lets the
+   * maintainer inspect/edit any part of the map without walking Bernadette there first. Right
+   * -mouse-button drag, deliberately: every existing editor interaction (placing an asset, painting
+   * a walkable/walk-behind/blocked zone, selecting/dragging a placed instance — see
+   * `MapEditorPanel.ts`) is left-click-based, so panning on the *other* button can never conflict
+   * with any of that click routing, and needs no changes to the panel itself. Wired up unconditionally
+   * here (not gated on DEV_MODE at the listener level) since `this.mapEditorPanel` is always `null`
+   * outside DEV_MODE, making every handler below a no-op automatically — the actual gate is
+   * `mapEditorPanel.isOpen()`, checked on every event.
+   *
+   * `update()`'s own `updateCameraFollow()` call is skipped whenever the editor is open (see below)
+   * so this manual scroll isn't fought/overwritten every frame by the player-follow lerp — the
+   * player is already locked in place while the editor is open (`uiBlocked`), so there is no
+   * "current" player position this pan would need to catch up to anyway. Closing the editor simply
+   * resumes normal follow next frame, which re-centers on the player exactly as it always has — no
+   * special-cased transition needed, since normal gameplay camera behavior is otherwise completely
+   * unaffected by any of this.
+   */
+  private setupEditorCameraPan(): void {
+    this.input.mouse?.disableContextMenu();
+
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!this.mapEditorPanel?.isOpen() || !pointer.rightButtonDown()) return;
+      this.editorPanStart = {
+        pointerX: pointer.x,
+        pointerY: pointer.y,
+        scrollX: this.cameras.main.scrollX,
+        scrollY: this.cameras.main.scrollY,
+      };
+    });
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!this.editorPanStart) return;
+      if (!this.mapEditorPanel?.isOpen() || !pointer.rightButtonDown()) {
+        this.editorPanStart = null;
+        return;
+      }
+      const dx = pointer.x - this.editorPanStart.pointerX;
+      const dy = pointer.y - this.editorPanStart.pointerY;
+      // Phaser's own `Camera#preRender()` clamps this to `setBounds()` every frame regardless of
+      // how scroll got set (see `updateCameraFollow()`'s own doc comment above) -- panning past the
+      // map edge is automatically clamped back, no manual bounds math needed here.
+      this.cameras.main.scrollX = this.editorPanStart.scrollX - dx;
+      this.cameras.main.scrollY = this.editorPanStart.scrollY - dy;
+    });
+
+    this.input.on('pointerup', () => {
+      this.editorPanStart = null;
+    });
+  }
+
   update(time: number, delta: number): void {
     const uiBlocked =
       this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking() || (this.mapEditorPanel?.isOpen() ?? false);
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
     this.player.update(time);
-    this.updateCameraFollow();
+    // Free-look editor panning (see `setupEditorCameraPan()`) owns the camera while the editor is
+    // open -- the normal player-follow lerp would otherwise fight it every frame.
+    if (!this.mapEditorPanel?.isOpen()) {
+      this.updateCameraFollow();
+    }
 
     // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it
     // kept easing the sister toward the (now-locked) player position and re-setting her facing
