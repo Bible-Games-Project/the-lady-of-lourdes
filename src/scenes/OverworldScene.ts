@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import { TILE, TILESET_KEY } from '../pixelart/tiles';
 import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
@@ -74,10 +73,6 @@ const RIVER_V_END = 42 + OFFSET_X_TILES;
 // Horizontal arm, the town's river boundary. Only passable through the bridge at the path.
 const RIVER_H_TOP = 61;
 const RIVER_H_BOTTOM = 64;
-
-const FIELD_PATH_START_ROW = 18;
-const CAVE_FLOOR_COL_START = 7 + OFFSET_X_TILES;
-const CAVE_FLOOR_COL_END = 13 + OFFSET_X_TILES;
 
 // Kept well clear of the map edges so the screen-pinned HUD never covers it.
 const GROTTO_X = 256 + OFFSET_X;
@@ -358,22 +353,31 @@ export class OverworldScene extends Phaser.Scene {
     return { x: col * TILE_SIZE, y: row * TILE_SIZE };
   }
 
+  /**
+   * The whole map is ONE continuous ground layer: the maintainer's own real grass artwork (see
+   * assets/terrain/lourdesGrass.ts), tiled edge-to-edge, and nothing else -- no dirt path, no cave
+   * floor, no water/riverbank tiles. All of that (the organic dirt trail, the grotto's cave-floor
+   * patch, the vertical river arm's WATER/RIVERBANK tiles) was explicitly removed at the
+   * maintainer's request: "the desired starting map should be extremely simple: one continuous
+   * grass/ground layer covering the entire map, nothing else" -- everything else gets placed by
+   * hand through the map editor from here on, the same as the buildings/horizontal-river/bridge
+   * /grotto PNGs removed in an earlier pass (see this file's own header comment).
+   *
+   * The scripted river-crossing mission beat (`FORD_ZONE`, `checkFordZone()`/
+   * `beginRiverCrossing()`) still depends on the vertical arm being physically impassable except
+   * via that cutscene -- that is gameplay/mission logic, not terrain art, and the maintainer was
+   * explicit that gameplay/mission logic must stay untouched. So the invisible blocking collider
+   * over that same rectangle stays exactly where it was; only its visible WATER/RIVERBANK tile
+   * graphics are gone. The area now just looks like grass, the same as everywhere else, until the
+   * maintainer places a river there again through the editor.
+   */
   private buildTerrain(): void {
     // The map (416x928) is narrower than the camera's logical viewport (480 wide) at zoom 1, so
     // this color shows as a thin strip past the map's left/right edges whenever the camera is
-    // horizontally centered or further — sampled as the new grass texture's own average color
-    // (was '#8fae6b', matching the old olive-green procedural grass) so that strip blends in
-    // instead of reading as a visible seam next to the new artwork.
+    // horizontally centered or further — sampled as the grass texture's own average color so that
+    // strip blends in instead of reading as a visible seam next to the artwork.
     this.cameras.main.setBackgroundColor('#38737b');
 
-    // The maintainer's own real grass artwork (see assets/terrain/lourdesGrass.ts) is its own
-    // Tilemap layer covering the whole map, laid down *underneath* the tilemap layer built below
-    // (a real Tilemap, not a TileSprite — see that file's comment for why TileSprite renders this
-    // visibly soft in WebGL mode regardless of texture filtering). Every cell in the layer built
-    // below defaults to `-1` (Phaser's "empty" tile — renders nothing, lets this show through)
-    // unless explicitly overwritten with a path/water/stone/cave tile further down, which is how
-    // grass now differs from every other terrain type: it's a base layer of its own, not a tile
-    // placed per-cell like `TILE.GRASS_A`/`GRASS_B` used to be.
     const grassCols = Math.ceil(MAP_W / LOURDES_GRASS_TILE_SIZE);
     const grassRows = Math.ceil(MAP_H / LOURDES_GRASS_TILE_SIZE);
     const grassData: number[][] = Array.from({ length: grassRows }, () => Array.from({ length: grassCols }, () => 0));
@@ -393,74 +397,14 @@ export class OverworldScene extends Phaser.Scene {
     const grassLayer = grassMap.createLayer(0, grassTileset, 0, 0)!;
     grassLayer.setDepth(DEPTH.GROUND - 1);
 
-    const data: number[][] = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => -1));
-
-    // Organic dirt trail instead of a fixed-width rectangular strip of path tiles -- "I don't like
-    // the current square path design... more natural, organic ground/path appearance." A per-row
-    // half-width that wanders between 1-3 tiles (a deterministic wave, not true randomness, same
-    // "no noise" convention `pixelart/tiles.ts`'s own SPECKLE table already uses for texture) gives
-    // the trail an uneven, worn-footpath edge; `edgeIsWorn()` then randomly (again, deterministically)
-    // thins individual tiles right at that wandering edge so it never reads as a clean rectangle at
-    // any width. Still the same `TILE.DIRT_PATH`/`TILE.STONE_PATH` textures -- no new art -- just
-    // applied with an irregular footprint instead of a straight-sided band.
-    const organicHalfWidthAt = (along: number): number => {
-      const wave = Math.sin(along * 0.31) + Math.sin(along * 0.12 + 1.6) * 0.6;
-      return wave > 0.5 ? 3 : wave > -0.4 ? 2 : 1;
-    };
-    const edgeIsWorn = (a: number, b: number): boolean => (a * 7 + b * 13) % 5 === 0;
-    const stampOrganicPathRows = (rowStart: number, rowEnd: number, center: number, tile: number): void => {
-      for (let r = rowStart; r <= rowEnd; r++) {
-        const halfWidth = organicHalfWidthAt(r);
-        for (let c = center - halfWidth; c <= center + halfWidth; c++) {
-          if (c < 0 || c >= COLS) continue;
-          const atEdge = c === center - halfWidth || c === center + halfWidth;
-          if (atEdge && edgeIsWorn(r, c)) continue;
-          data[r][c] = tile;
-        }
-      }
-    };
-
-    stampOrganicPathRows(FIELD_PATH_START_ROW, RIVER_H_TOP - 2, PATH_CENTER, TILE.DIRT_PATH);
-
-    const grottoRow = GROTTO_Y / TILE_SIZE;
-    for (let r = grottoRow - 1; r <= grottoRow + 3; r++) {
-      for (let c = CAVE_FLOOR_COL_START; c <= CAVE_FLOOR_COL_END; c++) data[r][c] = TILE.CAVE_FLOOR;
-    }
-
-    // Vertical arm, beside the grotto — spans the whole field down to where it joins the bend.
-    for (let r = 0; r < RIVER_H_BOTTOM + 2; r++) {
-      data[r][RIVER_V_START - 1] = TILE.RIVERBANK;
-      data[r][RIVER_V_END + 1] = TILE.RIVERBANK;
-      for (let c = RIVER_V_START; c <= RIVER_V_END; c++) data[r][c] = TILE.WATER;
-    }
-
-    // The horizontal arm (the river's bend forming the town's northern edge) is not tile-stamped
-    // here at all -- it has no PNG river/bridge art placed either (removed, see this file's header
-    // comment), so this band is plain grass showing through (every cell here defaults to
-    // `-1`/empty, per this method's own header comment) until the map editor places something. The
-    // vertical arm above (the scripted ford crossing) is untouched real tile art, unrelated.
-
-    // No tile-stamped path south of the bridge: that whole band is now plain open grass (the town
-    // PNG that used to occupy it has been removed entirely — see this file's header comment), with
-    // no path art to place until individual building PNGs (and whatever paths their own layout
-    // calls for) are added there. The organic dirt trail above is still used for the open field
-    // north of the river, which is untouched.
-
-    const map = this.make.tilemap({ data, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE });
-    const tileset = map.addTilesetImage('tiles', TILESET_KEY, TILE_SIZE, TILE_SIZE, 0, 0)!;
-    const layer = map.createLayer(0, tileset, 0, 0)!;
-    layer.setDepth(DEPTH.GROUND);
-
-    // The vertical arm is never crossable on foot — only the scripted ford cutscene crosses it.
+    // The vertical arm beside the grotto is never crossable on foot -- only the scripted ford
+    // cutscene crosses it (see this method's own doc comment above for why the collider stays even
+    // though the water tiles that used to mark it visually are gone).
     const vRiverX = ((RIVER_V_START + RIVER_V_END + 1) / 2) * TILE_SIZE;
     const vRiverHeight = (RIVER_H_BOTTOM + 2) * TILE_SIZE;
     this.colliderBodies.push(
       createBlocker(this, vRiverX, vRiverHeight / 2, (RIVER_V_END - RIVER_V_START + 1) * TILE_SIZE, vRiverHeight),
     );
-
-    // The horizontal arm no longer has its own PNG river/bridge art or collision here -- both were
-    // removed on purpose (see the comment in `create()` above the remaining build*() calls) so the
-    // town's northern edge is plain open grass until the map editor places a river/bridge again.
   }
 
   private addStaticProp(key: string, x: number, y: number, width: number, height: number, colliderHeight?: number): void {

@@ -3263,3 +3263,35 @@ already-supplied character art, not something to route around. If asked to pick 
 technique is proven and ready (denoise + shared per-character palette quantization, existing colors
 only, no new content), it just needs either the maintainer's explicit permission to apply it to the
 committed files, or fresh higher-resolution source art to redo the resize from scratch instead.
+
+### Map ground: the last remaining non-grass terrain (organic dirt path, grotto cave floor, vertical-river water tiles) removed from `buildTerrain()`
+
+A follow-up to the map-editor cleanup round above: the maintainer reported still seeing "strange
+terrain at the top" and a leftover vertical river after the buildings/horizontal-river/grotto PNGs
+were removed — that earlier round only removed the *PNG* assets and deliberately kept the
+tile-stamped organic dirt path, the grotto's cave-floor patch, and the vertical river's
+WATER/RIVERBANK tiles, reasoning they were "ground/terrain" rather than "placed assets." The
+maintainer's explicit follow-up ask overrides that judgment call: "the desired starting map should
+be extremely simple: one continuous grass/ground layer covering the entire map, nothing else."
+
+`OverworldScene.ts#buildTerrain()` no longer builds a second tile-stamped layer at all — no organic
+dirt path (`stampOrganicPathRows()`, `FIELD_PATH_START_ROW`), no cave-floor patch
+(`CAVE_FLOOR_COL_START/END`), no vertical-arm WATER/RIVERBANK tiles. Only the grass `Tilemap` layer
+remains. The `TILE`/`TILESET_KEY` import (from `pixelart/tiles.ts`) is now entirely unused here and
+was removed.
+
+**The one thing that deliberately did NOT change: the vertical river arm's invisible blocking
+collider.** The scripted river-crossing mission beat (`FORD_ZONE`, `checkFordZone()`/
+`beginRiverCrossing()` — the sister and Jeanne wading across, the hush sequence, the apparition)
+depends on that rectangle staying physically impassable except via the cutscene. That's gameplay
+/mission logic, which the maintainer separately and explicitly said must stay untouched ("do not
+change... movement, apparition logic"), not terrain art — so `createBlocker()` over the same
+`RIVER_V_START`/`RIVER_V_END`/`RIVER_H_BOTTOM` rectangle stays exactly where it was, just with no
+visible water tiles marking it anymore. The player simply can't walk through that stretch of grass
+until the maintainer places a river there again via the map editor, or until the mission's own
+scripted crossing happens.
+
+Verified live via Playwright: opened the map editor and swept the camera (`cameras.main.scrollX/Y`
+set directly) across a 9-point grid spanning the whole 2560x2688 map, plus targeted checks of the
+exact former dirt-path/cave-floor/vertical-river coordinates specifically — every single screenshot
+showed uniform grass, no dirt, no stone, no water, anywhere.
