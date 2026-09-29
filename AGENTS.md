@@ -3089,3 +3089,71 @@ not something this round touched or introduced). On the Apparitions screen, meda
 dates, and lock icons were all confirmed legible at realistic zoom levels, and a raw pixel sample of
 a locked medallion's rendered output confirmed the face tint change actually took effect on screen,
 not just in the source.
+
+### Home/Apparitions text, take two: the thinned stroke from the round above was itself rejected — replaced with a real pixel webfont and zero stroke, plus a medallion-face bug the stroke had been silently masking
+
+The maintainer rejected the *previous* round's fix (thinned `-webkit-text-stroke`) on sight, not on
+readability: "the current outline/stroke around the text makes it look childish and cartoon-like...
+do not solve readability by adding an outline around the text. Improve readability through the font,
+fill color, spacing and contrast instead." So this round removes `stroke`/`strokeThickness` entirely
+from every affected call site (Home's title + both buttons; Apparitions' header title, medallion
+numbers, and dates) and solves legibility with `ui/text.ts`'s new `fontFamily`/`letterSpacing`
+support instead — `CrispTextStyle`/`ButtonStyle` both gained a `fontFamily?: string` passed straight
+into `buildCss()`'s `font-family`, and `createText()` gained `letterSpacing`.
+
+**Font choice went through two candidates, decided by live rendering, not by name/preview alone.**
+Google Fonts "Pixelify Sans" was tried first (reachable, valid, weights 400/600/700) — it looked
+fine at the Home title's larger size, but at the small sizes used for apparition numbers/dates
+(9-12px) its rounded, bubbly terminals were genuinely hard to read as digits: a live screenshot
+showed `5` rendering close enough to `8`/`S` to misread the date "18 February 1858" at a glance.
+That's a legibility failure, not just an aesthetic one, on text the maintainer explicitly required
+stay "clearly readable." Switched to Google Fonts "Silkscreen" instead — built on a strict square
+pixel grid with no rounding, so digits stay unambiguous at small sizes, and the letterforms read as
+"refined indie pixel-art UI" rather than the rounded/playful look that prompted "childish and
+cartoon-like" in the first place. `FONT_PIXEL` in `ui/text.ts` now points at Silkscreen; the
+`<link>` in `index.html` (and its duplicate in the scratchpad Artifact-packaging script's hardcoded
+shell — see below) was updated to match. If a future font swap is ever considered here, judge it
+from an actual live screenshot of the *small* text (numbers/dates), not just the title — the title
+alone would not have caught the digit-legibility problem.
+
+**Removing the stroke exposed a real, independent bug in the medallion icon itself, not just a
+color choice:** `journeyIcons.ts#medallion()`'s cream "face" was only a thin ~4-row band across the
+middle of the 22px disc — the rest of the circle was the dark `ink` rim/base. The old stroke had
+been silently doing double duty as a rim around the *number text itself*, which is what let a fill
+color survive crossing between the disc's dark and light regions without disappearing. Once the
+stroke was gone, whichever flat fill was chosen for the number vanished against whichever half of
+the medallion it landed on — confirmed by zooming into an actual rendered screenshot at 6x: a
+dark-ink number was invisible against the disc's dark rim, and (before the icon fix) a cream number
+had no reliable light field to sit on either, its shape blending into the medallion's own baked-in
+cream band. The fix is to the icon, not the text: `medallion()`'s `H` (cream) fill now covers nearly
+the entire disc (the same boundary `rows` used for the outer `F` ink fill, inset 1px), leaving only
+a thin ink rim — a consistent light field for the number to sit on in one flat `ink` (dark) fill,
+no outline needed. This is a small, targeted pixel-art asset change (this file's icons are already
+established as freely recolorable/redesignable — see the Journey/Map visuals note above — since they
+belong only to this screen), not a layout/background/functionality change.
+
+**Final per-element choices**, all flat fill + `FONT_PIXEL`, no stroke:
+- Home title: `HOME_PALETTE.glowGold`, 22px, bold, `0.5px` letter-spacing — gold reads clearly across
+  this background's mixed light sky / dark grotto-stone regions, where a single near-white or
+  near-black fill would wash out against one half.
+- Home buttons (Play / More Games): `HOME_PALETTE.gearHighlight` (near-white).
+- Apparitions header title: `JOURNEY_PALETTE.glowGold`, matching Home.
+- Apparitions medallion numbers: `JOURNEY_PALETTE.ink` (dark), sitting on the now-enlarged cream face.
+- Apparitions dates: `JOURNEY_PALETTE.cream`, sitting on the map artwork itself (not the medallion).
+
+Verified live via Playwright with the real Silkscreen webfont actually loaded (not just the
+`ui-monospace`/`Courier New` fallback — confirmed via `document.fonts` reporting `Silkscreen loaded`
+in-page) at three sizes: 960×540 desktop, 568×320 small landscape, and the existing 375×667 portrait
+case from the round above. Title, buttons, medallion numbers 1-8, dates, and lock badges all read
+crisply with no stroke at every size; zoomed pixel crops of the medallions specifically confirmed
+the digits are now solid and unambiguous. One sandbox-only caveat, not a product issue: this
+environment's outbound proxy CA isn't trusted by the Playwright-launched Chromium for the
+`fonts.googleapis.com`/`fonts.gstatic.com` requests, so a plain test run silently falls back to the
+CSS stack's monospace fallback — verification requires launching Chromium with
+`--ignore-certificate-errors` to actually exercise the real font. The deployed Artifact (opened in
+the user's own browser, not through this sandbox's proxy) is unaffected.
+
+`build_artifact.py` (the scratchpad Artifact-packaging script) keeps its own hardcoded copy of
+`index.html`'s `<head>` — its Google Fonts `<link>` was updated from Pixelify Sans to Silkscreen to
+match, so a rebuild-and-republish doesn't silently ship the old font reference (see the "two shells
+out of sync" staleness bug from an earlier round in this file).

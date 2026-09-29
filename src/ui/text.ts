@@ -36,6 +36,24 @@ export const TEXT_RESOLUTION = 4;
 
 export const FONT_SERIF = 'Georgia, "Iowan Old Style", "Palatino Linotype", serif';
 
+/**
+ * A real pixel-art webfont (Google Fonts "Silkscreen", loaded via <link> in `index.html`), used
+ * where the design calls for a "slightly pixelated, but crisp and legible" letterform instead of a
+ * thick painted-on stroke -- see the AGENTS.md entry on the Home/Apparitions typography refinement
+ * for why: a `-webkit-text-stroke` heavy enough to read as "pixel-art chunky" also reads as a
+ * cartoon outline and swallows the fill at small sizes, whereas a font whose *glyph shapes* are
+ * already blocky achieves the same visual language through the letterforms themselves, so
+ * readability can be solved with fill color/contrast alone instead of a stroke.
+ *
+ * Google Fonts "Pixelify Sans" was tried first and rejected after live testing: its rounded,
+ * bubbly terminals read too close to the "cartoon/children's game" look the maintainer explicitly
+ * ruled out, and its numerals in particular were hard to tell apart at the ~9-12px sizes used for
+ * apparition numbers/dates (a "5" was easy to misread as an "8" or "S"). Silkscreen is built from
+ * a strict square pixel grid with no rounding, so it stays legible at small sizes and reads as
+ * "refined indie pixel-art UI" rather than playful/cartoonish.
+ */
+export const FONT_PIXEL = "'Silkscreen', ui-monospace, 'Courier New', monospace";
+
 export const INK = {
   dark: '#3a3226',
   muted: '#8a7a5a',
@@ -56,6 +74,7 @@ export function textStyle(overrides: Phaser.Types.GameObjects.Text.TextStyle = {
 
 export interface CrispTextStyle {
   fontSize?: string;
+  fontFamily?: string;
   color?: string;
   fontStyle?: 'bold' | 'normal';
   stroke?: string;
@@ -65,6 +84,7 @@ export interface CrispTextStyle {
   backgroundColor?: string;
   padding?: { x?: number; y?: number };
   align?: 'left' | 'center' | 'right';
+  letterSpacing?: string;
 }
 
 /**
@@ -81,7 +101,7 @@ function buildCss(style: CrispTextStyle): string {
   const fontSize = style.fontSize ?? '14px';
   const bold = style.fontStyle === 'bold';
   const lines: string[] = [
-    `font-family: ${FONT_SERIF}`,
+    `font-family: ${style.fontFamily ?? FONT_SERIF}`,
     `font-size: ${fontSize}`,
     `font-weight: ${bold ? '700' : '400'}`,
     `color: ${style.color ?? INK.dark}`,
@@ -132,6 +152,10 @@ function buildCss(style: CrispTextStyle): string {
     const px = style.padding.x ?? 0;
     const py = style.padding.y ?? 0;
     lines.push(`padding: ${py}px ${px}px`);
+  }
+
+  if (style.letterSpacing) {
+    lines.push(`letter-spacing: ${style.letterSpacing}`);
   }
 
   return lines.join('; ');

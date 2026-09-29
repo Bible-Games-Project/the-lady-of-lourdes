@@ -15,6 +15,16 @@ export const JOURNEY_ICON_KEYS = {
  * ApparitionJourneyScene.ts). Colored from the map's own cream/gold palette (journeyPalette.ts)
  * with a dark ink rim so it reads clearly as a waypoint marker against the busy illustration
  * behind it, rather than the muddy wood tone the shared gameplay palette used before.
+ *
+ * The cream `H` face used to be only a thin 4-row band across the middle of the disc (the rest of
+ * the circle was the dark `F` ink), leaving the apparition-number text with nowhere consistent to
+ * sit: the digit is taller than that band, so it always spilled onto the dark rim above/below —
+ * confirmed by a zoomed pixel check of the live render, where a number in either light or dark
+ * fill partly vanished against whichever half of the medallion it crossed. Since the maintainer
+ * ruled out solving text legibility with a stroke around the *number* itself, the fix has to be
+ * the medallion's own face: `H` now fills almost the entire disc (insetting the same boundary
+ * `rows` used for `F` by 1px), leaving just a thin ink rim, so the whole disc is a single
+ * consistent light field the number can sit on in one flat color.
  */
 function medallion() {
   const size = 22;
@@ -34,7 +44,19 @@ function medallion() {
   fillRect(grid, 2, 8, 19, 13, 'F');
   rows.forEach(([y, x0, x1]) => fillRect(grid, x0, y, x1, y, 'F'));
 
-  fillRect(grid, 4, 9, 17, 12, 'H');
+  const innerRows: Array<[number, number, number]> = [
+    [4, 6, 15],
+    [5, 5, 16],
+    [6, 4, 17],
+    [7, 3, 18],
+    [14, 3, 18],
+    [15, 4, 17],
+    [16, 5, 16],
+    [17, 6, 15],
+  ];
+  fillRect(grid, 3, 8, 18, 13, 'H');
+  innerRows.forEach(([y, x0, x1]) => fillRect(grid, x0, y, x1, y, 'H'));
+
   const shade: Array<[number, number]> = [
     [4, 9], [5, 8], [6, 7], [7, 6], [8, 5], [9, 4], [10, 4], [11, 4],
   ];

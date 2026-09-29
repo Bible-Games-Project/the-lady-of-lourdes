@@ -13,6 +13,8 @@ export interface ButtonStyle {
   textStroke?: { color: string; thickness: number };
   /** Label font size. Defaults to '14px', matching every existing call site's own buttons. */
   fontSize?: string;
+  /** Label font family. Defaults to `ui/text.ts`'s own `FONT_SERIF` fallback. */
+  fontFamily?: string;
 }
 
 /**
@@ -77,6 +79,7 @@ export function createButton(
   // one-time absolute-position computation the way `DialogueBox.ts`'s static panel is.
   const text = createText(scene, x + localX, y + localY, label, {
     fontSize: style.fontSize ?? '14px',
+    fontFamily: style.fontFamily,
     color: style.textColor ?? '#3a3226',
     fontStyle: 'bold',
     ...strokeProps,

@@ -11,7 +11,7 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
-import { createText } from '../ui/text';
+import { createText, FONT_PIXEL } from '../ui/text';
 import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
@@ -119,13 +119,13 @@ export class HomeScene extends Phaser.Scene {
     const buttonStyle = {
       textureKey: UI_KEYS.HOME_BUTTON,
       border: UI_HOME_BUTTON_SLICE.border,
-      textColor: HOME_PALETTE.cream,
+      // No stroke (see `buildTitle()`'s doc comment for why) — the pixel font's own letterforms
+      // plus this near-white fill against the button panel's own dark-stone texture give enough
+      // contrast without one.
+      textColor: HOME_PALETTE.gearHighlight,
+      fontFamily: FONT_PIXEL,
       hoverTint: 0xfff8e8,
       panelAlpha: 0.34,
-      // Was `3` on this button's 14px label — same over-thick-stroke problem as the title above
-      // (see that method's own doc comment): a `-webkit-text-stroke` that heavy overwhelms the
-      // cream fill on a font this small, reading as near-black. `1.3` is a crisp, thin outline.
-      textStroke: { color: HOME_PALETTE.ink, thickness: 1.3 },
     };
 
     // Anchored by its own left/bottom *edge* (not its center) — see `ui/Button.ts`'s `origin`
@@ -464,30 +464,30 @@ export class HomeScene extends Phaser.Scene {
   }
 
   /**
-   * Cream fill, hard-edge pixel shadow, gold rule, with a thin all-around dark outline so it
-   * holds up regardless of what's behind it (a single offset shadow alone only helps where the
-   * shadow itself lands on something lighter — over a busy photo like this some letterforms would
-   * otherwise have too little contrast).
+   * Second take on this title (see AGENTS.md): the first fix kept a thinned `-webkit-text-stroke`
+   * plus a duplicated shadow-copy layer, which read as fixed-but-still-outlined — the maintainer
+   * explicitly rejected any stroke/shadow/glow treatment on the letters themselves as "childish and
+   * cartoon-like" and asked for readability to come from the font, fill color, and spacing alone.
    *
-   * `strokeThickness` here was `4` — on a 20px font that's a full fifth of the glyph height, and
-   * `-webkit-text-stroke` (how `createText()` actually draws this, see `ui/text.ts`) is a vector
-   * stroke centered *on* the glyph outline, not an inset — at that thickness it swallows most of
-   * a serif letterform's own (much thinner) strokes, leaving barely any of the cream fill visible
-   * and reading as "almost completely black" exactly as reported. `1.5` keeps a crisp, deliberate
-   * pixel-art outline that reads as a clean edge rather than a smear, while leaving the cream fill
-   * clearly dominant — this is the actual fix; nothing else about the title changed.
+   * So: one text layer, no stroke, no shadow duplicate. `FONT_PIXEL` (Google Fonts "Silkscreen",
+   * loaded in `index.html` — see `ui/text.ts`'s own doc comment for why this font specifically)
+   * gives the letterforms their own crisp blocky pixel-art character directly, rather than needing
+   * a heavy outline to look "pixel-art"; a saturated gold fill
+   * (`glowGold`) reads clearly as a title against this backdrop's mixed light/dark artwork — gold's
+   * hue and saturation carry it across both the pale sky and the darker grotto stone, where a flat
+   * near-white or near-black fill would wash out against one half or the other. Letter-spacing
+   * opens the pixel-font glyphs up slightly so they stay legible at this small size instead of
+   * mushing together.
    */
   private buildTitle(): void {
     const style = {
-      fontSize: '20px',
-      color: HOME_PALETTE.cream,
+      fontSize: '22px',
+      fontFamily: FONT_PIXEL,
+      color: HOME_PALETTE.glowGold,
       fontStyle: 'bold' as const,
-      stroke: HOME_PALETTE.ink,
-      strokeThickness: 1.5,
+      letterSpacing: '0.5px',
     };
-    const shadowStyle = { fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' as const };
 
-    createText(this, GAME_WIDTH / 2 + 2, 28, 'Our Lady of Lourdes', shadowStyle).setOrigin(0.5).setDepth(6);
     createText(this, GAME_WIDTH / 2, 26, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
 
     const ruleY = 40;

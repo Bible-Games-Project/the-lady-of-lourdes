@@ -9,7 +9,7 @@ import { JOURNEY_PALETTE } from '../pixelart/journeyPalette';
 import { JOURNEY_MAP_KEY, JOURNEY_MAP_SIZE } from '../assets/journey/journeyMap';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { Toast } from '../gameplay/Toast';
-import { createText } from '../ui/text';
+import { createText, FONT_PIXEL } from '../ui/text';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange, type SafeAreaInsets } from '../core/safeArea';
 
@@ -290,27 +290,31 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         this.tweens.add({ targets: ring, scale: 1.18, alpha: 0.4, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
 
-      // `strokeThickness` on both of these was `3`/`2` (25%/22% of their own font size) -- same
-      // over-thick `-webkit-text-stroke` problem as `HomeScene.ts`'s title (see that method's own
-      // doc comment): it swallowed the cream fill almost entirely, reading as near-black numbers
-      // and dates. `1.5`/`1` keep a crisp, thin pixel-art outline without crushing the fill.
+      // No stroke (see AGENTS.md / HomeScene.ts#buildTitle()'s doc comment for why the maintainer
+      // rejected the outlined look). `journeyIcons.ts#medallion()` was reworked alongside this so
+      // its cream face fills nearly the whole disc (previously just a thin middle band, too narrow
+      // for the number to sit on without spilling onto the dark rim) -- with a consistent light
+      // field under it, a dark ink fill reads cleanly without needing an outline.
       const numberText = createText(this, x, y, String(mission.index), {
         fontSize: '12px',
-        color: JOURNEY_PALETTE.cream,
+        fontFamily: FONT_PIXEL,
+        color: JOURNEY_PALETTE.ink,
         fontStyle: 'bold',
-        stroke: JOURNEY_PALETTE.ink,
-        strokeThickness: 1.5,
       })
         .setOrigin(0.5)
         .setDepth(DEPTH.ACTORS + 1);
 
       if (mission.dateKey) {
         const dateSide = x < GAME_WIDTH / 2 ? 1 : -1;
+        // Dates sit beside the medallion, over the map artwork itself rather than a light medallion
+        // face -- `cream` stays the fill (matching the route line/title) since the map's own tones
+        // here run darker/mid than light, and the pixel font's bold weight carries the contrast that
+        // used to come from the stroke.
         createText(this, x + dateSide * 20, y, Localization.t(mission.dateKey), {
           fontSize: '9px',
+          fontFamily: FONT_PIXEL,
           color: JOURNEY_PALETTE.cream,
-          stroke: JOURNEY_PALETTE.ink,
-          strokeThickness: 1,
+          fontStyle: 'bold',
         })
           .setOrigin(dateSide > 0 ? 0 : 1, 0.5)
           .setDepth(DEPTH.ACTORS);
@@ -327,13 +331,14 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
    * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
-    // strokeThickness was `3` -- same over-thick-stroke fix as the number/date text above.
+    // No stroke -- see the number/date text above for why. Gold fill matches Home's own title
+    // treatment; verified live (see AGENTS.md) that it stays legible against the map artwork
+    // scrolling underneath this screen-pinned header at every scroll position.
     this.title = createText(this, 0, 0, Localization.t(K.JOURNEY_TITLE), {
       fontSize: '16px',
-      color: JOURNEY_PALETTE.cream,
+      fontFamily: FONT_PIXEL,
+      color: JOURNEY_PALETTE.glowGold,
       fontStyle: 'bold',
-      stroke: JOURNEY_PALETTE.ink,
-      strokeThickness: 1.5,
     });
     this.title.setOrigin(0.5);
     this.title.setScrollFactor(0);
