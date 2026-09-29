@@ -270,8 +270,13 @@ export class ApparitionJourneyScene extends Phaser.Scene {
 
       let badge: Phaser.GameObjects.Image | null = null;
       if (state === 'locked') {
+        // `lockedStone`/alpha were both tuned brighter/less transparent than before (see
+        // journeyPalette.ts's own doc comment on `lockedStone`) -- `setTint()` is multiplicative,
+        // so the medallion's own cream face was being dragged down toward the tint color on every
+        // channel; the previous darker grey crushed it toward near-black, reading as "far too
+        // black" circles for every locked apparition, which is most of them by default.
         medallion.setTint(hex(JOURNEY_PALETTE.lockedStone));
-        medallion.setAlpha(0.7);
+        medallion.setAlpha(0.88);
         badge = this.add.image(x + 7, y - 7, JOURNEY_ICON_KEYS.LOCK).setDepth(DEPTH.ACTORS + 1).setScale(0.85);
       } else if (state === 'completed') {
         medallion.setTint(hex(JOURNEY_PALETTE.glowGold));
@@ -285,12 +290,16 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         this.tweens.add({ targets: ring, scale: 1.18, alpha: 0.4, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
 
+      // `strokeThickness` on both of these was `3`/`2` (25%/22% of their own font size) -- same
+      // over-thick `-webkit-text-stroke` problem as `HomeScene.ts`'s title (see that method's own
+      // doc comment): it swallowed the cream fill almost entirely, reading as near-black numbers
+      // and dates. `1.5`/`1` keep a crisp, thin pixel-art outline without crushing the fill.
       const numberText = createText(this, x, y, String(mission.index), {
         fontSize: '12px',
         color: JOURNEY_PALETTE.cream,
         fontStyle: 'bold',
         stroke: JOURNEY_PALETTE.ink,
-        strokeThickness: 3,
+        strokeThickness: 1.5,
       })
         .setOrigin(0.5)
         .setDepth(DEPTH.ACTORS + 1);
@@ -301,7 +310,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
           fontSize: '9px',
           color: JOURNEY_PALETTE.cream,
           stroke: JOURNEY_PALETTE.ink,
-          strokeThickness: 2,
+          strokeThickness: 1,
         })
           .setOrigin(dateSide > 0 ? 0 : 1, 0.5)
           .setDepth(DEPTH.ACTORS);
@@ -318,12 +327,13 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
    * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
+    // strokeThickness was `3` -- same over-thick-stroke fix as the number/date text above.
     this.title = createText(this, 0, 0, Localization.t(K.JOURNEY_TITLE), {
       fontSize: '16px',
       color: JOURNEY_PALETTE.cream,
       fontStyle: 'bold',
       stroke: JOURNEY_PALETTE.ink,
-      strokeThickness: 3,
+      strokeThickness: 1.5,
     });
     this.title.setOrigin(0.5);
     this.title.setScrollFactor(0);

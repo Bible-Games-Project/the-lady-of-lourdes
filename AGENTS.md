@@ -3036,3 +3036,56 @@ its exact boundary; Save writes to `localStorage` and triggers a JSON download, 
 reload alone (no editor interaction at all) re-renders whatever was saved; `DEV_MODE = false` leaves
 zero "EDITOR" text anywhere in the DOM and `mapEditorPanel` is never constructed, while a zone saved
 under `DEV_MODE = true` still blocks the player exactly as before.
+
+### Home and Apparitions text/icons reported "almost completely black": the root cause was an over-thick text stroke, plus a lock icon with no light color in it at all
+
+Reported specifically on Home (the title, "immediately recognizable as the game title," was instead
+near-unreadable) and the Apparitions screen (numbers inside the medallions, dates, and lock icons
+all "far too black and overly pixelated"). Every one of these already went through `ui/text.ts`'s
+DOM-based `createText()` (the crisp-text architecture from earlier in this file) — this was never a
+rendering-crispness regression, so the fix is entirely about color/stroke values, not the text
+pipeline itself.
+
+**Root cause, confirmed rather than assumed:** `createText()`'s `stroke`/`strokeThickness` maps
+straight to CSS `-webkit-text-stroke`, a *vector* stroke centered on the glyph's own outline, not
+an inset — every affected call site was using a stroke `20-25%` of its own font size (Home's title:
+`4px` stroke on a `20px` font; Apparitions' numbers: `3px` on `12px`; dates: `2px` on `9px`). At
+that ratio the stroke swallows most of a normal letterform's own (much thinner) strokes, leaving
+almost none of the intended light `cream` fill visible — which reads exactly as "almost completely
+black" text, independent of whatever color the fill was actually set to. Fixed by thinning every
+affected stroke to roughly `7-13%` of its own font size (`1.5px`/`1.3px`/`1px` respectively,
+scaled to each font's own size) — a crisp, deliberate pixel-art outline that no longer competes
+with the fill. No color, font, size, or layout was touched; this is a pure stroke-weight fix,
+confirmed by reading `ui/text.ts`'s `buildCss()` before touching anything (not guessed at).
+
+**The lock icon (`pixelart/journeyIcons.ts#lockIcon()`) had a second, independent bug:** both its
+shackle and body were filled in `ink` (near-black) with *no light color anywhere in the icon at
+all* — at its native 10×12px size (displayed at 0.85 scale), a shape with zero internal contrast
+reads as a dark smudge, not a recognizable padlock, especially sitting on the already-tinted-dark
+locked medallion behind it. Recolored to a light "metal" body/shackle (`pathStone`, the same warm
+tan already used elsewhere in this palette) with the keyhole as the one dark accent — the right way
+around: a small dark detail reads clearly against a light fill, where a wholesale dark shape does
+not.
+
+**The locked-medallion tint (`journeyPalette.ts`'s `lockedStone`) compounded both of the above.**
+`setTint()` is multiplicative — it can only darken a texture's own baked-in colors, never lighten
+them — so tinting the medallion's cream face with the old `#8a8078` (a mid-dark grey) dragged the
+face down toward muddy-dark on every channel, on top of the medallion's own already-near-black ink
+rim getting darkened further still by the same tint. Most apparitions are locked by default, so
+this alone made most of the "circles" in the screenshot look flatly near-black regardless of what
+was drawn on top. Brightened to `#c4bcae` (confirmed by sampling actual rendered pixels, not just
+reasoning about the multiply math: the tinted face went from illegible near-black to a clearly
+visible warm tan) and nudged `setAlpha(0.7)` to `0.88` so less of whatever busy/dark background art
+shows through underneath. Still visibly duller than a plain unlocked node — "locked" still reads as
+locked — just no longer crushed to black.
+
+Verified live via Playwright at both a normal desktop size and a deliberately narrow/short phone
+viewport (375×667 portrait and 960×320 short-landscape, exercising both scale modes these two
+scenes use — Home's full-bleed `ENVELOP` cover-crop and the Journey screen's own scroll/safe-area
+layout): the Home title and both buttons read crisply at every size tested (the one pre-existing,
+unrelated issue visible on the most extreme narrow viewport — Play/More Games labels sitting close
+together — is the already-documented, accepted trade-off in `HomeScene.ts`'s own safe-area comment,
+not something this round touched or introduced). On the Apparitions screen, medallion numbers,
+dates, and lock icons were all confirmed legible at realistic zoom levels, and a raw pixel sample of
+a locked medallion's rendered output confirmed the face tint change actually took effect on screen,
+not just in the source.

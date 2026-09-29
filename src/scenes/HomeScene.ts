@@ -122,7 +122,10 @@ export class HomeScene extends Phaser.Scene {
       textColor: HOME_PALETTE.cream,
       hoverTint: 0xfff8e8,
       panelAlpha: 0.34,
-      textStroke: { color: HOME_PALETTE.ink, thickness: 3 },
+      // Was `3` on this button's 14px label — same over-thick-stroke problem as the title above
+      // (see that method's own doc comment): a `-webkit-text-stroke` that heavy overwhelms the
+      // cream fill on a font this small, reading as near-black. `1.3` is a crisp, thin outline.
+      textStroke: { color: HOME_PALETTE.ink, thickness: 1.3 },
     };
 
     // Anchored by its own left/bottom *edge* (not its center) — see `ui/Button.ts`'s `origin`
@@ -461,11 +464,18 @@ export class HomeScene extends Phaser.Scene {
   }
 
   /**
-   * Same design as before — cream fill, hard-edge pixel shadow, gold rule — but with a full
-   * dark outline added around the fill this time. A single offset shadow only helps where the
-   * shadow itself lands on something lighter; over a busy photo (bright sky at the top here)
-   * that leaves some of the letterforms with too little contrast. An all-around stroke holds up
-   * regardless of what's behind it.
+   * Cream fill, hard-edge pixel shadow, gold rule, with a thin all-around dark outline so it
+   * holds up regardless of what's behind it (a single offset shadow alone only helps where the
+   * shadow itself lands on something lighter — over a busy photo like this some letterforms would
+   * otherwise have too little contrast).
+   *
+   * `strokeThickness` here was `4` — on a 20px font that's a full fifth of the glyph height, and
+   * `-webkit-text-stroke` (how `createText()` actually draws this, see `ui/text.ts`) is a vector
+   * stroke centered *on* the glyph outline, not an inset — at that thickness it swallows most of
+   * a serif letterform's own (much thinner) strokes, leaving barely any of the cream fill visible
+   * and reading as "almost completely black" exactly as reported. `1.5` keeps a crisp, deliberate
+   * pixel-art outline that reads as a clean edge rather than a smear, while leaving the cream fill
+   * clearly dominant — this is the actual fix; nothing else about the title changed.
    */
   private buildTitle(): void {
     const style = {
@@ -473,7 +483,7 @@ export class HomeScene extends Phaser.Scene {
       color: HOME_PALETTE.cream,
       fontStyle: 'bold' as const,
       stroke: HOME_PALETTE.ink,
-      strokeThickness: 4,
+      strokeThickness: 1.5,
     };
     const shadowStyle = { fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' as const };
 

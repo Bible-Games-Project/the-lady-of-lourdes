@@ -43,13 +43,22 @@ function medallion() {
   return { grid, palette: { F: JOURNEY_PALETTE.ink, H: JOURNEY_PALETTE.cream, E: JOURNEY_PALETTE.glowGold } };
 }
 
+/**
+ * The shackle and body were both filled in `ink` (near-black) with no light color anywhere in the
+ * icon at all -- at this tiny size (10x12, displayed at 0.85 scale), a shape rendered entirely in
+ * near-black tones reads as a dark smudge rather than a recognizable padlock, especially sitting
+ * on the already-tinted-dark locked medallion behind it (see `lockedStone`'s own doc comment).
+ * Now a light "metal" body/shackle (so the lock silhouette itself is what's visible) with the
+ * keyhole as the dark accent — the right way around: a small dark detail read clearly against a
+ * light fill, not a wholesale dark shape that needs to be picked out of the background.
+ */
 function lockIcon() {
   const grid = makeGrid(10, 12);
   fillRect(grid, 3, 0, 6, 4, 'B');
   fillRect(grid, 4, 1, 5, 4, '.');
   fillRect(grid, 1, 4, 8, 11, 'B');
   fillRect(grid, 4, 6, 5, 8, 'D');
-  return { grid, palette: { B: JOURNEY_PALETTE.ink, D: JOURNEY_PALETTE.rockDark } };
+  return { grid, palette: { B: JOURNEY_PALETTE.pathStone, D: JOURNEY_PALETTE.ink } };
 }
 
 function checkIcon() {
