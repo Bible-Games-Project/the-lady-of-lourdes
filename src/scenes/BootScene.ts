@@ -35,6 +35,7 @@ import { preloadLourdesCachotInterior } from '../assets/interiors/lourdesCachotI
 import { BUILDING_KEYS, preloadLourdesBuildings } from '../assets/buildings/lourdesBuildings';
 import { RIVER_KEYS, preloadLourdesRiver } from '../assets/terrain/lourdesRiver';
 import { preloadOrangeTrees } from '../assets/decorations/orangeTrees';
+import { preloadPineTrees } from '../assets/decorations/pineTrees';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -60,6 +61,7 @@ export class BootScene extends Phaser.Scene {
     preloadLourdesBuildings(this);
     preloadLourdesRiver(this);
     preloadOrangeTrees(this);
+    preloadPineTrees(this);
   }
 
   create(): void {

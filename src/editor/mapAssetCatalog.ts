@@ -1,6 +1,7 @@
 import { BUILDING_KEYS, BUILDING_NATIVE_SIZE } from '../assets/buildings/lourdesBuildings';
 import { RIVER_KEYS, RIVER_NATIVE_SIZE, BRIDGE_NATIVE_SIZE } from '../assets/terrain/lourdesRiver';
 import { ORANGE_TREE_KEYS, ORANGE_TREE_NATIVE_SIZE } from '../assets/decorations/orangeTrees';
+import { PINE_TREE_KEYS, PINE_TREE_NATIVE_SIZE } from '../assets/decorations/pineTrees';
 import type { EditorLayerId } from './mapEditorData';
 
 /**
@@ -121,6 +122,54 @@ export const MAP_ASSET_CATALOG: MapAssetDef[] = [
     nativeWidth: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_5].width,
     nativeHeight: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_5].height,
     defaultDisplayHeight: 90,
+    defaultLayer: 'decorations',
+  },
+  // Five pine trees (pinos), second of three ordered decoration batches -- same "manual placement
+  // only" treatment as the orange trees above. A taller default height than the orange trees since
+  // pines are naturally tall/narrow in the supplied art.
+  {
+    id: 'pine_tree_1',
+    label: 'Pine Tree 1',
+    textureKey: PINE_TREE_KEYS.TREE_1,
+    nativeWidth: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_1].width,
+    nativeHeight: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_1].height,
+    defaultDisplayHeight: 110,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'pine_tree_2',
+    label: 'Pine Tree 2',
+    textureKey: PINE_TREE_KEYS.TREE_2,
+    nativeWidth: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_2].width,
+    nativeHeight: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_2].height,
+    defaultDisplayHeight: 110,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'pine_tree_3',
+    label: 'Pine Tree 3',
+    textureKey: PINE_TREE_KEYS.TREE_3,
+    nativeWidth: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_3].width,
+    nativeHeight: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_3].height,
+    defaultDisplayHeight: 110,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'pine_tree_4',
+    label: 'Pine Tree 4',
+    textureKey: PINE_TREE_KEYS.TREE_4,
+    nativeWidth: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_4].width,
+    nativeHeight: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_4].height,
+    defaultDisplayHeight: 110,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'pine_tree_5',
+    label: 'Pine Tree 5',
+    textureKey: PINE_TREE_KEYS.TREE_5,
+    nativeWidth: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_5].width,
+    nativeHeight: PINE_TREE_NATIVE_SIZE[PINE_TREE_KEYS.TREE_5].height,
+    defaultDisplayHeight: 110,
     defaultLayer: 'decorations',
   },
 ];

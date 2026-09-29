@@ -3342,3 +3342,33 @@ Verified live via Playwright: opened the editor, cycled to the Decorations layer
 placed one, confirmed it renders as a real full-color tree (not a placeholder), selected it (white
 outline + inspector with scale/delete), and confirmed it's still present and rendering after closing
 the editor.
+
+### Decorations layer, second batch: 5 pine trees — and a real bug the first batch didn't expose: the asset palette had no scrolling
+
+Same treatment as the orange trees (see that entry just above for the full asset-pipeline
+reasoning): `assets/decorations/pineTrees.ts`, `.webp`→`.png` via a straight re-encode cropped to
+each one's own alpha bounding box (verified pixel-identical to source afterward), not added to
+`BootScene.ts`'s LINEAR list, 5 new `mapAssetCatalog.ts` entries at `defaultLayer: 'decorations'`.
+
+**Adding a second batch to the same `decorations` layer immediately overflowed the map editor's
+asset palette** — confirmed live via Playwright screenshot before shipping, not just reasoned about:
+with the first 5 orange trees alone the palette happened to fit exactly (5 rows of items was right
+at the panel's own vertical budget), so the missing scroll behavior never showed up; at 10 combined
+entries the palette rendered straight past the pinned Save/Close buttons, visibly overlapping them.
+Since the same layer will hold the oak trees too (a third batch still to come), this had to be fixed
+now, not deferred.
+
+`MapEditorPanel.ts` gained a `paletteScrollOffset` field (reset to 0 on layer change and on opening
+the panel) and a fixed `VISIBLE_ITEM_ROWS = 4` window into `MAP_ASSET_CATALOG`'s per-layer filtered
+list. When a layer has more than 4 assets, a `< Prev` / `Next >` row (reusing the same half-width
+-button layout the Finish/Cancel row already established) appears above the visible 4, each disabled
+(greyed text, no-op) at its own end of the list rather than wrapping. This is a generic fix to the
+palette itself, not anything tree-specific — any future layer with more than 4 catalog entries
+benefits the same way, and every existing single-page layer (buildings, river) is visually unchanged
+since the Prev/Next row only renders at all when `palette.length > VISIBLE_ITEM_ROWS`.
+
+Verified live: with all 10 orange+pine entries in the catalog, confirmed the palette no longer
+overflows (page 1 shows Orange 1-4 with no Prev, since offset starts at 0), paged forward twice and
+confirmed page 2 shows Orange 5 + Pine 1-3, page 3 (offset correctly clamped to the last full window,
+not run past the end) shows Pine 2-5 with `Next >` now visibly disabled, and placed Pine Tree 1 from
+mid-pagination to confirm the scroll state doesn't interfere with normal place/select/scale/delete.

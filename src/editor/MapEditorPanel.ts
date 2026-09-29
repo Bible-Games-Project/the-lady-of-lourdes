@@ -76,6 +76,11 @@ export class MapEditorPanel {
   private pendingAssetId: string | null = null;
   private selectedInstanceId: string | null = null;
   private inProgressPoints: { x: number; y: number }[] = [];
+  /** How many rows into the current layer's asset palette the visible window starts -- a layer can
+   * hold more assets than fit in the panel's fixed vertical space (e.g. the "decorations" layer
+   * with a dozen supplied trees), so the palette scrolls a fixed number of rows at a time instead
+   * of overflowing past the Save/Close buttons. Reset to 0 whenever the layer changes. */
+  private paletteScrollOffset = 0;
 
   private toggleButton: Phaser.GameObjects.Container;
   private panelObjects: Phaser.GameObjects.GameObject[] = [];
@@ -140,6 +145,7 @@ export class MapEditorPanel {
     this.pendingAssetId = null;
     this.selectedInstanceId = null;
     this.inProgressPoints = [];
+    this.paletteScrollOffset = 0;
 
     this.assets.forEach((instance) => this.enableInstanceEditing(instance));
     this.zones.forEach((zone) => this.showZoneVisual(zone));
@@ -227,6 +233,7 @@ export class MapEditorPanel {
       () => {
         const idx = EDITOR_LAYERS.indexOf(this.currentLayer);
         this.currentLayer = EDITOR_LAYERS[(idx + 1) % EDITOR_LAYERS.length];
+        this.paletteScrollOffset = 0;
         this.buildPanelUI();
       },
       { textColor: '#3a3226', fontSize: '8px' },
@@ -322,7 +329,61 @@ export class MapEditorPanel {
         this.panelObjects.push(none);
         rowStep(12);
       } else {
-        palette.forEach((def) => {
+        // A layer can hold more assets than fit in the panel's fixed vertical space (e.g.
+        // "decorations" with a dozen supplied trees) -- scroll a fixed window of rows instead of
+        // overflowing past the Save/Close buttons pinned to the bottom. Matches this file's own
+        // Finish/Cancel row for the half-width-button layout.
+        const VISIBLE_ITEM_ROWS = 4;
+        const maxOffset = Math.max(0, palette.length - VISIBLE_ITEM_ROWS);
+        this.paletteScrollOffset = Phaser.Math.Clamp(this.paletteScrollOffset, 0, maxOffset);
+
+        if (palette.length > VISIBLE_ITEM_ROWS) {
+          const canPrev = this.paletteScrollOffset > 0;
+          const canNext = this.paletteScrollOffset < maxOffset;
+          const prevBtn = createButton(
+            this.scene,
+            centerX,
+            y,
+            (PANEL_WIDTH - 14) / 2,
+            13,
+            '< Prev',
+            () => {
+              if (!canPrev) return;
+              this.paletteScrollOffset -= VISIBLE_ITEM_ROWS;
+              this.buildPanelUI();
+            },
+            { textColor: canPrev ? '#3a3226' : '#8a7a5a', fontSize: '8px' },
+            { x: 0, y: 0.5 },
+          );
+          prevBtn.setPosition(PANEL_LEFT + 5, y);
+          prevBtn.setScrollFactor(0);
+          prevBtn.setDepth(DEPTH.DIALOGUE + 1);
+          this.panelObjects.push(prevBtn);
+
+          const nextBtn = createButton(
+            this.scene,
+            centerX,
+            y,
+            (PANEL_WIDTH - 14) / 2,
+            13,
+            'Next >',
+            () => {
+              if (!canNext) return;
+              this.paletteScrollOffset += VISIBLE_ITEM_ROWS;
+              this.buildPanelUI();
+            },
+            { textColor: canNext ? '#3a3226' : '#8a7a5a', fontSize: '8px' },
+            { x: 0, y: 0.5 },
+          );
+          nextBtn.setPosition(PANEL_LEFT + 5 + (PANEL_WIDTH - 14) / 2 + 4, y);
+          nextBtn.setScrollFactor(0);
+          nextBtn.setDepth(DEPTH.DIALOGUE + 1);
+          this.panelObjects.push(nextBtn);
+          rowStep(16);
+        }
+
+        const visiblePalette = palette.slice(this.paletteScrollOffset, this.paletteScrollOffset + VISIBLE_ITEM_ROWS);
+        visiblePalette.forEach((def) => {
           const active = this.tool === 'place' && this.pendingAssetId === def.id;
           const btn = createButton(
             this.scene,
