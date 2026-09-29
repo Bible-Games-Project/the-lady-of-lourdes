@@ -1,5 +1,6 @@
 import { BUILDING_KEYS, BUILDING_NATIVE_SIZE } from '../assets/buildings/lourdesBuildings';
 import { RIVER_KEYS, RIVER_NATIVE_SIZE, BRIDGE_NATIVE_SIZE } from '../assets/terrain/lourdesRiver';
+import { ORANGE_TREE_KEYS, ORANGE_TREE_NATIVE_SIZE } from '../assets/decorations/orangeTrees';
 import type { EditorLayerId } from './mapEditorData';
 
 /**
@@ -73,6 +74,54 @@ export const MAP_ASSET_CATALOG: MapAssetDef[] = [
     nativeHeight: RIVER_NATIVE_SIZE.height,
     defaultDisplayHeight: 96,
     defaultLayer: 'river',
+  },
+  // Five orange trees (naranjos), supplied for manual placement only -- see
+  // `assets/decorations/orangeTrees.ts`'s own doc comment. Never auto-placed anywhere on the map;
+  // they only exist here in the palette for the maintainer to place by hand.
+  {
+    id: 'orange_tree_1',
+    label: 'Orange Tree 1',
+    textureKey: ORANGE_TREE_KEYS.TREE_1,
+    nativeWidth: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_1].width,
+    nativeHeight: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_1].height,
+    defaultDisplayHeight: 90,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'orange_tree_2',
+    label: 'Orange Tree 2',
+    textureKey: ORANGE_TREE_KEYS.TREE_2,
+    nativeWidth: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_2].width,
+    nativeHeight: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_2].height,
+    defaultDisplayHeight: 90,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'orange_tree_3',
+    label: 'Orange Tree 3',
+    textureKey: ORANGE_TREE_KEYS.TREE_3,
+    nativeWidth: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_3].width,
+    nativeHeight: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_3].height,
+    defaultDisplayHeight: 90,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'orange_tree_4',
+    label: 'Orange Tree 4',
+    textureKey: ORANGE_TREE_KEYS.TREE_4,
+    nativeWidth: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_4].width,
+    nativeHeight: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_4].height,
+    defaultDisplayHeight: 90,
+    defaultLayer: 'decorations',
+  },
+  {
+    id: 'orange_tree_5',
+    label: 'Orange Tree 5',
+    textureKey: ORANGE_TREE_KEYS.TREE_5,
+    nativeWidth: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_5].width,
+    nativeHeight: ORANGE_TREE_NATIVE_SIZE[ORANGE_TREE_KEYS.TREE_5].height,
+    defaultDisplayHeight: 90,
+    defaultLayer: 'decorations',
   },
 ];
 

@@ -3295,3 +3295,50 @@ Verified live via Playwright: opened the map editor and swept the camera (`camer
 set directly) across a 9-point grid spanning the whole 2560x2688 map, plus targeted checks of the
 exact former dirt-path/cave-floor/vertical-river coordinates specifically — every single screenshot
 showed uniform grass, no dirt, no stone, no water, anywhere.
+
+### Decorations layer, first batch: 5 orange trees, placed manually only
+
+The map editor's `decorations` layer (`mapEditorData.ts#EDITOR_LAYERS`) already existed but had zero
+catalog entries — this is the first real content in it. The maintainer supplied 5 orange tree
+(naranjo) images and was explicit that this is one of three ordered batches (orange trees, then pine
+trees, then oak trees, each only starting once the previous is fully done) — this entry covers only
+the first.
+
+`src/assets/decorations/orangeTrees.ts` follows the same real-art-asset-module pattern as
+`assets/buildings/lourdesBuildings.ts`/`assets/terrain/lourdesRiver.ts`: `ORANGE_TREE_KEYS` +
+`ORANGE_TREE_NATIVE_SIZE` + a `preloadOrangeTrees()` wired into `BootScene.ts`. Two things
+deliberately differ from that building/river precedent, both because of what the maintainer actually
+asked for here:
+- **The supplied files were `.webp`, not `.png`.** Each one has a genuine alpha channel (verified
+  via `numpy` before touching anything — not a flat white background, despite how they render in a
+  plain `<img>` preview). Converted to `.png` (this repo's own asset convention) via a straight
+  `Image.open().save()` re-encode, cropped to each one's own alpha bounding box first (same "tight
+  crop, no other change" convention as every other real-art asset here) — verified *after* saving,
+  by re-decoding both the saved PNG and the cropped region of the original source and comparing the
+  raw pixel arrays with `numpy.array_equal()`, that the two are 100% pixel-identical. Nothing was
+  redrawn, resampled, recolored, or touched beyond removing the fully-transparent margin.
+- **Deliberately NOT added to `BootScene.ts`'s `LINEAR`-filter list**, unlike buildings/river/town
+  -terrain. Those are real *painted* art (soft continuous shading) that needs LINEAR to scale
+  smoothly; these tree PNGs are genuine flat-color pixel art (confirmed visually — hard block edges,
+  a small discrete palette per tree), so they stay on Phaser's default `pixelArt: true` NEAREST
+  filtering, per the maintainer's own explicit "nearest-neighbor/point filtering, no smoothing"
+  requirement for pixel-art sprites specifically.
+
+`mapAssetCatalog.ts` gained 5 new entries (`orange_tree_1`..`5`), all `defaultLayer: 'decorations'`,
+all at a shared `defaultDisplayHeight: 90` (keeps them visually consistent in scale with each other
+regardless of each source image's own native aspect ratio — a nearly-square canopy vs. a tall narrow
+one both read as "the same size tree" rather than one towering over the other). Nothing auto-places
+them: the catalog only makes them available in the palette, exactly like every other catalog entry —
+placement, move, scale, and delete all go through the map editor's existing generic
+asset-instance-editing code (`MapEditorPanel.ts#enableInstanceEditing()`/`adjustSelectedScale()`/
+`deleteSelected()`), which needed zero changes since it already works generically off the catalog,
+not per-asset special-casing. Depth/Y-sort also needed no changes: `editorAssetRender.ts#
+applyInstanceDepth()` already Y-sorts every `decorations`-layer placement via `depthForY()`, the
+same convention buildings/props use, so a placed tree already renders in front of Bernadette when
+she's above it and behind her when she's below it, automatically.
+
+Verified live via Playwright: opened the editor, cycled to the Decorations layer, confirmed all 5
+"Orange Tree N" buttons appear in the palette (and that the panel doesn't overflow with 5 entries),
+placed one, confirmed it renders as a real full-color tree (not a placeholder), selected it (white
+outline + inspector with scale/delete), and confirmed it's still present and rendering after closing
+the editor.
