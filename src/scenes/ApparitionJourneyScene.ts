@@ -4,12 +4,12 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { MISSIONS, getMission, getMissionState, type MissionState } from '../data/missions/missionRegistry';
 import { getRouteCurvePoints, getRouteNodePoints } from '../data/journeyRoute';
-import { JOURNEY_ICON_KEYS } from '../pixelart/journeyIcons';
+import { JOURNEY_ICON_KEYS, LOCK_DISPLAY_H, LOCK_DISPLAY_W, MEDALLION_DISPLAY_SIZE } from '../pixelart/journeyIcons';
 import { JOURNEY_PALETTE } from '../pixelart/journeyPalette';
 import { JOURNEY_MAP_KEY, JOURNEY_MAP_SIZE } from '../assets/journey/journeyMap';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { Toast } from '../gameplay/Toast';
-import { createText, FONT_PIXEL } from '../ui/text';
+import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange, type SafeAreaInsets } from '../core/safeArea';
 
@@ -264,6 +264,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
       const state = getMissionState(mission.index);
 
       const medallion = this.add.image(x, y, JOURNEY_ICON_KEYS.MEDALLION);
+      medallion.setDisplaySize(MEDALLION_DISPLAY_SIZE, MEDALLION_DISPLAY_SIZE);
       medallion.setDepth(DEPTH.ACTORS);
       medallion.setInteractive({ useHandCursor: true });
       medallion.on('pointerup', () => this.onNodeTap(mission.index));
@@ -277,7 +278,10 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         // black" circles for every locked apparition, which is most of them by default.
         medallion.setTint(hex(JOURNEY_PALETTE.lockedStone));
         medallion.setAlpha(0.88);
-        badge = this.add.image(x + 7, y - 7, JOURNEY_ICON_KEYS.LOCK).setDepth(DEPTH.ACTORS + 1).setScale(0.85);
+        badge = this.add
+          .image(x + 7, y - 7, JOURNEY_ICON_KEYS.LOCK)
+          .setDepth(DEPTH.ACTORS + 1)
+          .setDisplaySize(LOCK_DISPLAY_W * 0.85, LOCK_DISPLAY_H * 0.85);
       } else if (state === 'completed') {
         medallion.setTint(hex(JOURNEY_PALETTE.glowGold));
         badge = this.add.image(x + 7, y - 7, JOURNEY_ICON_KEYS.CHECK).setDepth(DEPTH.ACTORS + 1).setScale(0.9);
@@ -291,13 +295,15 @@ export class ApparitionJourneyScene extends Phaser.Scene {
       }
 
       // No stroke (see AGENTS.md / HomeScene.ts#buildTitle()'s doc comment for why the maintainer
-      // rejected the outlined look). `journeyIcons.ts#medallion()` was reworked alongside this so
-      // its cream face fills nearly the whole disc (previously just a thin middle band, too narrow
-      // for the number to sit on without spilling onto the dark rim) -- with a consistent light
-      // field under it, a dark ink fill reads cleanly without needing an outline.
+      // rejected the outlined look) and no pixel webfont either (see `ui/text.ts`'s own doc comment
+      // on `FONT_DISPLAY`/`FONT_BODY` -- the maintainer rejected that too, as not matching this
+      // screen's own painted map art). `FONT_BODY` (EB Garamond) is a classic book-serif, legible
+      // at this small size without Cinzel's heavier, all-caps-oriented letterforms. The medallion's
+      // cream face fills nearly the whole disc (see `journeyIcons.ts#medallion()`), so a dark ink
+      // fill reads cleanly on top of it without needing an outline.
       const numberText = createText(this, x, y, String(mission.index), {
-        fontSize: '12px',
-        fontFamily: FONT_PIXEL,
+        fontSize: '13px',
+        fontFamily: FONT_BODY,
         color: JOURNEY_PALETTE.ink,
         fontStyle: 'bold',
       })
@@ -308,11 +314,11 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         const dateSide = x < GAME_WIDTH / 2 ? 1 : -1;
         // Dates sit beside the medallion, over the map artwork itself rather than a light medallion
         // face -- `cream` stays the fill (matching the route line/title) since the map's own tones
-        // here run darker/mid than light, and the pixel font's bold weight carries the contrast that
-        // used to come from the stroke.
+        // here run darker/mid than light, and the bold weight carries the contrast that used to
+        // come from the stroke.
         createText(this, x + dateSide * 20, y, Localization.t(mission.dateKey), {
-          fontSize: '9px',
-          fontFamily: FONT_PIXEL,
+          fontSize: '10px',
+          fontFamily: FONT_BODY,
           color: JOURNEY_PALETTE.cream,
           fontStyle: 'bold',
         })
@@ -331,14 +337,16 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
    * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
-    // No stroke -- see the number/date text above for why. Gold fill matches Home's own title
-    // treatment; verified live (see AGENTS.md) that it stays legible against the map artwork
-    // scrolling underneath this screen-pinned header at every scroll position.
+    // No stroke, `FONT_DISPLAY` (Cinzel) -- see the number/date text above and `ui/text.ts`'s own
+    // doc comment for why. Gold fill matches Home's own title treatment; verified live that it
+    // stays legible against the map artwork scrolling underneath this screen-pinned header at
+    // every scroll position.
     this.title = createText(this, 0, 0, Localization.t(K.JOURNEY_TITLE), {
       fontSize: '16px',
-      fontFamily: FONT_PIXEL,
+      fontFamily: FONT_DISPLAY,
       color: JOURNEY_PALETTE.glowGold,
       fontStyle: 'bold',
+      letterSpacing: '0.5px',
     });
     this.title.setOrigin(0.5);
     this.title.setScrollFactor(0);

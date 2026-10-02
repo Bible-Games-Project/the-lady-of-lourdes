@@ -10,7 +10,7 @@ import { registerTileset } from '../pixelart/tiles';
 import { registerProps } from '../pixelart/props';
 import { registerInteriorProps } from '../pixelart/interiorProps';
 import { registerUiTextures } from '../pixelart/ui';
-import { registerJourneyIcons } from '../pixelart/journeyIcons';
+import { JOURNEY_ICON_KEYS, registerJourneyIcons } from '../pixelart/journeyIcons';
 import { registerRosaryTextures } from '../pixelart/rosary';
 import {
   HOME_BACKGROUND_KEY,
@@ -99,6 +99,8 @@ export class BootScene extends Phaser.Scene {
       TOWN_TERRAIN_KEY,
       ...Object.values(BUILDING_KEYS),
       ...Object.values(RIVER_KEYS),
+      JOURNEY_ICON_KEYS.MEDALLION,
+      JOURNEY_ICON_KEYS.LOCK,
     ].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });

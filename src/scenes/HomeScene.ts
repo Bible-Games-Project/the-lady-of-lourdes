@@ -11,7 +11,7 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
-import { createText, FONT_PIXEL } from '../ui/text';
+import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
 import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
@@ -119,11 +119,10 @@ export class HomeScene extends Phaser.Scene {
     const buttonStyle = {
       textureKey: UI_KEYS.HOME_BUTTON,
       border: UI_HOME_BUTTON_SLICE.border,
-      // No stroke (see `buildTitle()`'s doc comment for why) — the pixel font's own letterforms
-      // plus this near-white fill against the button panel's own dark-stone texture give enough
-      // contrast without one.
+      // No stroke (see `buildTitle()`'s doc comment for why) — this near-white fill against the
+      // button panel's own dark-stone texture gives enough contrast without one.
       textColor: HOME_PALETTE.gearHighlight,
-      fontFamily: FONT_PIXEL,
+      fontFamily: FONT_BODY,
       hoverTint: 0xfff8e8,
       panelAlpha: 0.34,
     };
@@ -464,28 +463,24 @@ export class HomeScene extends Phaser.Scene {
   }
 
   /**
-   * Second take on this title (see AGENTS.md): the first fix kept a thinned `-webkit-text-stroke`
-   * plus a duplicated shadow-copy layer, which read as fixed-but-still-outlined — the maintainer
-   * explicitly rejected any stroke/shadow/glow treatment on the letters themselves as "childish and
-   * cartoon-like" and asked for readability to come from the font, fill color, and spacing alone.
-   *
-   * So: one text layer, no stroke, no shadow duplicate. `FONT_PIXEL` (Google Fonts "Silkscreen",
-   * loaded in `index.html` — see `ui/text.ts`'s own doc comment for why this font specifically)
-   * gives the letterforms their own crisp blocky pixel-art character directly, rather than needing
-   * a heavy outline to look "pixel-art"; a saturated gold fill
-   * (`glowGold`) reads clearly as a title against this backdrop's mixed light/dark artwork — gold's
-   * hue and saturation carry it across both the pale sky and the darker grotto stone, where a flat
-   * near-white or near-black fill would wash out against one half or the other. Letter-spacing
-   * opens the pixel-font glyphs up slightly so they stay legible at this small size instead of
-   * mushing together.
+   * Third take on this title (see AGENTS.md and `ui/text.ts`'s own doc comment on `FONT_DISPLAY`
+   * for the full history): the maintainer rejected the previous round's pixel webfont on sight as
+   * not matching this screen's own painted artwork ("no encaja con la imagen de fondo"). No stroke
+   * either way (the round before that was rejected as "childish/cartoon" for exactly that) — just
+   * one text layer, `FONT_DISPLAY` (Cinzel, a carved-stone/historical display serif that actually
+   * belongs next to a painted illustration), and a saturated gold fill that reads clearly across
+   * this backdrop's mixed light/dark artwork — gold's hue and saturation carry it across both the
+   * pale sky and the darker grotto stone, where a flat near-white or near-black fill would wash out
+   * against one half or the other. Letter-spacing keeps Cinzel's own fairly tight default spacing
+   * from mushing together at this small size.
    */
   private buildTitle(): void {
     const style = {
       fontSize: '22px',
-      fontFamily: FONT_PIXEL,
+      fontFamily: FONT_DISPLAY,
       color: HOME_PALETTE.glowGold,
       fontStyle: 'bold' as const,
-      letterSpacing: '0.5px',
+      letterSpacing: '1px',
     };
 
     createText(this, GAME_WIDTH / 2, 26, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);

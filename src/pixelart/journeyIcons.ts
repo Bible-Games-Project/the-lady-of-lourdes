@@ -11,76 +11,159 @@ export const JOURNEY_ICON_KEYS = {
 } as const;
 
 /**
- * Round pixel-art medallion used for every apparition node — recolored per state via tint (see
- * ApparitionJourneyScene.ts). Colored from the map's own cream/gold palette (journeyPalette.ts)
- * with a dark ink rim so it reads clearly as a waypoint marker against the busy illustration
- * behind it, rather than the muddy wood tone the shared gameplay palette used before.
+ * Third take on this medallion (see AGENTS.md): the previous version was a flat-shaded, hard
+ * -cornered octagon-ish badge with a thick black outline — functional, but the maintainer called
+ * it out by name ("las redondas... es todo un estilo muy feo. No encaja con estilo de fondo") next
+ * to this screen's own soft, painted map illustration. A flat pixel-art badge was always going to
+ * clash with that regardless of its exact colors, so this redraws it as an actual round medal:
+ * built from real circle/angle math (not hand-placed rows) at `GRID_SIZE` (4x the ~22px it's
+ * actually displayed at — see `applyMedallionFilter()`), with the rim lit from the upper-left in
+ * four gradient bands (the map's own gold/amber/rust autumn palette) so it reads as a lit, carved
+ * gold disc rather than a flat-tinted shape. Displayed scaled *down* from this native resolution
+ * with `LINEAR` filtering (added to `BootScene.ts`'s filter list alongside the real painted art),
+ * which is what actually produces the smooth, anti-aliased circular edge — supersampling first and
+ * downscaling after is the same technique this codebase already uses for `lourdesGrass.ts`'s own
+ * continuous-tone source, just applied here to procedural art instead of a photo.
  *
- * The cream `H` face used to be only a thin 4-row band across the middle of the disc (the rest of
- * the circle was the dark `F` ink), leaving the apparition-number text with nowhere consistent to
- * sit: the digit is taller than that band, so it always spilled onto the dark rim above/below —
- * confirmed by a zoomed pixel check of the live render, where a number in either light or dark
- * fill partly vanished against whichever half of the medallion it crossed. Since the maintainer
- * ruled out solving text legibility with a stroke around the *number* itself, the fix has to be
- * the medallion's own face: `H` now fills almost the entire disc (insetting the same boundary
- * `rows` used for `F` by 1px), leaving just a thin ink rim, so the whole disc is a single
- * consistent light field the number can sit on in one flat color.
+ * The cream face still fills nearly the whole disc (only a slim rim is the gold gradient), for the
+ * same reason established in the previous round: the apparition-number text needs a consistently
+ * light field to sit on in one flat color, not a stroke around the number itself.
  */
+const MEDALLION_GRID_SIZE = 88;
+export const MEDALLION_DISPLAY_SIZE = 22;
+
 function medallion() {
-  const size = 22;
+  const size = MEDALLION_GRID_SIZE;
   const grid = makeGrid(size, size);
-  const rows: Array<[number, number, number]> = [
-    [3, 7, 14],
-    [4, 5, 16],
-    [5, 4, 17],
-    [6, 3, 18],
-    [7, 2, 19],
-    [14, 2, 19],
-    [15, 3, 18],
-    [16, 4, 17],
-    [17, 5, 16],
-    [18, 7, 14],
-  ];
-  fillRect(grid, 2, 8, 19, 13, 'F');
-  rows.forEach(([y, x0, x1]) => fillRect(grid, x0, y, x1, y, 'F'));
+  const center = size / 2;
+  const outerR = size / 2 - 2;
+  const rimInnerR = outerR * 0.78;
+  const faceGrooveR = rimInnerR * 0.92;
+  // Light from the upper-left, matching every other "lit from above" effect in this game (Home's
+  // candle glow, the Lady's own light rays) rather than an arbitrary direction.
+  const lightX = -0.6;
+  const lightY = -0.78;
 
-  const innerRows: Array<[number, number, number]> = [
-    [4, 6, 15],
-    [5, 5, 16],
-    [6, 4, 17],
-    [7, 3, 18],
-    [14, 3, 18],
-    [15, 4, 17],
-    [16, 5, 16],
-    [17, 6, 15],
-  ];
-  fillRect(grid, 3, 8, 18, 13, 'H');
-  innerRows.forEach(([y, x0, x1]) => fillRect(grid, x0, y, x1, y, 'H'));
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x + 0.5 - center;
+      const dy = y + 0.5 - center;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > outerR) continue;
+      if (dist > outerR - 1.6) {
+        grid[y][x] = 'K'; // thin ink edge -- definition against the busy map, not a thick outline
+        continue;
+      }
+      if (dist > rimInnerR) {
+        const t = (dx * lightX + dy * lightY) / dist; // -1 (shadow side) .. 1 (lit side)
+        grid[y][x] = t > 0.55 ? 'F' : t > 0.05 ? 'G' : t > -0.45 ? 'A' : 'R';
+        continue;
+      }
+      grid[y][x] = dist > faceGrooveR ? 'S' : 'H';
+    }
+  }
 
-  const shade: Array<[number, number]> = [
-    [4, 9], [5, 8], [6, 7], [7, 6], [8, 5], [9, 4], [10, 4], [11, 4],
-  ];
-  shade.forEach(([x, y]) => setPixel(grid, x, y, 'E'));
-
-  return { grid, palette: { F: JOURNEY_PALETTE.ink, H: JOURNEY_PALETTE.cream, E: JOURNEY_PALETTE.glowGold } };
+  return {
+    grid,
+    palette: {
+      K: JOURNEY_PALETTE.ink,
+      F: JOURNEY_PALETTE.glowGold,
+      G: JOURNEY_PALETTE.foliageGold,
+      A: JOURNEY_PALETTE.foliageAmber,
+      R: JOURNEY_PALETTE.foliageRust,
+      S: JOURNEY_PALETTE.pathStoneShade,
+      H: JOURNEY_PALETTE.cream,
+    },
+  };
 }
 
 /**
- * The shackle and body were both filled in `ink` (near-black) with no light color anywhere in the
- * icon at all -- at this tiny size (10x12, displayed at 0.85 scale), a shape rendered entirely in
- * near-black tones reads as a dark smudge rather than a recognizable padlock, especially sitting
- * on the already-tinted-dark locked medallion behind it (see `lockedStone`'s own doc comment).
- * Now a light "metal" body/shackle (so the lock silhouette itself is what's visible) with the
- * keyhole as the dark accent — the right way around: a small dark detail read clearly against a
- * light fill, not a wholesale dark shape that needs to be picked out of the background.
+ * Same reasoning and technique as `medallion()` above: real arc/rect math at a finer native
+ * resolution, downscaled with `LINEAR` filtering for a smooth rounded shackle instead of a blocky
+ * one, and the same gold gradient bands so the lock reads as part of the same gilded-medal object
+ * language rather than a separately-styled flat badge. Body stays a light "metal" fill (the
+ * keyhole is the one dark accent) — a wholesale dark shape was tried first and rejected as reading
+ * like a smudge at this size (see AGENTS.md).
  */
+const LOCK_GRID_SIZE_W = 40;
+const LOCK_GRID_SIZE_H = 48;
+export const LOCK_DISPLAY_W = 10;
+export const LOCK_DISPLAY_H = 12;
+
 function lockIcon() {
-  const grid = makeGrid(10, 12);
-  fillRect(grid, 3, 0, 6, 4, 'B');
-  fillRect(grid, 4, 1, 5, 4, '.');
-  fillRect(grid, 1, 4, 8, 11, 'B');
-  fillRect(grid, 4, 6, 5, 8, 'D');
-  return { grid, palette: { B: JOURNEY_PALETTE.pathStone, D: JOURNEY_PALETTE.ink } };
+  const w = LOCK_GRID_SIZE_W;
+  const h = LOCK_GRID_SIZE_H;
+  const grid = makeGrid(w, h);
+  const lightX = -0.6;
+  const lightY = -0.78;
+  const bandOf = (dx: number, dy: number, dist: number): string => {
+    const t = (dx * lightX + dy * lightY) / dist;
+    return t > 0.55 ? 'F' : t > 0.05 ? 'G' : t > -0.45 ? 'A' : 'R';
+  };
+
+  // Shackle: a true semicircular arc (ring band), centered above the body, legs running straight
+  // down into it.
+  const shackleCx = w / 2;
+  const shackleCy = h * 0.34;
+  const shackleOuterR = w * 0.3;
+  const shackleInnerR = shackleOuterR - w * 0.16;
+  for (let y = 0; y < shackleCy + 2; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = x + 0.5 - shackleCx;
+      const dy = y + 0.5 - shackleCy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > shackleOuterR || dist < shackleInnerR) continue;
+      if (dy > 0 && Math.abs(dx) > shackleInnerR - 1) continue; // only the arc + two straight legs
+      grid[y][x] = bandOf(dx, dy, Math.max(dist, 0.001));
+    }
+  }
+  // Legs continuing down to meet the body.
+  const legW = w * 0.16;
+  fillRect(grid, Math.round(shackleCx - shackleOuterR), Math.round(shackleCy), Math.round(shackleCx - shackleOuterR + legW), h * 0.42, 'G');
+  fillRect(grid, Math.round(shackleCx + shackleOuterR - legW), Math.round(shackleCy), Math.round(shackleCx + shackleOuterR), h * 0.42, 'G');
+
+  // Body: a rounded rectangle (corner-clipped via a small radius test), same gradient family.
+  const bodyTop = h * 0.4;
+  const bodyBottom = h - 2;
+  const bodyLeft = w * 0.08;
+  const bodyRight = w - w * 0.08;
+  const cornerR = w * 0.14;
+  const bodyCx = (bodyLeft + bodyRight) / 2;
+  const bodyCy = bodyTop;
+  for (let y = Math.floor(bodyTop); y < bodyBottom; y++) {
+    for (let x = Math.floor(bodyLeft); x < bodyRight; x++) {
+      const nearTop = y < bodyTop + cornerR;
+      const nearLeft = x < bodyLeft + cornerR;
+      const nearRight = x > bodyRight - cornerR;
+      if (nearTop && nearLeft) {
+        const d = Math.hypot(x - (bodyLeft + cornerR), y - (bodyTop + cornerR));
+        if (d > cornerR) continue;
+      } else if (nearTop && nearRight) {
+        const d = Math.hypot(x - (bodyRight - cornerR), y - (bodyTop + cornerR));
+        if (d > cornerR) continue;
+      }
+      const dx = x + 0.5 - bodyCx;
+      const dy = y + 0.5 - bodyCy;
+      grid[y][x] = bandOf(dx, dy, Math.max(Math.hypot(dx, dy), 0.001));
+    }
+  }
+
+  // Keyhole: the one dark accent, centered in the body.
+  const keyCx = Math.round(bodyCx);
+  const keyTopY = Math.round(bodyTop + (bodyBottom - bodyTop) * 0.32);
+  fillRect(grid, keyCx - 2, keyTopY, keyCx + 2, keyTopY + 4, 'D');
+  fillRect(grid, keyCx - 1, keyTopY + 4, keyCx + 1, keyTopY + 9, 'D');
+
+  return {
+    grid,
+    palette: {
+      F: JOURNEY_PALETTE.glowGold,
+      G: JOURNEY_PALETTE.foliageGold,
+      A: JOURNEY_PALETTE.foliageAmber,
+      R: JOURNEY_PALETTE.foliageRust,
+      D: JOURNEY_PALETTE.ink,
+    },
+  };
 }
 
 function checkIcon() {

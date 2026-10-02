@@ -3394,3 +3394,63 @@ All three maintainer-requested batches (5 orange, 5 pine, 2 oak — 12 trees tot
 editor's Decorations palette, available for manual placement only, using the existing generic
 asset-instance system (place/select/drag-to-move/scale/delete, Y-sort depth against Bernadette and
 NPCs) with zero special-casing needed per tree.
+
+### Home/Apparitions typography, third round: Silkscreen pixel font rejected, replaced with Cinzel + EB Garamond
+
+The maintainer rejected the Silkscreen pixel webfont on sight, on both screens: "la fuete de letra
+del titulo y de los botones, no me gusta nada. Muy feo. Haz que encaje con la imagen de fondo" (Home)
+and the same complaint implicitly covering the Apparitions title/numbers/dates, which shared the same
+font. This is the second rejection in a row for this title/button text (see `ui/text.ts`'s own doc
+comment for the first round's serif+stroke rejection) — confirming the real problem was never the
+specific font choice but the *category*: a hard pixel-grid font was always going to clash with this
+game's soft, painted illustrations (Home's Grotto scene, the Apparitions' autumn river map), neither
+of which is a hard-pixel tileset.
+
+Fixed by swapping to an actual elegant serif pairing instead: `FONT_DISPLAY` (Google Fonts "Cinzel",
+titles only) and `FONT_BODY` (Google Fonts "EB Garamond", everything smaller — buttons, apparition
+numbers/dates), replacing the single `FONT_PIXEL` constant everywhere it was used in `HomeScene.ts`
+and `ApparitionJourneyScene.ts`. `index.html`'s Google Fonts `<link>` updated to load both families.
+No stroke/outline added either (the maintainer's "don't solve readability with an outline" ruling
+from the first round still stands) — just the new font family, fill color, and letter-spacing.
+Verified live via Playwright with both the Georgia fallback and the real webfont loaded.
+
+### Apparitions medallions and lock icon, third round: flat pixel badge rejected, redrawn as a real round gilded medal
+
+Same message, the other half: "en el menu de The aparittions... las redondas y candados, es todo un
+estilo muy feo. No encaja con estilo de fondo. Cambialo" (the round medallion icons and lock badges).
+The previous version was a flat-shaded, hard-cornered octagon-ish badge with a thick black outline —
+functional but, like the pixel font above, fundamentally the wrong *register* for a soft painted map:
+no amount of recoloring a flat hand-pixeled shape was going to read as a round medal.
+
+Rewritten in `pixelart/journeyIcons.ts` using real circle/arc distance math (not hand-placed pixel
+rows) at 4x the final on-screen size (medallion: 88px grid down to a 22px display; lock: 40x48 grid
+down to 10x12), shaded with a 4-band light-direction gradient (`t = (dx*lightX + dy*lightY) / dist`,
+light from the upper-left to match every other "lit from above" effect in the game — Home's candle
+glow, the Lady's own rays) through the map's own gold/amber/rust autumn palette, so the rim reads as
+a lit, carved gold disc rather than a flat tint. Both textures added to `BootScene.ts`'s `LINEAR`
+-filter list (previously only real painted art) and both creation sites in `ApparitionJourneyScene.ts`
+switched from native-size/`.setScale()` to explicit `.setDisplaySize()` calls, matching their prior
+on-screen footprint — this is the same supersample-then-downscale-with-LINEAR technique the codebase
+already used for `lourdesGrass.ts`'s photo-sourced terrain, now applied to procedural shapes for the
+first time: the downscale is what actually produces the smooth anti-aliased circular edge, not
+anything about the higher-resolution source grid on its own. `checkIcon()` (the completed-state badge)
+was left untouched — not called out by the maintainer, and already a small enough glyph that it
+doesn't carry the same "flat badge" problem.
+
+Verified live via Playwright (direct scene navigation via a temporary `__TEST_GAME__` hook, reverted
+before commit): zoomed screenshots of locked medallions with their lock badges and the current-mission
+glow ring all show round, soft-edged gold medals with legible numbers — a clear visual match for the
+painted river map, not a pixel-art badge sitting on top of it.
+
+### NPC spritesheet question: higher-resolution source art is not recoverable from this session
+
+The maintainer asked, after the tree-asset work pixelated nothing of theirs: "por que ha pixelado
+tanto los NPcs? yo le mandé unos spritesheets mucho más definidos... Puede recuperar a como yo se lo
+mandé?" — i.e. whether the original, more detailed NPC spritesheets they'd supplied could be restored.
+Investigated by searching every image attached to this session's own conversation (all of them, by
+sequence number) plus the repo's git history for any larger/alternate-resolution character art: the
+only pre-existing attachments are environment/building reference images (town map, Moulin de Boly,
+Grotto, houses, bridge, river strip) — zero character spritesheets anywhere accessible to this agent,
+in this session or any prior commit. The higher-resolution originals the maintainer refers to were
+evidently supplied in an earlier conversation this session has no access to; they need to be
+re-attached in this conversation before any NPC-art recovery work can happen.

@@ -37,22 +37,27 @@ export const TEXT_RESOLUTION = 4;
 export const FONT_SERIF = 'Georgia, "Iowan Old Style", "Palatino Linotype", serif';
 
 /**
- * A real pixel-art webfont (Google Fonts "Silkscreen", loaded via <link> in `index.html`), used
- * where the design calls for a "slightly pixelated, but crisp and legible" letterform instead of a
- * thick painted-on stroke -- see the AGENTS.md entry on the Home/Apparitions typography refinement
- * for why: a `-webkit-text-stroke` heavy enough to read as "pixel-art chunky" also reads as a
- * cartoon outline and swallows the fill at small sizes, whereas a font whose *glyph shapes* are
- * already blocky achieves the same visual language through the letterforms themselves, so
- * readability can be solved with fill color/contrast alone instead of a stroke.
+ * Third take on the Home/Apparitions typography (see AGENTS.md for the full history). Both earlier
+ * approaches were tried live and rejected by the maintainer on sight, for opposite reasons: a
+ * serif + `-webkit-text-stroke` read as "childish/cartoon", and the pixel webfont that replaced it
+ * (Google Fonts "Silkscreen", monospace/blocky) read as a retro-arcade HUD slapped on top of a
+ * warm, painted illustration -- "no encaja con la imagen de fondo" (doesn't fit the background
+ * art). Both of this game's painted screens (Home's `home_background.png`, the Apparitions'
+ * `journey_map.png`) are soft illustrated artwork, not hard pixel-art tilesets, so a pixel-grid
+ * font was always going to clash with them regardless of which one was picked -- the fix is an
+ * elegant *serif* family instead, matching the painted/illustrated register of the art itself.
  *
- * Google Fonts "Pixelify Sans" was tried first and rejected after live testing: its rounded,
- * bubbly terminals read too close to the "cartoon/children's game" look the maintainer explicitly
- * ruled out, and its numerals in particular were hard to tell apart at the ~9-12px sizes used for
- * apparition numbers/dates (a "5" was easy to misread as an "8" or "S"). Silkscreen is built from
- * a strict square pixel grid with no rounding, so it stays legible at small sizes and reads as
- * "refined indie pixel-art UI" rather than playful/cartoonish.
+ * `FONT_DISPLAY` (Google Fonts "Cinzel", loaded via `index.html`) is for titles only -- a carved
+ * -stone/Roman-inscription display serif, the kind already associated with historical/religious
+ * subject matter, giving "Our Lady of Lourdes" and "The Apparitions" real presence against the
+ * artwork without any stroke/outline (still just fill color + letter-spacing, per the maintainer's
+ * explicit "don't solve readability with an outline" instruction from the previous round).
+ * `FONT_BODY` (Google Fonts "EB Garamond") is for everything smaller -- buttons, apparition
+ * numbers/dates -- a classic, highly legible book-serif rather than Cinzel's all-caps-oriented
+ * letterforms, which would be too heavy/ornamental at 8-12px.
  */
-export const FONT_PIXEL = "'Silkscreen', ui-monospace, 'Courier New', monospace";
+export const FONT_DISPLAY = "'Cinzel', Georgia, serif";
+export const FONT_BODY = "'EB Garamond', Georgia, serif";
 
 export const INK = {
   dark: '#3a3226',
