@@ -3454,3 +3454,61 @@ Grotto, houses, bridge, river strip) — zero character spritesheets anywhere ac
 in this session or any prior commit. The higher-resolution originals the maintainer refers to were
 evidently supplied in an earlier conversation this session has no access to; they need to be
 re-attached in this conversation before any NPC-art recovery work can happen.
+
+### Map editor entry point moved from Lourdes to Home, with a dedicated no-player-control preview mode
+
+The maintainer's request: "quiero que el boton de map editor este en Home (no en lourdes). Y que
+cuando lo pulse, vea lourdes (pero no controle a ningun player). Que me pueda desplazar por el mapa,
+que con la ruleta haga zoom in y out. Y que todo lo que cambie en el escenario con map editor, quede
+cambiado en el mapa de lourdes play." Four parts: move the entry button to Home; entering it shows
+Lourdes with no player control; free camera pan; mouse-wheel zoom; and edits persist into real play.
+
+**Entry point.** `MapEditorPanel.ts` used to own a small floating "MAP EDITOR" toggle button, created
+inside `OverworldScene` itself and visible any time `DEV_MODE` is on. That toggle button is gone --
+removed outright, not just hidden -- and `HomeScene.ts` gained a small "Map Editor" button instead
+(top-left corner, mirroring the settings gear on the opposite corner, `DEV_MODE`-gated exactly like
+every other editor entry point per `core/devMode.ts`'s own contract). It calls
+`this.scene.start(SCENE_KEYS.OVERWORLD, { editorMode: true })`.
+
+**No player control / free-look.** `OverworldSceneData` gained `editorMode?: boolean`, and
+`OverworldScene` gained a new field, `editorViewMode` (`DEV_MODE && !!data.editorMode`), set once in
+`create()` and never changed again for that scene instance's lifetime. This deliberately replaces the
+*previous* mechanism, which gated everything on the editor panel's own open/closed state
+(`mapEditorPanel?.isOpen()`) — that toggled off the moment the maintainer hit "Close editor" to get
+an unobstructed look at the map, which would have silently handed player control back and snapped the
+camera onto Bernadette mid-edit. `editorViewMode` instead gates all three of: `uiBlocked` in
+`update()` (keeps the player permanently locked), the `updateCameraFollow()` skip (keeps the camera
+under manual control), and the pan/zoom listeners in `setupEditorCameraPan()` -- all for the entire
+scene session, independent of whether the side panel itself is currently shown.
+
+Since there's no more in-scene toggle button to open the panel from, `MapEditorPanel` now opens
+itself: its constructor calls its own (previously-private, now-only-caller) `openPanel()` at the end,
+and it's only ever constructed by `OverworldScene` when `editorViewMode` is true in the first place
+(never on the normal Le Cachot gameplay path, where no `MapEditorPanel` instance is created at all,
+same as before this change). The `mapEditorPanel` field OverworldScene used to keep around just to
+call `.isOpen()` on was removed entirely — nothing reads it anymore, since `editorViewMode` already
+covers every case that check used to cover.
+
+**Mouse-wheel zoom.** New listener in `setupEditorCameraPan()`, same 5-param `(pointer, currentlyOver,
+deltaX, deltaY, deltaZ)` wheel-event signature already established in `ApparitionJourneyScene.ts`
+(see that file's own doc comment on why `deltaY`, the 4th positional param, not `deltaX`/3rd, is the
+one that matters) -- `cameras.main.zoom` adjusted by ±0.1 per tick, clamped to [0.5, 3], centered on
+the camera's own current center rather than the cursor (simplest implementation that satisfies "con
+la ruleta haga zoom in y out" without adding cursor-relative re-centering math nobody asked for).
+
+**Persistence.** No new code needed here — already fully satisfied by the existing editor plumbing:
+`MapEditorPanel.save()` calls `saveEditorMapData()` (localStorage), and `OverworldScene.
+loadEditorPlacedAssets()`/`loadEditorZones()` already load that same saved data **unconditionally**,
+regardless of `DEV_MODE` or how the scene was entered (see those methods' own pre-existing doc
+comments: "a saved layout is part of the map every player should see, not an editor-only artifact").
+So anything placed/painted and saved while in this new Home-launched preview mode is exactly what a
+real playthrough (reached via Le Cachot's door) sees too, with zero special-casing required. The
+maintainer still has to press "Save map" for a change to persist, same as before this round — only
+*entering* the editor changed, not what "saving" means once there.
+
+Verified live via Playwright: the new "Map Editor" button appears on Home without disturbing the
+Play/More Games/gear layout; clicking it lands directly on the Lourdes map with the editor panel
+already open; `ArrowRight` held for 600ms produces zero player movement (confirmed by comparing
+before/after screenshots pixel-for-pixel on Bernadette's position); a right-click-drag pans the
+camera (NPCs visibly shift on screen); and two wheel scrolls (zoom in, then back out) visibly resize
+every sprite on screen and return to the original scale afterward.

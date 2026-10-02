@@ -15,6 +15,7 @@ import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
 import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
+import { DEV_MODE } from '../core/devMode';
 
 /** Candle positions in the *original* (1672x941) artwork — see toGameXY(). */
 const CANDLE_SOURCE_POINTS: Array<{ x: number; y: number }> = [
@@ -127,6 +128,34 @@ export class HomeScene extends Phaser.Scene {
       panelAlpha: 0.34,
     };
 
+    // Developer-only entry point into the map editor (DEV_MODE-only, see `core/devMode.ts`) --
+    // moved here from a toggle button inside the Lourdes map itself per the maintainer's explicit
+    // request ("quiero que el boton de map editor este en Home (no en lourdes)"). Starts
+    // `OverworldScene` in `editorMode` (see that file's own doc comment on `editorViewMode`):
+    // the map is shown with free-look pan/zoom and no player control, the editor panel opens
+    // itself immediately, and anything saved there is the same layout every real playthrough of
+    // Lourdes loads. Small and tucked into the top-left corner, mirroring the settings gear on the
+    // opposite corner, so it stays out of the way of the painted illustration -- not localized
+    // (plain English), matching every other label inside the editor itself, since this is a
+    // developer tool, not player-facing UI.
+    let editorButton: Phaser.GameObjects.Container | null = null;
+    if (DEV_MODE) {
+      editorButton = createButton(
+        this,
+        0,
+        0,
+        70,
+        18,
+        'Map Editor',
+        () => {
+          this.scene.start(SCENE_KEYS.OVERWORLD, { editorMode: true });
+        },
+        { ...buttonStyle, fontSize: '8px' },
+        { x: 0, y: 0 },
+      );
+      editorButton.setDepth(DEPTH.UI);
+    }
+
     // Anchored by its own left/bottom *edge* (not its center) — see `ui/Button.ts`'s `origin`
     // param — so it can be positioned as `screenLeftEdge + margin` / `screenBottomEdge - margin`
     // directly, growing rightward/upward from that corner.
@@ -187,6 +216,7 @@ export class HomeScene extends Phaser.Scene {
     const margin = 16;
     onSafeAreaChange(this, (insets) => {
       gear.setPosition(GAME_WIDTH - insets.right - margin, insets.top + margin);
+      editorButton?.setPosition(insets.left + margin, insets.top + margin);
 
       const bottomEdge = GAME_HEIGHT - insets.bottom - margin;
       playButton.setPosition(insets.left + margin, bottomEdge);

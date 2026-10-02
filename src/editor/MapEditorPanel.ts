@@ -61,6 +61,10 @@ const PANEL_LEFT = GAME_WIDTH - PANEL_WIDTH;
  * symbols... do not need to appear in the actual game") -- walk-behind in particular needs no new
  * runtime mechanic at all, since the existing per-object Y-sort (`depthForY`) already makes the
  * player render behind a building automatically based on its own Y position.
+ *
+ * Only ever constructed by `OverworldScene.ts` when its `editorViewMode` is set (reached
+ * exclusively via `HomeScene`'s "Map Editor" button, never through normal gameplay) -- so it opens
+ * itself immediately in its own constructor rather than waiting for a separate toggle button.
  */
 export class MapEditorPanel {
   private scene: Phaser.Scene;
@@ -82,7 +86,6 @@ export class MapEditorPanel {
    * of overflowing past the Save/Close buttons. Reset to 0 whenever the layer changes. */
   private paletteScrollOffset = 0;
 
-  private toggleButton: Phaser.GameObjects.Container;
   private panelObjects: Phaser.GameObjects.GameObject[] = [];
   private zoneVisuals: Map<string, { graphics: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.DOMElement }> = new Map();
   private inProgressGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -107,14 +110,6 @@ export class MapEditorPanel {
     this.zones = zones;
     this.zoneColliders = zoneColliders;
 
-    // "MAP\nEDITOR": `createButton`'s label goes through `createText`, which sets the DOM node's
-    // own `innerText` (see `ui/text.ts`) -- the browser renders an embedded "\n" there as a real
-    // line break regardless of the `white-space` CSS, so this two-line label works with no extra
-    // element needed.
-    this.toggleButton = createButton(scene, GAME_WIDTH - 18, GAME_HEIGHT / 2, 30, 56, 'MAP\nEDITOR', () => this.toggleOpen());
-    this.toggleButton.setScrollFactor(0);
-    this.toggleButton.setDepth(DEPTH.UI);
-
     this.statusText = createText(scene, PANEL_LEFT + PANEL_WIDTH / 2, GAME_HEIGHT - 10, '', {
       fontSize: '7px',
       color: '#fffaf0',
@@ -127,15 +122,15 @@ export class MapEditorPanel {
     this.statusText.setVisible(false);
 
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleWorldPointerDown(pointer));
+
+    // This panel is now only ever constructed by `OverworldScene.ts` when `editorViewMode` is
+    // already true (reached exclusively via `HomeScene`'s "Map Editor" button) -- there is no more
+    // in-scene toggle button to open it from, so it opens itself immediately instead.
+    this.openPanel();
   }
 
   isOpen(): boolean {
     return this.open;
-  }
-
-  private toggleOpen(): void {
-    if (this.open) this.close();
-    else this.openPanel();
   }
 
   private openPanel(): void {
@@ -150,11 +145,6 @@ export class MapEditorPanel {
     this.assets.forEach((instance) => this.enableInstanceEditing(instance));
     this.zones.forEach((zone) => this.showZoneVisual(zone));
     this.statusText.setVisible(true);
-    // The toggle button and the open panel occupy the same right-hand strip of screen -- the
-    // panel's own title already says "MAP EDITOR" and "Close editor" already closes it, so the
-    // separate toggle button is hidden (not just left underneath) while open, rather than fighting
-    // the panel's own rows for the same space.
-    this.toggleButton.setVisible(false);
     this.setStatus('Select/Move tool. Click an asset below to place it, or paint a zone.');
 
     this.buildPanelUI();
@@ -172,7 +162,6 @@ export class MapEditorPanel {
     });
     this.zoneVisuals.clear();
     this.statusText.setVisible(false);
-    this.toggleButton.setVisible(true);
     this.panelObjects.forEach((obj) => obj.destroy());
     this.panelObjects = [];
   }

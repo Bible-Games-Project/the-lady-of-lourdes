@@ -165,6 +165,9 @@ type Phase = 'explore' | 'crossing' | 'hush' | 'apparition' | 'praying' | 'endin
 
 interface OverworldSceneData {
   fromCachot?: boolean;
+  /** Entered from `HomeScene`'s "Map Editor" button (DEV_MODE-only) rather than real gameplay --
+   * see `editorViewMode`'s own doc comment below for what this changes. */
+  editorMode?: boolean;
 }
 
 export class OverworldScene extends Phaser.Scene {
@@ -199,12 +202,25 @@ export class OverworldScene extends Phaser.Scene {
   // Whatever the map editor (dev-mode-only, see `core/devMode.ts`) has saved -- loaded here
   // unconditionally (a saved layout, including a BLOCKED zone's real collision, is part of the map
   // every player sees/is bound by, not an editor-only artifact) and additive only: none of this
-  // reads or touches the river/NPC waypoints above. The editing UI/input itself (`mapEditorPanel`
-  // below) is the only piece actually gated by DEV_MODE.
+  // reads or touches the river/NPC waypoints above. The editing UI/input itself (`MapEditorPanel`,
+  // constructed below -- not kept as a field, since nothing here needs to call back into it once
+  // built; it owns its own lifetime via the scene's input listeners) is the only piece actually
+  // gated by DEV_MODE.
   private editorAssets: EditorAssetRegistry = new Map();
   private editorZones: EditorZoneRegistry = new Map();
   private editorZoneColliders: EditorZoneColliderRegistry = new Map();
-  private mapEditorPanel: MapEditorPanel | null = null;
+
+  /**
+   * True only when this scene was entered via `HomeScene`'s "Map Editor" button (`data.editorMode`,
+   * itself only ever offered when `DEV_MODE` is on). Unlike the editor panel's own open/closed state
+   * -- which toggles off the moment the maintainer hits "Close editor" to get an unobstructed look
+   * at the map -- this stays true for the rest of the scene's lifetime once set, so free-look
+   * pan/zoom and "no player control" don't silently revert just because the side panel itself is
+   * hidden. The
+   * normal-gameplay path (reached via Le Cachot's door, `fromCachot`) never sets this, so none of
+   * the behavior gated on it changes anything about real play.
+   */
+  private editorViewMode = false;
 
   // True-float camera scroll accumulator for the hand-rolled follow in `updateCameraFollow()` --
   // see that method's own doc comment for why this can't just be `camera.startFollow()`.
@@ -238,8 +254,8 @@ export class OverworldScene extends Phaser.Scene {
     this.editorAssets = new Map();
     this.editorZones = new Map();
     this.editorZoneColliders = new Map();
-    this.mapEditorPanel = null;
     this.editorPanStart = null;
+    this.editorViewMode = DEV_MODE && !!data.editorMode;
 
     this.buildTerrain();
 
@@ -263,9 +279,12 @@ export class OverworldScene extends Phaser.Scene {
     // The editor's own UI/input is the only DEV_MODE-gated piece here -- the assets/zones it has
     // already saved were just loaded above unconditionally (see loadEditorPlacedAssets()/
     // loadEditorZones()'s own doc comments) and stay in effect for every player regardless of this
-    // flag; only the ability to add/move/paint more of them is gated.
-    if (DEV_MODE) {
-      this.mapEditorPanel = new MapEditorPanel(this, this.editorAssets, this.colliderBodies, this.editorZones, this.editorZoneColliders);
+    // flag; only the ability to add/move/paint more of them is gated. Only constructed (and
+    // auto-opened) in `editorViewMode` now -- reached exclusively via `HomeScene`'s "Map Editor"
+    // button, never from the normal Le Cachot gameplay entrance -- since there is no longer any
+    // in-scene toggle button to open it from the real-gameplay path.
+    if (this.editorViewMode) {
+      new MapEditorPanel(this, this.editorAssets, this.colliderBodies, this.editorZones, this.editorZoneColliders);
     }
     this.physics.add.collider(this.player, this.colliderBodies);
 
@@ -539,29 +558,31 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * Free-look camera panning for the map editor only (`MapEditorPanel`, DEV_MODE-only) — lets the
-   * maintainer inspect/edit any part of the map without walking Bernadette there first. Right
-   * -mouse-button drag, deliberately: every existing editor interaction (placing an asset, painting
-   * a walkable/walk-behind/blocked zone, selecting/dragging a placed instance — see
-   * `MapEditorPanel.ts`) is left-click-based, so panning on the *other* button can never conflict
-   * with any of that click routing, and needs no changes to the panel itself. Wired up unconditionally
-   * here (not gated on DEV_MODE at the listener level) since `this.mapEditorPanel` is always `null`
-   * outside DEV_MODE, making every handler below a no-op automatically — the actual gate is
-   * `mapEditorPanel.isOpen()`, checked on every event.
+   * Free-look camera panning and mouse-wheel zoom for the map editor view only (`editorViewMode`,
+   * reached exclusively via `HomeScene`'s "Map Editor" button) — lets the maintainer inspect/edit
+   * any part of the map without walking Bernadette there first. Pan is right-mouse-button drag,
+   * deliberately: every existing editor interaction (placing an asset, painting a walkable/walk
+   * -behind/blocked zone, selecting/dragging a placed instance — see `MapEditorPanel.ts`) is
+   * left-click-based, so panning on the *other* button can never conflict with any of that click
+   * routing, and needs no changes to the panel itself. Wired up unconditionally here (not gated on
+   * DEV_MODE at the listener level) since `editorViewMode` is always `false` outside DEV_MODE (see
+   * its own doc comment above), making every handler below a no-op automatically.
    *
-   * `update()`'s own `updateCameraFollow()` call is skipped whenever the editor is open (see below)
-   * so this manual scroll isn't fought/overwritten every frame by the player-follow lerp — the
-   * player is already locked in place while the editor is open (`uiBlocked`), so there is no
-   * "current" player position this pan would need to catch up to anyway. Closing the editor simply
-   * resumes normal follow next frame, which re-centers on the player exactly as it always has — no
-   * special-cased transition needed, since normal gameplay camera behavior is otherwise completely
-   * unaffected by any of this.
+   * Gated on `editorViewMode` itself, not `mapEditorPanel?.isOpen()` -- the maintainer can hit
+   * "Close editor" to hide the side panel and see the full map unobstructed while keeping free-look
+   * pan/zoom and "no player control" exactly as they were; see `editorViewMode`'s own doc comment
+   * for why that distinction matters.
+   *
+   * `update()`'s own `updateCameraFollow()` call is skipped for the rest of the scene's life once
+   * `editorViewMode` is set (see below) so this manual scroll/zoom isn't fought/overwritten every
+   * frame by the player-follow lerp — the player is never controllable in this mode (`uiBlocked`),
+   * so there is no "current" player position this pan would ever need to catch up to.
    */
   private setupEditorCameraPan(): void {
     this.input.mouse?.disableContextMenu();
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (!this.mapEditorPanel?.isOpen() || !pointer.rightButtonDown()) return;
+      if (!this.editorViewMode || !pointer.rightButtonDown()) return;
       this.editorPanStart = {
         pointerX: pointer.x,
         pointerY: pointer.y,
@@ -572,7 +593,7 @@ export class OverworldScene extends Phaser.Scene {
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (!this.editorPanStart) return;
-      if (!this.mapEditorPanel?.isOpen() || !pointer.rightButtonDown()) {
+      if (!this.editorViewMode || !pointer.rightButtonDown()) {
         this.editorPanStart = null;
         return;
       }
@@ -588,17 +609,31 @@ export class OverworldScene extends Phaser.Scene {
     this.input.on('pointerup', () => {
       this.editorPanStart = null;
     });
+
+    // Mouse-wheel zoom, centered on the camera's own current center (not the cursor) -- simplest
+    // behavior that satisfies "con la ruleta haga zoom in y out", and consistent with the plain
+    // drag-pan above rather than adding cursor-relative re-centering math. Same (pointer,
+    // currentlyOver, deltaX, deltaY, deltaZ) 5-param signature as `ApparitionJourneyScene.ts`'s own
+    // wheel handler -- see that file's doc comment for why deltaY (not deltaX) is the 4th param.
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _currentlyOver: unknown, _deltaX: number, deltaY: number) => {
+      if (!this.editorViewMode) return;
+      const zoomStep = deltaY > 0 ? -0.1 : 0.1;
+      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom + zoomStep, 0.5, 3);
+    });
   }
 
   update(time: number, delta: number): void {
-    const uiBlocked =
-      this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking() || (this.mapEditorPanel?.isOpen() ?? false);
+    // The `MapEditorPanel` (see `create()`) is only ever constructed when `editorViewMode` is
+    // already true, so that first clause alone already covers every case its own `isOpen()` used
+    // to need to be checked for separately here.
+    const uiBlocked = this.editorViewMode || this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
     this.player.update(time);
-    // Free-look editor panning (see `setupEditorCameraPan()`) owns the camera while the editor is
-    // open -- the normal player-follow lerp would otherwise fight it every frame.
-    if (!this.mapEditorPanel?.isOpen()) {
+    // Free-look editor panning/zoom (see `setupEditorCameraPan()`) owns the camera for the rest of
+    // this scene's life once `editorViewMode` is set -- the normal player-follow lerp would
+    // otherwise fight it every frame, including after "Close editor" hides the side panel.
+    if (!this.editorViewMode) {
       this.updateCameraFollow();
     }
 
