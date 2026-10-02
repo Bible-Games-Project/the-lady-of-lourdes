@@ -90,6 +90,10 @@ export interface CrispTextStyle {
   padding?: { x?: number; y?: number };
   align?: 'left' | 'center' | 'right';
   letterSpacing?: string;
+  /** Raw CSS `text-shadow` value (e.g. `'1px 2px 2px rgba(0,0,0,0.4)'`). Opt-in, unset by every
+   * existing call site -- added for `HomeScene.ts#buildTitle()`'s storybook-style title, which
+   * needs a soft drop shadow under its stroke+fill to match the maintainer's reference image. */
+  textShadow?: string;
 }
 
 /**
@@ -147,6 +151,10 @@ function buildCss(style: CrispTextStyle): string {
     // matching Phaser's own canvas stroke-then-fill text rendering -- no extra paint-order hack
     // needed, confirmed visually.
     lines.push(`-webkit-text-stroke: ${style.strokeThickness}px ${style.stroke}`);
+  }
+
+  if (style.textShadow) {
+    lines.push(`text-shadow: ${style.textShadow}`);
   }
 
   if (style.backgroundColor) {

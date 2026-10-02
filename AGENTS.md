@@ -3541,3 +3541,37 @@ touches every HUD-owning class in this scene (`GameplayTopBar`, `TasksPanel`, `T
 they're not visible during the editor flow) rather than a narrow, low-risk change, so it was
 deliberately left out of this round rather than attempted speculatively. The maintainer can still
 zoom back in before using the panel; this is a rough edge, not a broken feature.
+
+### Home title, fourth take: a reference image this time, not a verbal description
+
+The Cinzel/gold-fill title from the previous round (see that section above) was rejected again --
+"sigue sin gustarme para nada" -- but this time the maintainer attached a reference image (a mockup
+of the Home screen with a different title treatment) instead of describing it in words, with one
+explicit layout constraint: keep the title's current centered, single-line, top-of-screen position
+("centrado arriba, como ahora") rather than the reference image's own two-line left-aligned layout,
+and change nothing else on the screen ("no quiero que cambies nada mas, solo el titulo").
+
+The reference's title style: a bold, rounded storybook slab-serif, cream fill, a warm brown outline,
+and a soft drop shadow for depth. Matched with Google Fonts "Bevan" (added to `index.html`'s existing
+font `<link>` alongside Cinzel/EB Garamond, and synced into the scratchpad `build_artifact.py`'s own
+duplicate `<head>`, same gotcha as every previous font-link change) -- the closest free match to the
+reference's flared serifs and heavy stroke weight. `HomeScene.ts#buildTitle()`'s style object changed
+from gold-fill/no-stroke to `HOME_PALETTE.cream` fill + `HOME_PALETTE.trunkDark` stroke (both already
+-existing palette colors, not new hex values) + the new font, sized up slightly (22px -> 26px) since
+Bevan reads narrower per-character than Cinzel at the same size. This explicitly *reverses* the prior
+round's "don't solve readability with an outline" rule -- that rule was about a different font/image
+pairing; the new reference image itself has a stroke, so the maintainer's own reference now calls for
+one.
+
+`ui/text.ts`'s `CrispTextStyle` gained one new optional field, `textShadow` (raw CSS `text-shadow`
+value, pushed into `buildCss()` only when set) -- needed for the reference's soft drop shadow, and
+deliberately opt-in/additive so every other existing `createText()` call site (which doesn't set it)
+is completely unaffected. `FONT_DISPLAY` (Cinzel) itself was left untouched, since
+`ApparitionJourneyScene.ts`'s own title still uses it and the maintainer's request was scoped to "el
+titulo" on the Home screen specifically -- the new `'Bevan', Georgia, serif` font-family string is
+local to `buildTitle()`'s own style object, not a shared constant. Position, size of the surrounding
+layout, the gold rule line beneath the title, and every button/icon on the screen are all unchanged.
+
+Verified live via Playwright: a zoomed screenshot of the rendered title shows the same bold flared
+-serif letterforms, cream-on-brown-outline coloring, and soft shadow as the reference image, still
+centered on one line at the top of the screen exactly where it sat before.

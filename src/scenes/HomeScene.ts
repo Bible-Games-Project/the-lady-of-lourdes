@@ -11,7 +11,7 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
-import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
+import { createText, FONT_BODY } from '../ui/text';
 import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
@@ -493,27 +493,33 @@ export class HomeScene extends Phaser.Scene {
   }
 
   /**
-   * Third take on this title (see AGENTS.md and `ui/text.ts`'s own doc comment on `FONT_DISPLAY`
-   * for the full history): the maintainer rejected the previous round's pixel webfont on sight as
-   * not matching this screen's own painted artwork ("no encaja con la imagen de fondo"). No stroke
-   * either way (the round before that was rejected as "childish/cartoon" for exactly that) — just
-   * one text layer, `FONT_DISPLAY` (Cinzel, a carved-stone/historical display serif that actually
-   * belongs next to a painted illustration), and a saturated gold fill that reads clearly across
-   * this backdrop's mixed light/dark artwork — gold's hue and saturation carry it across both the
-   * pale sky and the darker grotto stone, where a flat near-white or near-black fill would wash out
-   * against one half or the other. Letter-spacing keeps Cinzel's own fairly tight default spacing
-   * from mushing together at this small size.
+   * Fourth take on this title (see AGENTS.md and `ui/text.ts`'s own doc comment on `FONT_DISPLAY`
+   * for the earlier rounds' full history). The maintainer rejected the Cinzel/gold-fill version
+   * too ("sigue sin gustarme para nada") and supplied a reference image instead: a bold, rounded
+   * storybook slab-serif ("Bevan", Google Fonts -- the closest free match to the reference's flared
+   * serifs and heavy, friendly stroke weight), cream fill, a warm brown outline, and a soft drop
+   * shadow for depth -- explicitly *with* a stroke this time, reversing the earlier "don't solve
+   * readability with an outline" rule from the Cinzel round, since the new reference image itself
+   * has one. Deliberately kept to this screen's own existing centered position/size/one-line layout
+   * ("centrado arriba, como ahora, no como la imagen") -- only the letterforms/colors changed, not
+   * where or how large the title sits; the reference image's own two-line left-aligned layout was
+   * explicitly *not* wanted. `FONT_DISPLAY` (Cinzel) is untouched and still used by
+   * `ApparitionJourneyScene.ts`'s own title -- this round's request was scoped to "el titulo" on
+   * this screen specifically ("no quiero que cambies nada mas, solo el titulo"), so this is a new,
+   * local font-family string, not a change to the shared constant.
    */
   private buildTitle(): void {
     const style = {
-      fontSize: '22px',
-      fontFamily: FONT_DISPLAY,
-      color: HOME_PALETTE.glowGold,
+      fontSize: '26px',
+      fontFamily: "'Bevan', Georgia, serif",
+      color: HOME_PALETTE.cream,
       fontStyle: 'bold' as const,
-      letterSpacing: '1px',
+      stroke: HOME_PALETTE.trunkDark,
+      strokeThickness: 2,
+      textShadow: '1px 2px 3px rgba(29, 23, 18, 0.55)',
     };
 
-    createText(this, GAME_WIDTH / 2, 26, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
+    createText(this, GAME_WIDTH / 2, 24, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
 
     const ruleY = 40;
     const ruleHalfWidth = 60;
