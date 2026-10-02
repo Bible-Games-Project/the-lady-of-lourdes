@@ -63,6 +63,16 @@ const ROWS = 168;
 const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
 
+/**
+ * How far out the map editor's mouse-wheel zoom (`setupEditorCameraPan()`) can go — the zoom level
+ * at which the *shorter* logical-viewport axis exactly matches the map's own corresponding axis, so
+ * the whole map (both its width and height) fits inside the camera's view at once, with a small 10%
+ * margin so the map's own edges don't sit flush against the screen edge. Derived from the map's
+ * actual size rather than a hardcoded number, so this keeps working correctly if `COLS`/`ROWS` ever
+ * change.
+ */
+const EDITOR_MIN_ZOOM = Math.min(GAME_WIDTH / MAP_W, GAME_HEIGHT / MAP_H) * 0.9;
+
 const PATH_CENTER = 32 + OFFSET_X_TILES;
 
 // Vertical arm of the river, beside the grotto. Fully blocks the player — the only crossing is
@@ -615,10 +625,13 @@ export class OverworldScene extends Phaser.Scene {
     // drag-pan above rather than adding cursor-relative re-centering math. Same (pointer,
     // currentlyOver, deltaX, deltaY, deltaZ) 5-param signature as `ApparitionJourneyScene.ts`'s own
     // wheel handler -- see that file's doc comment for why deltaY (not deltaX) is the 4th param.
+    // Lower bound is `EDITOR_MIN_ZOOM` (fits the *entire* map in view, per the maintainer's explicit
+    // "que pueda llegar a ver todo el mapa") rather than an arbitrary fixed floor like the original
+    // 0.5 -- that earlier value only ever showed a small fraction of the 2560x2688 map at once.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _currentlyOver: unknown, _deltaX: number, deltaY: number) => {
       if (!this.editorViewMode) return;
       const zoomStep = deltaY > 0 ? -0.1 : 0.1;
-      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom + zoomStep, 0.5, 3);
+      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom + zoomStep, EDITOR_MIN_ZOOM, 3);
     });
   }
 

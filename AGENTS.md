@@ -3512,3 +3512,32 @@ already open; `ArrowRight` held for 600ms produces zero player movement (confirm
 before/after screenshots pixel-for-pixel on Bernadette's position); a right-click-drag pans the
 camera (NPCs visibly shift on screen); and two wheel scrolls (zoom in, then back out) visibly resize
 every sprite on screen and return to the original scale afterward.
+
+### Editor zoom-out range extended to fit the whole map, and a known tradeoff it surfaces
+
+Follow-up to the round above: the maintainer tried the new wheel zoom and found it couldn't zoom out
+far enough to see the whole map at once ("quiero que con la ruleta de zoom en el editor, pueda llegar
+más lejos... que pueda llegar a ver todo el mapa"). The zoom floor was an arbitrary fixed `0.5` with
+no relationship to the map's actual size (2560x2688, `MAP_W`/`MAP_H`) versus the 480x270 logical
+viewport — nowhere close to small enough to fit it. Replaced with `EDITOR_MIN_ZOOM`, computed as
+`Math.min(GAME_WIDTH / MAP_W, GAME_HEIGHT / MAP_H) * 0.9` (the zoom level at which the map's shorter
+axis exactly fills the viewport, times a 0.9 margin so the map's own edges don't sit flush against
+the screen edge) rather than a hardcoded number, so it keeps being correct if the map's size ever
+changes. Verified live: 15 wheel-out ticks reach exactly this computed floor (clamped, confirmed via
+`cameras.main.zoom`), and a screenshot at that zoom shows the entire grass map within the viewport
+with margin on every side.
+
+**Known tradeoff, surfaced but not fixed in this round**: every fixed-position HUD element in this
+scene (the map editor's own side panel, the top-right gear/home icons, the "Tasks" button, the touch
+joystick) uses `setScrollFactor(0)` to stay put as the *world* scrolls — but `scrollFactor` only
+cancels a camera's *scroll* (translation); it does nothing to cancel *zoom* (scale), which Phaser
+still applies to every object a camera renders, scrollFactor-0 or not. Confirmed visually: zoomed out
+to `EDITOR_MIN_ZOOM`, the editor's own side panel shrinks to a roughly 25x60px cluster in the corner
+-- technically still there and still clickable at its shrunk position, but too small to comfortably
+read or use. Properly decoupling the HUD from world zoom needs a second, never-zoomed camera (with
+either camera's objects selectively `ignore()`-d by the other) -- a real Phaser pattern, but one that
+touches every HUD-owning class in this scene (`GameplayTopBar`, `TasksPanel`, `TouchControls`,
+`MapEditorPanel`, plus `DialogueBox`/`RosaryUI`/`InteractionPrompt` for completeness even though
+they're not visible during the editor flow) rather than a narrow, low-risk change, so it was
+deliberately left out of this round rather than attempted speculatively. The maintainer can still
+zoom back in before using the panel; this is a rough edge, not a broken feature.
