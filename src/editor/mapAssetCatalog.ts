@@ -23,40 +23,44 @@ export interface MapAssetDef {
 }
 
 export const MAP_ASSET_CATALOG: MapAssetDef[] = [
+  // Second full batch for the buildings layer -- replaces the previous location-specific set
+  // (Le Cachot/Moulin de Boly/Hospice/Grotto) entirely, per the maintainer's "borra los edificios
+  // que te pasé en otro momento, y cambialos por estos". See `lourdesBuildings.ts`'s own doc
+  // comment for the full reasoning and per-building identification.
   {
-    id: 'le_cachot_exterior',
-    label: 'Le Cachot',
-    textureKey: BUILDING_KEYS.LE_CACHOT_EXTERIOR,
-    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.LE_CACHOT_EXTERIOR].width,
-    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.LE_CACHOT_EXTERIOR].height,
-    defaultDisplayHeight: 76,
+    id: 'cottage_row',
+    label: 'Cottage Row',
+    textureKey: BUILDING_KEYS.COTTAGE_ROW,
+    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.COTTAGE_ROW].width,
+    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.COTTAGE_ROW].height,
+    defaultDisplayHeight: 96,
     defaultLayer: 'buildings',
   },
   {
-    id: 'moulin_de_boly',
-    label: 'Moulin de Boly',
-    textureKey: BUILDING_KEYS.MOULIN_DE_BOLY,
-    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.MOULIN_DE_BOLY].width,
-    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.MOULIN_DE_BOLY].height,
-    defaultDisplayHeight: 132,
+    id: 'cottage_corner',
+    label: 'Cottage (corner)',
+    textureKey: BUILDING_KEYS.COTTAGE_CORNER,
+    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.COTTAGE_CORNER].width,
+    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.COTTAGE_CORNER].height,
+    defaultDisplayHeight: 96,
     defaultLayer: 'buildings',
   },
   {
-    id: 'hospice',
-    label: 'Hospice',
-    textureKey: BUILDING_KEYS.HOSPICE,
-    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.HOSPICE].width,
-    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.HOSPICE].height,
-    defaultDisplayHeight: 104,
+    id: 'cottage_row_curved',
+    label: 'Cottage Row (curved)',
+    textureKey: BUILDING_KEYS.COTTAGE_ROW_CURVED,
+    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.COTTAGE_ROW_CURVED].width,
+    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.COTTAGE_ROW_CURVED].height,
+    defaultDisplayHeight: 96,
     defaultLayer: 'buildings',
   },
   {
-    id: 'grotto_massabielle',
-    label: 'Grotto',
-    textureKey: BUILDING_KEYS.GROTTO_MASSABIELLE,
-    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.GROTTO_MASSABIELLE].width,
-    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.GROTTO_MASSABIELLE].height,
-    defaultDisplayHeight: 110,
+    id: 'townhouse',
+    label: 'Townhouse',
+    textureKey: BUILDING_KEYS.TOWNHOUSE,
+    nativeWidth: BUILDING_NATIVE_SIZE[BUILDING_KEYS.TOWNHOUSE].width,
+    nativeHeight: BUILDING_NATIVE_SIZE[BUILDING_KEYS.TOWNHOUSE].height,
+    defaultDisplayHeight: 130,
     defaultLayer: 'buildings',
   },
   {

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
+import { LOURDES_GROUND_TAN_KEY, LOURDES_GROUND_TAN_TILE_SIZE } from '../assets/terrain/lourdesGroundTan';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -383,43 +383,51 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The whole map is ONE continuous ground layer: the maintainer's own real grass artwork (see
-   * assets/terrain/lourdesGrass.ts), tiled edge-to-edge, and nothing else -- no dirt path, no cave
-   * floor, no water/riverbank tiles. All of that (the organic dirt trail, the grotto's cave-floor
-   * patch, the vertical river arm's WATER/RIVERBANK tiles) was explicitly removed at the
-   * maintainer's request: "the desired starting map should be extremely simple: one continuous
-   * grass/ground layer covering the entire map, nothing else" -- everything else gets placed by
-   * hand through the map editor from here on, the same as the buildings/horizontal-river/bridge
-   * /grotto PNGs removed in an earlier pass (see this file's own header comment).
+   * The whole map is ONE continuous ground layer, tiled edge-to-edge, and nothing else -- no dirt
+   * path, no cave floor, no water/riverbank tiles. All of that (the organic dirt trail, the
+   * grotto's cave-floor patch, the vertical river arm's WATER/RIVERBANK tiles) was explicitly
+   * removed at the maintainer's request: "the desired starting map should be extremely simple: one
+   * continuous grass/ground layer covering the entire map, nothing else" -- everything else gets
+   * placed by hand through the map editor from here on, the same as the buildings/horizontal-river
+   * /bridge/grotto PNGs removed in an earlier pass (see this file's own header comment).
+   *
+   * The active tile is `lourdesGroundTan.ts` (a tan/terracotta ground texture), not the original
+   * green grass (`lourdesGrass.ts`) -- the maintainer asked to swap which one renders here
+   * ("sustituir el lourdes grass por este... el otro no lo borres, pero cambialo por este") while
+   * explicitly keeping the old grass asset module in the codebase rather than deleting it, in case
+   * it's wanted again later. If swapping back, change only the import/key/tile-size above and the
+   * `addTilesetImage()`/background-color calls below -- nothing else about this method depends on
+   * which ground texture is active.
    *
    * The scripted river-crossing mission beat (`FORD_ZONE`, `checkFordZone()`/
    * `beginRiverCrossing()`) still depends on the vertical arm being physically impassable except
    * via that cutscene -- that is gameplay/mission logic, not terrain art, and the maintainer was
    * explicit that gameplay/mission logic must stay untouched. So the invisible blocking collider
    * over that same rectangle stays exactly where it was; only its visible WATER/RIVERBANK tile
-   * graphics are gone. The area now just looks like grass, the same as everywhere else, until the
-   * maintainer places a river there again through the editor.
+   * graphics are gone. The area now just looks like the active ground tile, the same as everywhere
+   * else, until the maintainer places a river there again through the editor.
    */
   private buildTerrain(): void {
     // The map (416x928) is narrower than the camera's logical viewport (480 wide) at zoom 1, so
     // this color shows as a thin strip past the map's left/right edges whenever the camera is
-    // horizontally centered or further — sampled as the grass texture's own average color so that
-    // strip blends in instead of reading as a visible seam next to the artwork.
-    this.cameras.main.setBackgroundColor('#38737b');
+    // horizontally centered or further — sampled as the active ground texture's own average color
+    // (`Image.mean()` over `lourdes_ground_tan.png`) so that strip blends in instead of reading as
+    // a visible seam next to the artwork.
+    this.cameras.main.setBackgroundColor('#b98d74');
 
-    const grassCols = Math.ceil(MAP_W / LOURDES_GRASS_TILE_SIZE);
-    const grassRows = Math.ceil(MAP_H / LOURDES_GRASS_TILE_SIZE);
+    const grassCols = Math.ceil(MAP_W / LOURDES_GROUND_TAN_TILE_SIZE);
+    const grassRows = Math.ceil(MAP_H / LOURDES_GROUND_TAN_TILE_SIZE);
     const grassData: number[][] = Array.from({ length: grassRows }, () => Array.from({ length: grassCols }, () => 0));
     const grassMap = this.make.tilemap({
       data: grassData,
-      tileWidth: LOURDES_GRASS_TILE_SIZE,
-      tileHeight: LOURDES_GRASS_TILE_SIZE,
+      tileWidth: LOURDES_GROUND_TAN_TILE_SIZE,
+      tileHeight: LOURDES_GROUND_TAN_TILE_SIZE,
     });
     const grassTileset = grassMap.addTilesetImage(
-      'lourdesGrassTile',
-      LOURDES_GRASS_KEY,
-      LOURDES_GRASS_TILE_SIZE,
-      LOURDES_GRASS_TILE_SIZE,
+      'lourdesGroundTile',
+      LOURDES_GROUND_TAN_KEY,
+      LOURDES_GROUND_TAN_TILE_SIZE,
+      LOURDES_GROUND_TAN_TILE_SIZE,
       0,
       0,
     )!;

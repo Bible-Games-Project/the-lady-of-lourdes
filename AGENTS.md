@@ -3575,3 +3575,41 @@ layout, the gold rule line beneath the title, and every button/icon on the scree
 Verified live via Playwright: a zoomed screenshot of the rendered title shows the same bold flared
 -serif letterforms, cream-on-brown-outline coloring, and soft shadow as the reference image, still
 centered on one line at the top of the screen exactly where it sat before.
+
+### Ground texture swapped to a tan tile (grass kept, not deleted), and the buildings set fully replaced
+
+Two maintainer requests, same message: "puedes sustituir el lourdes grass por este? osea, el otro no
+lo borres, pero cambialo por este" (swap the active ground tile, but keep the old grass module in the
+codebase) and "borra los edificios que te pasé en otro momento, y cambialos por estos" (delete the
+old building set, replace with a new one).
+
+**Ground**: the supplied file (`lourdes_ground_tan.png`) arrived already at the exact 157x157 tile
+size `lourdesGrass.ts` uses and already a flat 12-color palette (confirmed via `Image.getcolors()`)
+-- i.e. already through that file's own resize-then-quantize recipe, so no reprocessing was needed,
+just a new sibling module (`assets/terrain/lourdesGroundTan.ts`, same shape as `lourdesGrass.ts`:
+`KEY`/`TILE_SIZE`/`preload*()`). `OverworldScene.ts#buildTerrain()`'s tilemap now points at the new
+key/tile-size; the background-color fallback for the thin strip past the map's left/right edges was
+recomputed from the new texture's own average color (`#b98d74`, was `#38737b`) so that strip still
+blends in instead of showing a seam. `lourdesGrass.ts` itself, its PNG, and its `BootScene.ts` preload
+call are all untouched and still loaded -- genuinely kept, not just left as dead code, exactly as
+asked, in case the maintainer wants it back.
+
+**Buildings**: `assets/buildings/lourdesBuildings.ts` is the *second* full set this module has held
+-- the previous location-specific batch (Grotto, Moulin de Boly, Le Cachot, Hospice) is gone (PNGs
+deleted via `git rm`, not left orphaned on disk) rather than layered underneath, same treatment as
+Bernadette's dress-color sheet swap. The new four are generic (not tied to a specific story location,
+since none was identified this time): `COTTAGE_ROW` (a straight row of three attached cottages),
+`COTTAGE_CORNER` (a single cottage at a three-quarter angle), `COTTAGE_ROW_CURVED` (three attached
+cottages again, following a curved street line), `TOWNHOUSE` (a taller three-story building with
+balconies). Each cropped to its own alpha bounding box and verified pixel-identical to the source
+crop via `numpy.array_equal()`, same pipeline as every previous real-art asset batch. `BUILDING_KEYS`
+feeding both `BootScene.ts`'s `LINEAR`-filter list and its preload calls generically via
+`Object.values()`/a single `preloadLourdesBuildings()` call meant neither needed touching -- only
+`mapAssetCatalog.ts`'s four catalog entries (and their `id`/`label`/`defaultDisplayHeight`) actually
+changed to match.
+
+Verified live via Playwright: a screenshot of the Lourdes map shows the new tan ground with no seam
+against the background-color strip; the editor's Buildings palette shows exactly the four new labels
+("Cottage Row", "Cottage (corner)", "Cottage Row (curved)", "Townhouse") with none of the old four
+present; placing "Townhouse" renders it crisply (LINEAR) over the new ground, selectable/scalable
+/deletable through the same generic instance-editing code as every other building.
