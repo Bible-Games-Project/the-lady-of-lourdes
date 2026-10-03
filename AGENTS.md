@@ -3760,3 +3760,36 @@ pixel-level differences between consecutive walk frames (several hundred to seve
 pixels per frame pair -- not a no-op animation); and a zoomed screenshot shows dramatically smoother
 shading/folds/facial detail than the previous round's visibly blocky result, confirming the
 "pixelado" complaint from several rounds ago is actually resolved now, not just reasoned about.
+
+### Trees and buildings placed through the map editor now get an automatic base collider
+
+"Quiero que tanto en árboles como casas, le añadas colliders. Que pueda caminar por detrás, pero que
+no los pueda atravesar por la base." Before this round, a placed tree or building was purely visual
+-- the only way to actually block the player anywhere was to separately paint a BLOCKED zone over it
+by hand with the editor's own zone tool. Now every `buildings`/`decorations` placement gets a small
+static collider automatically, hugging its own base (`editorAssetRender.ts#applyInstanceCollider()`:
+a zone sized to 50% of the image's display width and 22% of its display height, centered under its
+own ground-contact point -- the same "small footprint near the feet, not the whole sprite" principle
+`NpcActor.ts`'s own `FEET_*_FRAC` and `OverworldScene.ts`'s hand-placed `addStaticProp()` decor
+already use) -- so the player can still walk behind a tall canopy or roofline (unchanged: the
+existing per-object Y-sort, `depthForY`, already handles that) while the trunk/wall base genuinely
+stops them. `river`/`ground`-layer placements are untouched -- still visual only, a hand-painted
+BLOCKED zone is still the only way to block those.
+
+The collider has to stay in sync with everything the editor can do to a placed instance, not just
+exist once at creation: `createEditorAssetInstance()` (the one function both `OverworldScene.ts`'s
+real-gameplay load and `MapEditorPanel.ts`'s own `placeAsset()` already shared) now also builds the
+initial collider; the drag handler and `adjustSelectedScale()` both call `applyInstanceCollider()`
+again after moving/resizing the image (it always tears down whatever collider the instance
+previously had before deciding whether to build a new one, so this is safe to call repeatedly); and
+`deleteSelected()` tears its collider down for good, removing it from the scene's shared
+`colliderBodies` array the same way `removeZoneCollider()` already does for a deleted BLOCKED zone.
+
+Verified live via Playwright: seeded a saved building + tree placement directly into the map
+editor's own `localStorage` schema (the same one `MapEditorPanel.save()` writes), loaded a *normal*
+(non-editor) `OverworldScene` -- confirming the automatic collider isn't an editor-only effect -- and
+confirmed both instances own a collider already present in the scene's live `colliderBodies` array,
+sized/positioned exactly as the footprint formula predicts. Then ran a real physics test: placed
+Bernadette above the building's collider, gave her downward velocity, and stepped physics forward 90
+frames -- she stopped well short of reaching the collider at all, confirming genuine blocking, not
+just a correctly-computed-but-inert rectangle.

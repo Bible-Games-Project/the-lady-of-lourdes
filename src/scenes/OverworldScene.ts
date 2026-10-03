@@ -502,14 +502,15 @@ export class OverworldScene extends Phaser.Scene {
    * Renders whatever the map editor (`editor/MapEditorPanel.ts`, DEV_MODE-only) has saved to
    * `localStorage` -- called unconditionally, regardless of `DEV_MODE`, since a saved layout is part
    * of the map every player should see, not an editor-only artifact. Purely additive: this reads
-   * `editor/mapEditorData.ts`'s own storage key and only ever adds new `Image`s into `editorAssets`
-   * (visual only -- collision for anything the editor places comes entirely from its own painted
-   * BLOCKED zones, not from this method).
+   * `editor/mapEditorData.ts`'s own storage key and only ever adds new `Image`s into `editorAssets`.
+   * Buildings and decorations (trees) also get a small base-footprint collider automatically, via
+   * `createEditorAssetInstance()` -> `applyInstanceCollider()` (`editorAssetRender.ts`) -- a hand
+   * -painted BLOCKED zone is still the only way to block any *other* layer (ground/river).
    */
   private loadEditorPlacedAssets(): void {
     const saved = loadEditorMapData();
     saved.assets.forEach((data) => {
-      const instance = createEditorAssetInstance(this, data);
+      const instance = createEditorAssetInstance(this, data, this.colliderBodies);
       if (instance) this.editorAssets.set(data.id, instance);
     });
   }

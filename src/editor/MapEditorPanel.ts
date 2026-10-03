@@ -9,6 +9,7 @@ import {
   type EditorAssetRegistry,
   applyInstanceSize,
   applyInstanceDepth,
+  applyInstanceCollider,
   createEditorAssetInstance,
 } from './editorAssetRender';
 import {
@@ -55,12 +56,14 @@ const PANEL_LEFT = GAME_WIDTH - PANEL_WIDTH;
  * Deliberately additive, per this feature's own "do not break the existing game" requirement:
  * everything this panel places/paints lives in its own registries (`assets`, `zones`), completely
  * separate from `OverworldScene.ts`'s own hand-tuned `TOWN_BUILDINGS`/river/NPC-waypoint constants,
- * which this file never reads or modifies. Only a BLOCKED zone has a real runtime effect (a
- * rectangular collider over its bounding box, pushed into the scene's own live `colliderBodies`
- * array); WALKABLE/WALK_BEHIND are editor-visualization aids only (per the feature spec: "these
- * symbols... do not need to appear in the actual game") -- walk-behind in particular needs no new
- * runtime mechanic at all, since the existing per-object Y-sort (`depthForY`) already makes the
- * player render behind a building automatically based on its own Y position.
+ * which this file never reads or modifies. A BLOCKED zone has a real runtime effect (a rectangular
+ * collider over its bounding box, pushed into the scene's own live `colliderBodies` array); so does
+ * every placed `buildings`/`decorations` asset, automatically, via a small base-footprint collider
+ * (`editorAssetRender.ts#applyInstanceCollider()`) -- the maintainer's explicit "árboles como
+ * casas... que no los pueda atravesar por la base" ask, letting the player walk behind a tree/roof
+ * (still handled by the existing per-object Y-sort, `depthForY`) while its trunk/wall base genuinely
+ * blocks. WALKABLE/WALK_BEHIND zones remain editor-visualization aids only (per the feature's own
+ * original spec: "these symbols... do not need to appear in the actual game").
  *
  * Only ever constructed by `OverworldScene.ts` when its `editorViewMode` is set (reached
  * exclusively via `HomeScene`'s "Map Editor" button, never through normal gameplay) -- so it opens
@@ -568,7 +571,7 @@ export class MapEditorPanel {
       scale: 1,
       layer: this.currentLayer,
     };
-    const instance = createEditorAssetInstance(this.scene, data);
+    const instance = createEditorAssetInstance(this.scene, data, this.colliderBodies);
     if (!instance) return;
     this.assets.set(data.id, instance);
     this.enableInstanceEditing(instance);
@@ -596,6 +599,7 @@ export class MapEditorPanel {
       instance.data.x = image.x;
       instance.data.y = image.y;
       applyInstanceDepth(image, instance.data.layer);
+      applyInstanceCollider(this.scene, instance, this.colliderBodies);
       this.drawSelectionOutline(instance);
     });
   }
@@ -632,6 +636,7 @@ export class MapEditorPanel {
     instance.data.scale = Phaser.Math.Clamp(instance.data.scale + delta, 0.2, 3);
     applyInstanceSize(instance.image, instance.data.assetId, instance.data.scale);
     applyInstanceDepth(instance.image, instance.data.layer);
+    applyInstanceCollider(this.scene, instance, this.colliderBodies);
     this.drawSelectionOutline(instance);
     this.buildPanelUI();
   }
@@ -640,6 +645,11 @@ export class MapEditorPanel {
     if (!this.selectedInstanceId) return;
     const instance = this.assets.get(this.selectedInstanceId);
     if (instance) {
+      if (instance.collider) {
+        const idx = this.colliderBodies.indexOf(instance.collider);
+        if (idx !== -1) this.colliderBodies.splice(idx, 1);
+        instance.collider.destroy();
+      }
       instance.image.destroy();
       this.assets.delete(this.selectedInstanceId);
     }
