@@ -3831,3 +3831,26 @@ a missing one; `displayHeight` and the Arcade body's collider size both still la
 range (the `targetHeight` math scaling automatically with the new native size, as expected); and the
 walk-cycle frame-to-frame pixel diff still shows real, even more pronounced per-frame changes,
 confirming the animation itself wasn't affected by the resize.
+
+### Third ground texture tried: a rocky/dry-grass tile, same swap-without-deleting pattern
+
+"Dile que le mando otro tile de terreno, que no borre los otros, pero que use este para todo el mapa
+de lourdes, quiero ver como queda este" -- a third ground option to compare, same deal as the tan
+tile two rounds ago: swap which one `OverworldScene.ts#buildTerrain()` actually renders, keep every
+earlier one in the codebase untouched. `lourdesGrass.ts` (the original green grass) and
+`lourdesGroundTan.ts` (the tan tile from the previous round) are both still there, still preloaded,
+simply no longer the active one -- same as how the tan tile itself didn't delete the grass before it.
+
+Unlike the tan tile, this source (`lourdes_ground_rocky.png`) was genuinely continuous-tone (11,703
+unique colors by `Image.getcolors()`, not already a flat palette) -- so it needed the full recipe
+`lourdesGrass.ts`'s own doc comment documents, not a straight copy: a single clean `Image.BOX` resize
+down to the shared 157x157 tile size, then median-cut quantization to 12 colors with no dithering,
+which is what actually produces flat, hard-edged pixel-art color regions from a soft source (a resize
+alone cannot do that, confirmed by this same reasoning already being documented for the original
+grass asset). `lourdesGroundRocky.ts` mirrors `lourdesGroundTan.ts`'s own module shape exactly
+(`KEY`/`TILE_SIZE`/`preload*()`). The background-color fallback for the map's own narrower-than
+-viewport edges was recomputed again from this texture's own average color (`#cc7b5e`, was `#b98d74`).
+
+Verified live via Playwright: the ground renders across the whole map with the new rocky/dry-grass
+look, no seam against the background-color strip at any zoom level, confirmed both at a normal view
+and fully zoomed out to see the entire map at once.

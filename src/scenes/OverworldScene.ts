@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import { LOURDES_GROUND_TAN_KEY, LOURDES_GROUND_TAN_TILE_SIZE } from '../assets/terrain/lourdesGroundTan';
+import { LOURDES_GROUND_ROCKY_KEY, LOURDES_GROUND_ROCKY_TILE_SIZE } from '../assets/terrain/lourdesGroundRocky';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -406,11 +406,12 @@ export class OverworldScene extends Phaser.Scene {
    * placed by hand through the map editor from here on, the same as the buildings/horizontal-river
    * /bridge/grotto PNGs removed in an earlier pass (see this file's own header comment).
    *
-   * The active tile is `lourdesGroundTan.ts` (a tan/terracotta ground texture), not the original
-   * green grass (`lourdesGrass.ts`) -- the maintainer asked to swap which one renders here
-   * ("sustituir el lourdes grass por este... el otro no lo borres, pero cambialo por este") while
-   * explicitly keeping the old grass asset module in the codebase rather than deleting it, in case
-   * it's wanted again later. If swapping back, change only the import/key/tile-size above and the
+   * The active tile is `lourdesGroundRocky.ts` (a rocky/dry-grass terrain) -- the third ground
+   * texture the maintainer has supplied, each one swapped in to compare without deleting the
+   * previous ones (`lourdesGrass.ts`, the original green grass; `lourdesGroundTan.ts`, a
+   * tan/terracotta tile tried first): "dile que le mando otro tile de terreno, que no borre los
+   * otros, pero que use este para todo el mapa de lourdes, quiero ver como queda este". If swapping
+   * which one is active again, change only the import/key/tile-size above and the
    * `addTilesetImage()`/background-color calls below -- nothing else about this method depends on
    * which ground texture is active.
    *
@@ -426,23 +427,23 @@ export class OverworldScene extends Phaser.Scene {
     // The map (416x928) is narrower than the camera's logical viewport (480 wide) at zoom 1, so
     // this color shows as a thin strip past the map's left/right edges whenever the camera is
     // horizontally centered or further — sampled as the active ground texture's own average color
-    // (`Image.mean()` over `lourdes_ground_tan.png`) so that strip blends in instead of reading as
+    // (`Image.mean()` over `lourdes_ground_rocky.png`) so that strip blends in instead of reading as
     // a visible seam next to the artwork.
-    this.cameras.main.setBackgroundColor('#b98d74');
+    this.cameras.main.setBackgroundColor('#cc7b5e');
 
-    const grassCols = Math.ceil(MAP_W / LOURDES_GROUND_TAN_TILE_SIZE);
-    const grassRows = Math.ceil(MAP_H / LOURDES_GROUND_TAN_TILE_SIZE);
+    const grassCols = Math.ceil(MAP_W / LOURDES_GROUND_ROCKY_TILE_SIZE);
+    const grassRows = Math.ceil(MAP_H / LOURDES_GROUND_ROCKY_TILE_SIZE);
     const grassData: number[][] = Array.from({ length: grassRows }, () => Array.from({ length: grassCols }, () => 0));
     const grassMap = this.make.tilemap({
       data: grassData,
-      tileWidth: LOURDES_GROUND_TAN_TILE_SIZE,
-      tileHeight: LOURDES_GROUND_TAN_TILE_SIZE,
+      tileWidth: LOURDES_GROUND_ROCKY_TILE_SIZE,
+      tileHeight: LOURDES_GROUND_ROCKY_TILE_SIZE,
     });
     const grassTileset = grassMap.addTilesetImage(
       'lourdesGroundTile',
-      LOURDES_GROUND_TAN_KEY,
-      LOURDES_GROUND_TAN_TILE_SIZE,
-      LOURDES_GROUND_TAN_TILE_SIZE,
+      LOURDES_GROUND_ROCKY_KEY,
+      LOURDES_GROUND_ROCKY_TILE_SIZE,
+      LOURDES_GROUND_ROCKY_TILE_SIZE,
       0,
       0,
     )!;
