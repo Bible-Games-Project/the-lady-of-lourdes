@@ -18,15 +18,29 @@ import frontWalkBUrl from './sister_front_walk_b.png';
  * that mechanism), was the actual root cause of a later maintainer complaint that she (and the
  * other NPCs) looked "pixelado/borroso" -- not a filter-mode bug, a genuinely too-small source
  * texture. This round's source ("te paso otra vez el sprite sheet... Lo quiero con esta calidad,
- * no lo pixeles más") is used at its own native resolution instead: each of the 3 panels (side
- * 293x925, front 350x934, back 320x927) is cropped to its own alpha bounding box and used
- * byte-for-byte beyond that crop -- no resize, no requantization, nothing that would soften or
- * degrade it further. `registerSisterSprite()` below gives these `LINEAR` filtering (like the
- * buildings/trees, not the flat procedural pixel-art characters) so the large downscale to her
- * actual on-screen size (`SISTER_FRAME_HEIGHT`, via `NpcActor`'s own `targetHeight` param -- see
- * that file's doc comment) comes out smooth/anti-aliased instead of blocky, the same supersample
- * -then-LINEAR-downscale technique already used for `lourdesGrass.ts` and the journey medallion
- * icons, just with a real photographed/painted source here instead of a procedural one.
+ * no lo pixeles más") is cropped to each panel's own alpha bounding box and then resized *once*,
+ * with a single clean `Image.LANCZOS` pass, down to a 300px-tall intermediate size -- not kept at
+ * its full native resolution (side 293x925, front 350x934, back 320x927 originally).
+ *
+ * That full-native-resolution version was tried first and genuinely shipped, but broke on the very
+ * next report: "se ve con un ojo grande, el otro no está, esta borrosa" (one eye huge, the other
+ * missing, blurry) -- a real WebGL rendering bug, not a figure of speech. Root cause, confirmed by
+ * reading Phaser's own `WebGLTextureWrapper.js`: it only auto-generates mipmaps for a texture whose
+ * width *and* height are both an exact power of two (`IsSizePowerOfTwo(width, height)`), which none
+ * of these cropped panels are. Without mipmaps, `LINEAR` minification at a large ratio (her ~925px
+ * source down to a ~36px on-screen height is ~25x) samples too sparsely to represent fine
+ * high-frequency detail -- exactly what two small symmetric eyes are -- producing visibly
+ * asymmetric/corrupted results, while the dress's own large, low-frequency color regions stayed
+ * fine (which is why the dress looked smooth and only the face looked broken). The buildings/trees
+ * that already used this same "real art + LINEAR" treatment successfully never hit this, because
+ * their own minification ratios are much gentler (roughly 8-12x, native sizes in the ~800-1500px
+ * range downscaled to ~90-130px) -- this round's 300px intermediate size targets that same safe
+ * range (~8.3x at her 36px display height) instead of her full native resolution. Still roughly 8x
+ * more native detail than the original pre-shrunk pipeline, just not an unbounded "use whatever the
+ * supplied file happens to be" that this engine's own WebGL filtering can't actually render cleanly
+ * at this character's small on-screen size. `registerSisterSprite()` below still gives these
+ * `LINEAR` filtering (like the buildings/trees, not the flat procedural pixel-art characters) for
+ * the remaining ~8x downscale to come out smooth/anti-aliased instead of blocky.
  *
  * **Sized at 85% of Bernadette's own height** (`SISTER_FRAME_HEIGHT` below, `round(42 * 0.85)` —
  * an explicit maintainer request: "she is her younger sister") — this is still the *display*
@@ -35,9 +49,10 @@ import frontWalkBUrl from './sister_front_walk_b.png';
  * size the texture actually is.
  *
  * Walk-cycle frames (`_walk_a/b.png`) use the same cutout-puppet deformation technique documented
- * for Bernadette (AGENTS.md), regenerated from scratch against this new source at its own full
- * resolution (not a padded intermediate size downscaled afterward -- unnecessary now, since there's
- * no final shrink step to protect against losing detail to):
+ * for Bernadette (AGENTS.md), generated against the full-resolution crops *before* the LANCZOS
+ * resize down to the 300px intermediate size described above (deforming first then downsampling
+ * once, rather than the other way around, keeps the boot/hand paste edges and the clone-stamped
+ * fabric fill both clean instead of compounding two separate resampling passes):
  *  - Independent left/right boot shifts (opposite vertical offsets, swapping between frames 'a'/
  *    'b') for front and back, where the art shows two separate boots; a single boot shift for the
  *    side view, which only shows one.

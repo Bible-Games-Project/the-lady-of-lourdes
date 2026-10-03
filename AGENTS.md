@@ -3793,3 +3793,41 @@ sized/positioned exactly as the footprint formula predicts. Then ran a real phys
 Bernadette above the building's collider, gave her downward velocity, and stepped physics forward 90
 frames -- she stopped well short of reaching the collider at all, confirming genuine blocking, not
 just a correctly-computed-but-inert rectangle.
+
+### Regression: the sister's full-resolution sprite broke her face -- a real WebGL mipmap bug, fixed with a moderate intermediate resize
+
+The previous round's "use the source at its own full native resolution" choice shipped, then broke
+on the very next report: "mira el npc de la hermana, la has estropeado, se ve con un ojo grande, el
+otro no está, esta borrosa" (one eye huge, the other missing, blurry). This was a real rendering bug,
+not an exaggeration or a taste complaint -- confirmed by reading Phaser's own
+`WebGLTextureWrapper.js`: it only auto-generates mipmaps for a texture whose width *and* height are
+both an exact power of two (`generateMipmap = IsSizePowerOfTwo(width, height)`), and none of the
+sister's cropped panels (293x925, 350x934, 320x927) are. Without mipmaps, `LINEAR` minification at a
+large ratio -- her ~925px-tall source down to a ~36px on-screen height is about 25x -- samples too
+sparsely to represent small high-frequency detail cleanly, and two small symmetric eyes are exactly
+that kind of detail; the dress's own large, low-frequency color regions stayed fine, which is why
+only the face looked broken and not the whole sprite. Confirmed visually too: a zoomed screenshot of
+the shipped version showed exactly the reported asymmetric-eye corruption, not something only
+visible in theory.
+
+Fixed by resizing each cropped panel *once*, with a single clean `Image.LANCZOS` pass, down to a
+300px-tall intermediate size, instead of keeping the full native resolution -- still roughly 8x more
+native detail than the original pre-shrunk pipeline (back when this complaint started), just no
+longer an unbounded "whatever the supplied file happens to be" that this engine's own WebGL
+filtering can't actually render cleanly at her small on-screen size. 300px targets the same
+minification-ratio range (~8.3x at her 36px display height) the buildings/trees already use
+successfully with this same "real art + LINEAR, no mipmaps" treatment (their own native sizes run
+~800-1500px downscaled to ~90-130px, roughly 8-12x) -- i.e. matched to a ratio already proven to
+render cleanly in this engine, not picked arbitrarily. The walk-cycle deformation was regenerated
+from the full-resolution crops first, *then* resized down the same way (deforming before
+downsampling, not after, keeps the boot/hand paste edges and clone-stamped fabric fill from
+compounding two separate resampling passes). `NpcActor`'s `targetHeight` scaling math needed no
+changes at all -- it already derives her on-screen scale proportionally from whatever the texture's
+native height actually is, so it adapted to the new 300px source automatically.
+
+Verified live via Playwright: a zoomed screenshot (same crop/zoom as the one that showed the broken
+version) now shows two distinguishable, reasonably symmetric eyes instead of one oversized blob and
+a missing one; `displayHeight` and the Arcade body's collider size both still land within the correct
+range (the `targetHeight` math scaling automatically with the new native size, as expected); and the
+walk-cycle frame-to-frame pixel diff still shows real, even more pronounced per-frame changes,
+confirming the animation itself wasn't affected by the resize.
