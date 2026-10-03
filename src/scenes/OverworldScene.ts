@@ -298,7 +298,22 @@ export class OverworldScene extends Phaser.Scene {
     }
     this.physics.add.collider(this.player, this.colliderBodies);
 
-    this.sister = new NpcActor(this, CACHOT_DOOR_X - 30, CACHOT_DOOR_Y + 26, 'sister', 'down', SISTER_SHADOW_SCALE);
+    // `breathingEnabled: true` and `targetHeight: SISTER_FRAME_HEIGHT` are both new here: her
+    // sprite sheet was swapped for a second, much-higher-resolution supply ("hazle la animacion de
+    // respirar") -- see `sisterSprite.ts`'s own doc comment and `NpcActor`'s `targetHeight` param
+    // for why the sprite needs to be told how tall to actually render at now.
+    this.sister = new NpcActor(
+      this,
+      CACHOT_DOOR_X - 30,
+      CACHOT_DOOR_Y + 26,
+      'sister',
+      'down',
+      SISTER_SHADOW_SCALE,
+      true,
+      DEPTH.ACTORS,
+      true,
+      SISTER_FRAME_HEIGHT,
+    );
     this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
     // Permanently non-colliding: the maintainer reported physically bumping into her while she

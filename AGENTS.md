@@ -3697,3 +3697,66 @@ resto del juego"). Verified live by teleporting the player next to the always-in
 NPC (so the scene's own real `handlePrompts()` triggers it through the normal code path, not a
 synthetic call) and screenshotting the result: a bordered stone-and-parchment tag, correctly centered
 above the character's head, matching the Tasks button's own look one-for-one.
+
+### Sister's sprite sheet, second round: real high-resolution source art, no more pre-shrinking, plus a general `NpcActor` scaling mechanism
+
+The maintainer resupplied the sister's sprite sheet ("te paso otra vez el sprite sheet de la hermana
+de bernardita. Lo quiero con esta calidad, no lo pixeles más") with an explicit walk/breathing
+animation request. This closes the loop on the earlier "por qué ha pixelado tanto los NPCs" complaint
+from a few rounds back: the *actual* root cause (confirmed then, acted on now) was never a filter
+-mode bug -- it was that the first round's PNGs had been cropped **and resized all the way down** to
+their own ~11-18px-wide, 36px-tall final display size before ever reaching the game, so the
+whole-canvas NEAREST upscale `pixelArt: true` applies at the browser level had almost nothing left to
+work with. This round's 3 panels (side 293x925, front 350x934, back 320x927 -- found via connected
+-component labeling on the supplied sheet's alpha channel, one blob per view) are used at that full
+native resolution, cropped to each one's own alpha bounding box and otherwise untouched byte-for-byte
+-- no resize, no requantization, nothing that would soften detail the maintainer explicitly asked not
+to lose.
+
+**Walk-cycle frames** were regenerated from scratch against this new source, same cutout-puppet
+family as every previous character (independent left/right boot shifts where the art shows two boots,
+a single boot shift for the side view's one visible boot; front's interlocked hands move as one unit,
+back's two separate hands move independently, side's one visible hand gets a forward/back swing; a
+single-direction waist-down skirt shear). One real technique gap had to be solved this round that the
+old tiny-frame pipeline never exposed: a hand sits *in front of* the dress fabric, so cutting it out
+and pasting it elsewhere left a visible hole where fabric should still show through (a boot doesn't
+have this problem -- it sits at the sprite's bottom edge, over already-transparent background). Fixed
+with a clone-stamp fill: a thin strip of unobstructed fabric sampled just past each hand region is
+tiled to patch the hole before the shifted hand is pasted back on top.
+
+**`NpcActor` gained a `targetHeight` constructor param** (and a public-shaped `preUpdate()` fix that
+went with it) to make "real art supplied much larger than its on-screen size" a reusable mechanism,
+not a one-off hack: every other character's texture is already pre-sized to its final display height,
+so `targetHeight` stays `undefined` and every existing call site is completely unaffected (`setScale`
+is a no-op at scale 1). Two real bugs surfaced and got fixed getting the sister working with it:
+1. **The idle-breathing effect (`preUpdate()`) hardcoded `this.setScale(1, ...)`** every frame --
+   harmless for every character that already rendered at scale 1, but it silently stomped the
+   sister's new ~0.0385 `targetHeight` scale back to full native size on the very next frame after
+   construction set it correctly. Fixed by introducing a `baseScale` field (defaults to 1, set from
+   `targetHeight` when given) and having the breathing math scale *relative to that*, not a literal
+   `1`.
+2. **The Arcade Physics feet-collider silently stayed sized for the old native (huge) texture.**
+   `body.setSize()` bakes in the GameObject's *current* scale factor at the moment it's called, and
+   that cached value is only ever refreshed by the body's own `preUpdate()` -- which the physics
+   world never runs for a disabled body, and the sister's body is permanently disabled
+   (`setCollisionEnabled(false)`, from the earlier "don't let her block Bernadette" round). Harmless
+   for collision purposes (a disabled body never collides, regardless of its cached size), but a real
+   trap waiting for any future `targetHeight` character built *with* collision left on. Fixed with one
+   explicit `body.updateFromGameObject()` call right after `setSize()`, gated on `targetHeight` being
+   set, forcing the sync immediately instead of leaving it to a physics step that might never come.
+
+`registerSisterSprite()` now sets `LINEAR` filtering on all 9 textures (previously explicitly
+NEAREST) -- same category as the buildings/trees, not the flat procedural pixel-art characters NEAREST
+is for -- so the large downscale from native resolution to her actual ~36px on-screen height comes out
+smooth instead of blocky, the same supersample-then-LINEAR-downscale technique already used for
+`lourdesGrass.ts` and the journey medallion icons, now applied to a real painted source instead of a
+procedural one. Breathing was also opted in (`breathingEnabled: true`, previously only Jeanne had it).
+
+Verified live via Playwright at every step: confirmed `displayHeight` lands within 1px of the
+intended `SISTER_FRAME_HEIGHT` (36px) across all three facings; confirmed the Arcade body's cached
+world-space size is correctly tiny (~6x9, matching the other characters' own feet-box proportions),
+not the native ~150x245 it silently stayed at before the `updateFromGameObject()` fix; confirmed real
+pixel-level differences between consecutive walk frames (several hundred to several thousand changed
+pixels per frame pair -- not a no-op animation); and a zoomed screenshot shows dramatically smoother
+shading/folds/facial detail than the previous round's visibly blocky result, confirming the
+"pixelado" complaint from several rounds ago is actually resolved now, not just reasoned about.
