@@ -294,13 +294,10 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         this.tweens.add({ targets: ring, scale: 1.18, alpha: 0.4, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
 
-      // No stroke (see AGENTS.md / HomeScene.ts#buildTitle()'s doc comment for why the maintainer
-      // rejected the outlined look) and no pixel webfont either (see `ui/text.ts`'s own doc comment
-      // on `FONT_DISPLAY`/`FONT_BODY` -- the maintainer rejected that too, as not matching this
-      // screen's own painted map art). `FONT_BODY` (EB Garamond) is a classic book-serif, legible
-      // at this small size without Cinzel's heavier, all-caps-oriented letterforms. The medallion's
-      // cream face fills nearly the whole disc (see `journeyIcons.ts#medallion()`), so a dark ink
-      // fill reads cleanly on top of it without needing an outline.
+      // `FONT_BODY` is now Pixelify Sans (see `ui/text.ts`'s own doc comment for the full font
+      // history) -- still no stroke here, since the medallion's cream face (see
+      // `journeyIcons.ts#medallion()`) fills nearly the whole disc and a dark ink fill already
+      // reads cleanly on top of it without needing one.
       const numberText = createText(this, x, y, String(mission.index), {
         fontSize: '13px',
         fontFamily: FONT_BODY,
@@ -337,16 +334,21 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
    * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
-    // No stroke, `FONT_DISPLAY` (Cinzel) -- see the number/date text above and `ui/text.ts`'s own
-    // doc comment for why. Gold fill matches Home's own title treatment; verified live that it
-    // stays legible against the map artwork scrolling underneath this screen-pinned header at
-    // every scroll position.
+    // `FONT_DISPLAY` is now Pixelify Sans (see `ui/text.ts`'s own doc comment on the font's full
+    // history) -- a thin ink stroke was added here matching Home's own title treatment, since a
+    // pixel-grid font's thinner strokes benefit from the contrast boost against this screen's own
+    // busy, scrolling map art, the same reasoning `journeyIcons.ts#medallion()`'s thin ink rim
+    // uses. Gold fill matches Home's own title treatment; verified live that it stays legible
+    // against the map artwork scrolling underneath this screen-pinned header at every scroll
+    // position.
     this.title = createText(this, 0, 0, Localization.t(K.JOURNEY_TITLE), {
       fontSize: '16px',
       fontFamily: FONT_DISPLAY,
       color: JOURNEY_PALETTE.glowGold,
       fontStyle: 'bold',
       letterSpacing: '0.5px',
+      stroke: JOURNEY_PALETTE.ink,
+      strokeThickness: 1.5,
     });
     this.title.setOrigin(0.5);
     this.title.setScrollFactor(0);

@@ -11,7 +11,7 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
-import { createText, FONT_BODY } from '../ui/text';
+import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
 import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
@@ -493,30 +493,30 @@ export class HomeScene extends Phaser.Scene {
   }
 
   /**
-   * Fourth take on this title (see AGENTS.md and `ui/text.ts`'s own doc comment on `FONT_DISPLAY`
-   * for the earlier rounds' full history). The maintainer rejected the Cinzel/gold-fill version
-   * too ("sigue sin gustarme para nada") and supplied a reference image instead: a bold, rounded
-   * storybook slab-serif ("Bevan", Google Fonts -- the closest free match to the reference's flared
-   * serifs and heavy, friendly stroke weight), cream fill, a warm brown outline, and a soft drop
-   * shadow for depth -- explicitly *with* a stroke this time, reversing the earlier "don't solve
-   * readability with an outline" rule from the Cinzel round, since the new reference image itself
-   * has one. Deliberately kept to this screen's own existing centered position/size/one-line layout
-   * ("centrado arriba, como ahora, no como la imagen") -- only the letterforms/colors changed, not
-   * where or how large the title sits; the reference image's own two-line left-aligned layout was
-   * explicitly *not* wanted. `FONT_DISPLAY` (Cinzel) is untouched and still used by
-   * `ApparitionJourneyScene.ts`'s own title -- this round's request was scoped to "el titulo" on
-   * this screen specifically ("no quiero que cambies nada mas, solo el titulo"), so this is a new,
-   * local font-family string, not a change to the shared constant.
+   * Fifth take on this title (see AGENTS.md and `ui/text.ts`'s own doc comment on `FONT_DISPLAY`
+   * for the earlier rounds' full history). Round four's storybook slab-serif (matched to a
+   * maintainer-supplied reference image) was itself rejected on further reflection: "lo quiero un
+   * poco más pixelart, que sea leible super bien, pero un poquitín más pixelart" -- back toward a
+   * pixel aesthetic, but legible and good-looking, not the blocky monospace pixel font from the
+   * second round that was rejected for clashing with the painted background. `FONT_DISPLAY` (now
+   * Google Fonts "Pixelify Sans", shared with `ApparitionJourneyScene.ts`'s own title -- see
+   * `ui/text.ts`) is a genuine pixel-grid font with soft/rounded terminals built for exactly this
+   * "pixel art but still legible" brief. Cream fill + a warm brown outline carries over from round
+   * four (still reads cleanly against this screen's mixed light/dark artwork), but the soft
+   * painterly drop shadow does not -- replaced with a tight zero-blur offset shadow, the classic
+   * pixel-text drop-shadow look, since a soft blur reads as painterly/illustrated rather than
+   * pixel-art. Position/size/layout stays exactly as every previous round left it.
    */
   private buildTitle(): void {
     const style = {
-      fontSize: '26px',
-      fontFamily: "'Bevan', Georgia, serif",
+      fontSize: '24px',
+      fontFamily: FONT_DISPLAY,
       color: HOME_PALETTE.cream,
       fontStyle: 'bold' as const,
       stroke: HOME_PALETTE.trunkDark,
       strokeThickness: 2,
-      textShadow: '1px 2px 3px rgba(29, 23, 18, 0.55)',
+      textShadow: '2px 2px 0 rgba(29, 23, 18, 0.55)',
+      letterSpacing: '0.5px',
     };
 
     createText(this, GAME_WIDTH / 2, 24, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);

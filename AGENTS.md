@@ -3613,3 +3613,87 @@ against the background-color strip; the editor's Buildings palette shows exactly
 ("Cottage Row", "Cottage (corner)", "Cottage Row (curved)", "Townhouse") with none of the old four
 present; placing "Townhouse" renders it crisply (LINEAR) over the new ground, selectable/scalable
 /deletable through the same generic instance-editing code as every other building.
+
+### Sixth take on the typography: "Pixelify Sans" everywhere, Home/Apparitions AND in-game
+
+Two related maintainer requests, same underlying ask applied to two different areas of the game:
+"no me gusta el titulo y letra de interfaz en home y en menu apariciones... lo quiero un poco más
+pixelart pero leyble y más bonito. No encaja con fondo" (Home/Apparitions), followed shortly after
+by "durante el juego, la fuente de letra que has escogido es super leible, pero la quiero un poco
+más pixelart... pero un poquitín más pixelart" (the in-game dialogue/UI default). Round four's
+storybook slab-serif (Bevan, matched to a reference image two rounds ago) was rejected on further
+reflection, and this is genuinely a different brief than every prior round: pixel-art *in spirit*,
+but not the harsh blocky monospace (Silkscreen) rejected two rounds before that for clashing with
+the painted backgrounds.
+
+Google Fonts "Pixelify Sans" was picked for exactly this gap: a real pixel-grid font (so it reads
+as unmistakably pixel-art, satisfying "más pixelart"), but with soft/rounded terminals and even
+letter-spacing designed for legibility at body-text sizes (satisfying "pero leyble"/"super leible"
+-- unlike a classic 8-bit arcade font, which is legible mainly at large display sizes only). One
+font family, three existing constants in `ui/text.ts` (`FONT_DISPLAY`, `FONT_BODY`, `FONT_SERIF` --
+all now resolve to the same `'Pixelify Sans', ui-sans-serif, system-ui, sans-serif` string, differing
+only in the bold/regular weight each call site already requests), so the whole game now reads as one
+consistent typographic system instead of three unrelated choices: Home's title and buttons, the
+Apparitions title/numbers/dates, and every other `createText()`/`createButton()` call across
+gameplay (dialogue, Tasks panel, top bar, map editor, settings, etc. -- anything that doesn't pass
+its own `fontFamily` already fell through to `FONT_SERIF`, the shared default). `index.html`'s font
+`<link>` (and the scratchpad `build_artifact.py` duplicate) now loads only Pixelify Sans at weights
+400/500/600/700, replacing Bevan/Cinzel/EB Garamond entirely -- confirmed nothing else in the
+codebase still referenced any of those three.
+
+`HomeScene.ts#buildTitle()` moved off its local literal `'Bevan'` font-family string back onto the
+shared `FONT_DISPLAY` constant, keeping the cream-fill/brown-stroke treatment from round four (still
+reads well) but swapping the soft painterly drop shadow for a tight zero-blur offset shadow -- a
+pixel font pairs with a hard-edged "pixel text" shadow, not a blurred/painterly one.
+`ApparitionJourneyScene.ts`'s title gained a thin ink stroke it didn't have before (pixel-grid
+strokes are thinner than a serif's, so the contrast boost matters more here against the busy,
+scrolling map art); numbers/dates needed no changes beyond the shared constant's new value.
+
+Verified live via Playwright: screenshots of Home, the Apparitions screen, and the Overworld (NPC
+name label, Tasks panel) all show the same pixel-grid letterforms -- visibly blocky/pixel-based on
+close inspection, but clearly legible even at the smallest sizes (9-11px labels), not the harsh
+illegible-at-small-size problem a classic monospace pixel font would have had.
+
+### Medallion/lock colors verified against the Apparitions background art, and the "Talk" prompt fixed + restyled
+
+Two more items from the same typography message. First, a verification request: "no se si has
+comprobado que el color de las redondas sea de la paleta de colores de la imagen de fondo" (the
+maintainer wasn't sure the medallion colors were actually checked against the background art's
+palette, not just documented as sampled from it). Checked properly this time, empirically: sampled
+`journey_map.png`'s actual pixel data and computed the nearest-neighbor RGB distance from each
+`JOURNEY_PALETTE` color the medallion/lock use (`glowGold`, `foliageGold`, `foliageAmber`,
+`foliageRust`, `cream`, `ink`, `pathStoneShade`) to the closest real pixel in the image. Every one
+came back within 1-5.5 units of Euclidean RGB distance of a color genuinely present in the artwork
+-- confirmed, not just assumed.
+
+Second, a real bug report, not just a style complaint, on `InteractionPrompt` (the floating "Talk"
+label): "primero aparece a un lado del npc y hace como un bug y luego aparece arriba del npc" (it
+first appears beside the NPC, glitches, then snaps above). Root-caused to a genuine Phaser
+`DOMElement` internal: the old code hid the prompt via `setVisible(false)`, which Phaser's
+`DOMElementCSSRenderer` turns into real CSS `display: none` on the node -- and a `display: none`
+element reports `clientWidth`/`clientHeight` as 0 (standard browser behavior). The very next
+`setText()` (which Phaser's own `DOMElement.setText()` uses to remeasure size for the
+origin-centering math) measured that stale zero width for one frame, collapsing the origin-0.5
+centering offset to 0 and rendering the label with its *left edge*, not its center, at the target x
+-- "appears beside the NPC" -- before the next frame's remeasurement snapped it to the correct
+centered spot. Same root category as the `pointerEvents` per-frame-resync bug already documented in
+`ui/text.ts`. Fixed by never letting Phaser's visibility system touch `display` for this element at
+all: the Phaser object stays permanently `visible` (so `display` stays `block` and `clientWidth` stays
+accurate always), while the underlying node's `visibility` CSS property (which
+`DOMElementCSSRenderer` never touches, confirmed by reading its source) is toggled directly for the
+actual show/hide. Verified by scripting the exact "first ever `showAt()` call from a fully-hidden
+state" scenario and confirming `text.width` is already correct (nonzero) at that exact moment, not
+just in steady state.
+
+Restyled in the same pass per "lo quiero que encaje mas con el estilo y paleta del juego": was a
+flat CSS `backgroundColor` rectangle (dark translucent box, light text -- the inverse of every other
+panel in the game); now a real `UI_KEYS.BUTTON` nineslice (the same bevelled parchment/stone panel
+`DialogueBox`/`TasksPanel` already use, resized correctly via `setSlices()` -- not `setDisplaySize()`,
+which would stretch the bordered corners too) with dark ink text on top, sized to fit the label every
+time it changes. Font needed no separate change -- `createText()` already defaults to `FONT_SERIF`
+(now Pixelify Sans, see above) when no `fontFamily` is given, which was the maintainer's explicit
+third ask for this same element ("la fuente de letra que sea la misma que pongas pixelart para el
+resto del juego"). Verified live by teleporting the player next to the always-interactable ambient
+NPC (so the scene's own real `handlePrompts()` triggers it through the normal code path, not a
+synthetic call) and screenshotting the result: a bordered stone-and-parchment tag, correctly centered
+above the character's head, matching the Tasks button's own look one-for-one.

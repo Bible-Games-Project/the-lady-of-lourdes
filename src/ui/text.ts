@@ -34,30 +34,38 @@ import type Phaser from 'phaser';
  */
 export const TEXT_RESOLUTION = 4;
 
-export const FONT_SERIF = 'Georgia, "Iowan Old Style", "Palatino Linotype", serif';
+/**
+ * This constant's name predates its current value (several serif families, in turn -- see
+ * AGENTS.md for the full history) and is kept stable so every call site across the game doesn't
+ * need touching each time the underlying font changes, the same convention `FONT_DISPLAY`/
+ * `FONT_BODY` below already follow. Currently Google Fonts "Pixelify Sans" (Regular/400) -- the
+ * maintainer asked for the in-game dialogue/UI font specifically ("durante el juego... la quiero
+ * un poco más pixelart, que sea leible super bien, pero un poquitín más pixelart") to move toward a
+ * pixel aesthetic without sacrificing legibility at small dialogue sizes, after already choosing
+ * the same family for `FONT_DISPLAY`/`FONT_BODY` below. Pixelify Sans was picked over a harder
+ * -edged monospace pixel font (e.g. "Silkscreen", rejected in an earlier round as a "retro-arcade"
+ * clash) specifically because its letterforms stay soft/rounded and legible at body-text sizes
+ * while still reading as unmistakably pixel-grid-based.
+ */
+export const FONT_SERIF = "'Pixelify Sans', ui-sans-serif, system-ui, sans-serif";
 
 /**
- * Third take on the Home/Apparitions typography (see AGENTS.md for the full history). Both earlier
- * approaches were tried live and rejected by the maintainer on sight, for opposite reasons: a
- * serif + `-webkit-text-stroke` read as "childish/cartoon", and the pixel webfont that replaced it
- * (Google Fonts "Silkscreen", monospace/blocky) read as a retro-arcade HUD slapped on top of a
- * warm, painted illustration -- "no encaja con la imagen de fondo" (doesn't fit the background
- * art). Both of this game's painted screens (Home's `home_background.png`, the Apparitions'
- * `journey_map.png`) are soft illustrated artwork, not hard pixel-art tilesets, so a pixel-grid
- * font was always going to clash with them regardless of which one was picked -- the fix is an
- * elegant *serif* family instead, matching the painted/illustrated register of the art itself.
- *
- * `FONT_DISPLAY` (Google Fonts "Cinzel", loaded via `index.html`) is for titles only -- a carved
- * -stone/Roman-inscription display serif, the kind already associated with historical/religious
- * subject matter, giving "Our Lady of Lourdes" and "The Apparitions" real presence against the
- * artwork without any stroke/outline (still just fill color + letter-spacing, per the maintainer's
- * explicit "don't solve readability with an outline" instruction from the previous round).
- * `FONT_BODY` (Google Fonts "EB Garamond") is for everything smaller -- buttons, apparition
- * numbers/dates -- a classic, highly legible book-serif rather than Cinzel's all-caps-oriented
- * letterforms, which would be too heavy/ornamental at 8-12px.
+ * Fifth take on the Home/Apparitions typography (see AGENTS.md for the full history -- a serif
+ * +stroke, a blocky monospace pixel font, a no-stroke Cinzel/gold treatment, and a storybook slab
+ * -serif matched to a reference image were all tried and each rejected in turn). The maintainer's
+ * clearest statement of what they actually want came after seeing the storybook version in place:
+ * "lo quiero un poco más pixelart, que sea leible super bien, pero un poquitín más pixelart" --
+ * pixel-art in spirit, but legible and good-looking, which rules out both a harsh classic pixel
+ * font (already tried, already rejected as clashing) and a non-pixel serif (tried twice, rejected
+ * twice). Google Fonts "Pixelify Sans" is built specifically for this brief: a genuine pixel grid
+ * under the hood, but with soft/rounded terminals and even spacing that keep it readable rather
+ * than clashing with painted illustration the way a blocky monospace pixel font does -- used here
+ * for both `FONT_DISPLAY` (titles, bold/700) and `FONT_BODY` (buttons, apparition numbers/dates,
+ * regular/medium weight), and also now for `FONT_SERIF` above (the in-game dialogue default), so
+ * the whole game reads as one consistent typographic system rather than three unrelated choices.
  */
-export const FONT_DISPLAY = "'Cinzel', Georgia, serif";
-export const FONT_BODY = "'EB Garamond', Georgia, serif";
+export const FONT_DISPLAY = "'Pixelify Sans', ui-sans-serif, system-ui, sans-serif";
+export const FONT_BODY = "'Pixelify Sans', ui-sans-serif, system-ui, sans-serif";
 
 export const INK = {
   dark: '#3a3226',
