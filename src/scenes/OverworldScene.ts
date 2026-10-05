@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE } from '../core/constants';
+import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE, PIXEL_SCALE } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { LOURDES_GROUND_ROCKY_KEY, LOURDES_GROUND_ROCKY_TILE_SIZE } from '../assets/terrain/lourdesGroundRocky';
@@ -26,7 +26,7 @@ import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
 import { wait, tweenPromise } from '../gameplay/async';
 import { createText } from '../ui/text';
-import { useLetterboxScale } from '../core/scaleMode';
+import { useLetterboxScale, setCameraBounds } from '../core/scaleMode';
 import { DEV_MODE } from '../core/devMode';
 import { MapEditorPanel } from '../editor/MapEditorPanel';
 import { createEditorAssetInstance, type EditorAssetRegistry } from '../editor/editorAssetRender';
@@ -69,9 +69,11 @@ const MAP_H = ROWS * TILE_SIZE;
  * the whole map (both its width and height) fits inside the camera's view at once, with a small 10%
  * margin so the map's own edges don't sit flush against the screen edge. Derived from the map's
  * actual size rather than a hardcoded number, so this keeps working correctly if `COLS`/`ROWS` ever
- * change.
+ * change. Multiplied by `PIXEL_SCALE` since every scene's baseline camera zoom is now that factor,
+ * not `1` (see `constants.ts`'s own doc comment on `PIXEL_SCALE`) -- without this, "fit the whole
+ * map" would actually zoom out to *half* the map filling the view instead.
  */
-const EDITOR_MIN_ZOOM = Math.min(GAME_WIDTH / MAP_W, GAME_HEIGHT / MAP_H) * 0.9;
+const EDITOR_MIN_ZOOM = Math.min(GAME_WIDTH / MAP_W, GAME_HEIGHT / MAP_H) * 0.9 * PIXEL_SCALE;
 
 const PATH_CENTER = 32 + OFFSET_X_TILES;
 
@@ -368,7 +370,7 @@ export class OverworldScene extends Phaser.Scene {
     // never leaves an NPC stuck against a wall it can't route around.
     this.physics.add.collider(npcs, this.colliderBodies);
 
-    this.cameras.main.setBounds(0, 0, MAP_W, MAP_H);
+    setCameraBounds(this, 0, 0, MAP_W, MAP_H);
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
     // Hand-rolled follow (`updateCameraFollow()`, ticked from `update()`) instead of
     // `camera.startFollow(this.player, true, 0.12, 0.12)` -- see that method's own doc comment for
@@ -376,8 +378,13 @@ export class OverworldScene extends Phaser.Scene {
     // jitter). Seed the accumulator here so the very first frame doesn't lerp in from scroll (0,0);
     // the gap is exactly width/2 at this instant, so the round-trip through updateCameraFollow()'s
     // own formula is exact here too, not just an approximation.
-    this.camScrollX = this.player.x - this.cameras.main.width / 2;
-    this.camScrollY = this.player.y - this.cameras.main.height / 2;
+    // `cameras.main.width/height` are raw canvas-pixel dimensions (RENDER_WIDTH/HEIGHT), not
+    // camera/zoom-aware -- dividing by `.zoom` (== PIXEL_SCALE, set in `core/scaleMode.ts`) gets
+    // back the logical GAME_WIDTH/HEIGHT half-extent this formula actually wants; see
+    // `constants.ts`'s own doc comment on `PIXEL_SCALE`. `updateCameraFollow()` below needs the
+    // same correction.
+    this.camScrollX = this.player.x - this.cameras.main.width / 2 / this.cameras.main.zoom;
+    this.camScrollY = this.player.y - this.cameras.main.height / 2 / this.cameras.main.zoom;
     this.cameras.main.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
     this.cameras.main.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
 
@@ -584,8 +591,10 @@ export class OverworldScene extends Phaser.Scene {
   private updateCameraFollow(): void {
     const cam = this.cameras.main;
     const lerp = 0.12;
-    const targetX = this.player.x - cam.width / 2;
-    const targetY = this.player.y - cam.height / 2;
+    // `/ cam.zoom` -- see the matching correction (and its doc comment) on `camScrollX`/`camScrollY`'s
+    // initial seed in `create()` above.
+    const targetX = this.player.x - cam.width / 2 / cam.zoom;
+    const targetY = this.player.y - cam.height / 2 / cam.zoom;
     this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, lerp);
     this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, lerp);
     cam.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
@@ -632,8 +641,11 @@ export class OverworldScene extends Phaser.Scene {
         this.editorPanStart = null;
         return;
       }
-      const dx = pointer.x - this.editorPanStart.pointerX;
-      const dy = pointer.y - this.editorPanStart.pointerY;
+      // `pointer.x`/`.y` are raw canvas-pixel deltas, not camera/zoom-aware -- `/ zoom` converts
+      // back to world-space scroll units; see `constants.ts`'s own doc comment on `PIXEL_SCALE`.
+      const zoom = this.cameras.main.zoom;
+      const dx = (pointer.x - this.editorPanStart.pointerX) / zoom;
+      const dy = (pointer.y - this.editorPanStart.pointerY) / zoom;
       // Phaser's own `Camera#preRender()` clamps this to `setBounds()` every frame regardless of
       // how scroll got set (see `updateCameraFollow()`'s own doc comment above) -- panning past the
       // map edge is automatically clamped back, no manual bounds math needed here.
@@ -655,8 +667,12 @@ export class OverworldScene extends Phaser.Scene {
     // 0.5 -- that earlier value only ever showed a small fraction of the 2560x2688 map at once.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _currentlyOver: unknown, _deltaX: number, deltaY: number) => {
       if (!this.editorViewMode) return;
-      const zoomStep = deltaY > 0 ? -0.1 : 0.1;
-      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom + zoomStep, EDITOR_MIN_ZOOM, 3);
+      // Both the step and the upper bound are scaled by PIXEL_SCALE, same reasoning as
+      // EDITOR_MIN_ZOOM above -- every zoom value in this scene now lives in a range centered on
+      // PIXEL_SCALE instead of 1, so a step/cap written for the old range would feel half as
+      // responsive and cap out at effectively half the old maximum zoom-in.
+      const zoomStep = (deltaY > 0 ? -0.1 : 0.1) * PIXEL_SCALE;
+      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom + zoomStep, EDITOR_MIN_ZOOM, 3 * PIXEL_SCALE);
     });
   }
 

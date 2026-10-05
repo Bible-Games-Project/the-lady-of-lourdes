@@ -502,7 +502,11 @@ export class MapEditorPanel {
   // ---------------------------------------------------------------------------------------------
 
   private isPointerOverPanel(pointer: Phaser.Input.Pointer): boolean {
-    return pointer.x >= PANEL_LEFT - 4 && pointer.y >= 22;
+    // `pointer.x`/`.y` are raw canvas-pixel coordinates, not camera/zoom-aware -- divide by the
+    // camera's own zoom (== PIXEL_SCALE) to get back to the logical GAME_WIDTH-space PANEL_LEFT is
+    // defined in; see `constants.ts`'s own doc comment on `PIXEL_SCALE`.
+    const zoom = this.scene.cameras.main.zoom;
+    return pointer.x / zoom >= PANEL_LEFT - 4 && pointer.y / zoom >= 22;
   }
 
   private handleWorldPointerDown(pointer: Phaser.Input.Pointer): void {

@@ -10,7 +10,7 @@ import { JOURNEY_MAP_KEY, JOURNEY_MAP_SIZE } from '../assets/journey/journeyMap'
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { Toast } from '../gameplay/Toast';
 import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
-import { useFullBleedScale } from '../core/scaleMode';
+import { useFullBleedScale, setCameraBounds } from '../core/scaleMode';
 import { onSafeAreaChange, type SafeAreaInsets } from '../core/safeArea';
 
 const NODE_COUNT = MISSIONS.length;
@@ -105,15 +105,19 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.keyUp = this.input.keyboard!.addKey('UP');
     this.keyDown = this.input.keyboard!.addKey('DOWN');
 
+    // `p.y` is a raw canvas-pixel coordinate, not camera/zoom-aware -- `/ zoom` converts back to
+    // the logical GAME_HEIGHT-space `insets.top` is defined in, and to world-space scroll units;
+    // see `constants.ts`'s own doc comment on `PIXEL_SCALE`.
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.y > this.insets.top + 40) {
-        this.dragStartY = p.y;
+      const y = p.y / this.cameras.main.zoom;
+      if (y > this.insets.top + 40) {
+        this.dragStartY = y;
         this.dragStartScroll = this.cameras.main.scrollY;
       }
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.dragStartY === null || !p.isDown) return;
-      const dy = p.y - this.dragStartY;
+      const dy = p.y / this.cameras.main.zoom - this.dragStartY;
       this.scrollTarget = this.clampScroll(this.dragStartScroll - dy);
       this.cameras.main.scrollY = this.scrollTarget;
     });
@@ -197,7 +201,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * would silently snap `scrollX` straight back to 0.
    */
   private updateCameraBounds(): void {
-    this.cameras.main.setBounds(-this.insets.left, -this.insets.top, GAME_WIDTH + this.insets.left, this.worldHeight + this.insets.top + this.insets.bottom);
+    setCameraBounds(this, -this.insets.left, -this.insets.top, GAME_WIDTH + this.insets.left, this.worldHeight + this.insets.top + this.insets.bottom);
     this.cameras.main.scrollX = -this.insets.left;
   }
 
@@ -236,7 +240,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.worldScale = GAME_WIDTH / JOURNEY_MAP_SIZE.width;
     bg.setScale(this.worldScale);
     this.worldHeight = JOURNEY_MAP_SIZE.height * this.worldScale;
-    this.cameras.main.setBounds(0, 0, GAME_WIDTH, this.worldHeight);
+    setCameraBounds(this, 0, 0, GAME_WIDTH, this.worldHeight);
   }
 
   /**

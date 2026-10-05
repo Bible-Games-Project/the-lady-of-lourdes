@@ -18,29 +18,43 @@ import frontWalkBUrl from './sister_front_walk_b.png';
  * that mechanism), was the actual root cause of a later maintainer complaint that she (and the
  * other NPCs) looked "pixelado/borroso" -- not a filter-mode bug, a genuinely too-small source
  * texture. This round's source ("te paso otra vez el sprite sheet... Lo quiero con esta calidad,
- * no lo pixeles más") is cropped to each panel's own alpha bounding box and then resized *once*,
- * with a single clean `Image.LANCZOS` pass, down to a 300px-tall intermediate size -- not kept at
- * its full native resolution (side 293x925, front 350x934, back 320x927 originally).
+ * no lo pixeles más") is cropped to each panel's own alpha bounding box, at its full native
+ * resolution (side 293x925, front 350x934, back 320x927) -- no intermediate resize.
  *
  * That full-native-resolution version was tried first and genuinely shipped, but broke on the very
  * next report: "se ve con un ojo grande, el otro no está, esta borrosa" (one eye huge, the other
  * missing, blurry) -- a real WebGL rendering bug, not a figure of speech. Root cause, confirmed by
  * reading Phaser's own `WebGLTextureWrapper.js`: it only auto-generates mipmaps for a texture whose
  * width *and* height are both an exact power of two (`IsSizePowerOfTwo(width, height)`), which none
- * of these cropped panels are. Without mipmaps, `LINEAR` minification at a large ratio (her ~925px
- * source down to a ~36px on-screen height is ~25x) samples too sparsely to represent fine
- * high-frequency detail -- exactly what two small symmetric eyes are -- producing visibly
- * asymmetric/corrupted results, while the dress's own large, low-frequency color regions stayed
- * fine (which is why the dress looked smooth and only the face looked broken). The buildings/trees
- * that already used this same "real art + LINEAR" treatment successfully never hit this, because
- * their own minification ratios are much gentler (roughly 8-12x, native sizes in the ~800-1500px
- * range downscaled to ~90-130px) -- this round's 300px intermediate size targets that same safe
- * range (~8.3x at her 36px display height) instead of her full native resolution. Still roughly 8x
- * more native detail than the original pre-shrunk pipeline, just not an unbounded "use whatever the
- * supplied file happens to be" that this engine's own WebGL filtering can't actually render cleanly
- * at this character's small on-screen size. `registerSisterSprite()` below still gives these
- * `LINEAR` filtering (like the buildings/trees, not the flat procedural pixel-art characters) for
- * the remaining ~8x downscale to come out smooth/anti-aliased instead of blocky.
+ * of these cropped panels are. Without mipmaps, `LINEAR` minification at a large ratio samples too
+ * sparsely to represent fine high-frequency detail -- exactly what two small symmetric eyes are --
+ * producing visibly asymmetric/corrupted results, while the dress's own large, low-frequency color
+ * regions stayed fine (which is why the dress looked smooth and only the face looked broken). That
+ * first attempt hit this at her then-display height of 36 *actual framebuffer* pixels (the game
+ * rendered everything into a 480x270 canvas at camera zoom 1, so "36px display height" and "36
+ * resolved pixels" were the same number) -- a ~25x minification ratio from her ~925px source,
+ * well past the ~8-12x range buildings/trees already proved safe (native ~800-1500px downscaled to
+ * ~90-130px *framebuffer* pixels). The fix shipped at the time was to resize her source down to an
+ * intermediate 300px-tall PNG, bringing the ratio back into that safe range -- but that traded the
+ * corruption bug for a *different* complaint ("se ve super pixelado... quiero que se vea bien
+ * definido"): at only 36 real framebuffer pixels of height, even perfectly-clean LINEAR-filtered
+ * downsampling of real/painted art reads as soft and underdefined compared to genuine hand-placed
+ * pixel art (which Bernadette/Jeanne/the boy/the mother all are, drawn *at* their native ~34-42px
+ * size) -- more *input* resolution couldn't fix that, because the bottleneck was never the input,
+ * it was the ~36-pixel *output* resolution every sprite in the game was limited to.
+ *
+ * The actual fix for that was `PIXEL_SCALE` (`core/constants.ts`): the game's framebuffer now
+ * renders at `PIXEL_SCALE`x the resolution it used to (960x540, with every camera zoomed to match,
+ * so on-screen size/position is unchanged), which gives her `PIXEL_SCALE`x as many real pixels at
+ * the same `SISTER_FRAME_HEIGHT` -- 72 framebuffer pixels instead of 36. That drops her full-native
+ * -resolution minification ratio from the original ~25x down to ~12-13x, right at the edge of the
+ * already-proven-safe 8-12x range, which is why the source PNGs here went back to full native
+ * resolution instead of staying at the 300px intermediate size: `PIXEL_SCALE` fixes the actual
+ * bottleneck (output resolution) directly, so the resize-down workaround is no longer needed, and
+ * dropping it keeps all of her source art's real detail instead of discarding some of it up front.
+ * `registerSisterSprite()` below still gives these `LINEAR` filtering (like the buildings/trees, not
+ * the flat procedural pixel-art characters) for that ~12-13x downscale to come out smooth/anti
+ * -aliased instead of blocky.
  *
  * **Sized at 85% of Bernadette's own height** (`SISTER_FRAME_HEIGHT` below, `round(42 * 0.85)` —
  * an explicit maintainer request: "she is her younger sister") — this is still the *display*
@@ -49,10 +63,8 @@ import frontWalkBUrl from './sister_front_walk_b.png';
  * size the texture actually is.
  *
  * Walk-cycle frames (`_walk_a/b.png`) use the same cutout-puppet deformation technique documented
- * for Bernadette (AGENTS.md), generated against the full-resolution crops *before* the LANCZOS
- * resize down to the 300px intermediate size described above (deforming first then downsampling
- * once, rather than the other way around, keeps the boot/hand paste edges and the clone-stamped
- * fabric fill both clean instead of compounding two separate resampling passes):
+ * for Bernadette (AGENTS.md), applied directly against these full-resolution crops (no resize step
+ * at all now, see this file's own header comment above):
  *  - Independent left/right boot shifts (opposite vertical offsets, swapping between frames 'a'/
  *    'b') for front and back, where the art shows two separate boots; a single boot shift for the
  *    side view, which only shows one.

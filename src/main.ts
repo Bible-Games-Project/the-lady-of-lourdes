@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from './core/constants';
+import { RENDER_WIDTH, RENDER_HEIGHT } from './core/constants';
 import { installCrispTextFilter } from './core/textRendering';
 import { BootScene } from './scenes/BootScene';
 import { LanguageSelectScene } from './scenes/LanguageSelectScene';
@@ -16,8 +16,12 @@ installCrispTextFilter();
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'app',
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  // The actual framebuffer resolution -- `PIXEL_SCALE`-times bigger than the logical GAME_WIDTH/
+  // GAME_HEIGHT every scene still positions things in (see `constants.ts`'s own doc comment on
+  // `PIXEL_SCALE` for why those two are deliberately different numbers now, and how every scene's
+  // camera zoom reconciles them back to the same on-screen result).
+  width: RENDER_WIDTH,
+  height: RENDER_HEIGHT,
   pixelArt: true,
   backgroundColor: '#0a0a0f',
   // Every UI/dialogue text object in the game renders through a real DOM element layered over the
