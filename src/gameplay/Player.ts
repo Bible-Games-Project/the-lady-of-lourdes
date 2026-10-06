@@ -1,11 +1,28 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../core/constants';
 import { BERNADETTE_SHADOW_KEY, textureKeyFor } from '../pixelart/characters';
+import { BERNADETTE_FRAME_HEIGHT } from '../assets/player/bernadetteSprite';
 import { updateFacingAnimation, type Facing } from './spriteFacing';
 import { depthForY } from './utils';
 import type { TouchControls } from './TouchControls';
 
 const SPEED = 70;
+
+// Feet-box proportions, as fractions of her own frame height -- same values `NpcActor.ts`'s own
+// FEET_*_FRAC constants were originally derived from (this file's old fixed `body.setSize(7, 11);
+// body.setOffset(4, 30)` on her old 42px-tall frame: 7/42, 11/42, 30/42). Kept as fractions
+// (rather than the old fixed pixel numbers) now that her frame's native size is no longer the
+// same as her display size -- see `bernadetteSprite.ts`'s own doc comment on `BERNADETTE_FRAME_HEIGHT`.
+const FEET_WIDTH_FRAC = 7 / 42;
+const FEET_HEIGHT_FRAC = 11 / 42;
+const FEET_OFFSET_Y_FRAC = 30 / 42;
+
+// Her shadow (`BERNADETTE_SHADOW_KEY`) is a hand-authored texture sized 1:1 for her old 42px-tall
+// frame. Scale it by the same ratio her own display height grew by, so it keeps the same
+// size-to-character relationship instead of reading as too small underneath her now-larger sprite
+// -- same reasoning `OverworldScene.ts`'s SISTER_SHADOW_SCALE/etc. already use for every other
+// real-art character's shadow.
+const SHADOW_SCALE = BERNADETTE_FRAME_HEIGHT / 42;
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   private facing: Facing = 'down';
@@ -18,6 +35,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private locked = false;
   private shadow: Phaser.GameObjects.Image;
   private idle = true;
+  // Her resting scale, derived from `BERNADETTE_FRAME_HEIGHT` vs. whatever the source texture's
+  // own native resolution actually is -- see `bernadetteSprite.ts`'s own doc comment. Breathing
+  // (`updateBreathing()` below) must scale relative to *this*, never hardcode `1`, or it silently
+  // stomps her display size back to native-texture size every idle frame (the same bug class
+  // `NpcActor.ts`'s own `baseScale` field exists to avoid).
+  private baseScale: number;
 
   constructor(scene: Phaser.Scene, x: number, y: number, touch: TouchControls | null = null) {
     super(scene, x, y, textureKeyFor('bernadette', 'down'));
@@ -26,18 +49,32 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setOrigin(0.5, 1);
     this.setCollideWorldBounds(true);
+
+    // `this.height` here is the texture's native (unscaled) pixel height -- scaling her down to
+    // BERNADETTE_FRAME_HEIGHT is what actually preserves her source art's full resolution instead
+    // of relying on a pre-shrunk file; see that constant's own doc comment for the full history.
+    this.baseScale = BERNADETTE_FRAME_HEIGHT / this.height;
+    this.setScale(this.baseScale);
+
     const body = this.body as Phaser.Physics.Arcade.Body;
-    // One fixed collider used for all 3 facings, near her feet — the frames themselves are 42px
-    // tall throughout but vary in width per facing (13-18px, each view's own true proportions; see
-    // assets/player/bernadetteSprite.ts), so this is a representative center-ish box rather than a
-    // per-facing exact fit. Collision precision here has never needed to track her visual width
-    // exactly; a top-down game's movement/blocking feel is insensitive to a couple of px of
-    // left-right slack in a body this small.
-    body.setSize(7, 11);
-    body.setOffset(4, 30);
+    // Feet-only collider (see FEET_*_FRAC above), sized from her own *native* frame dimensions --
+    // `body.setSize()` bakes in the GameObject's current scale (already set above) at call time,
+    // so this comes out proportional to her actual on-screen size automatically. One fixed box
+    // used for all 3 facings, near her feet, same as before this change -- collision precision
+    // here has never needed to track her visual width exactly.
+    const feetWidth = Math.max(1, Math.round(this.height * FEET_WIDTH_FRAC));
+    const feetHeight = Math.max(1, Math.round(this.height * FEET_HEIGHT_FRAC));
+    body.setSize(feetWidth, feetHeight);
+    body.setOffset(Math.round((this.width - feetWidth) / 2), Math.round(this.height * FEET_OFFSET_Y_FRAC));
+    // Forces the body's cached world-space size to sync with the scale set above immediately,
+    // rather than leaving it to the body's own next `preUpdate()` -- cheap, and removes any doubt
+    // for a body left enabled (unlike the sister's, which is permanently disabled and so *needs*
+    // this call; see `NpcActor.ts`'s own doc comment on `targetHeight`).
+    body.updateFromGameObject();
 
     this.shadow = scene.add.image(x, y - 1, BERNADETTE_SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
+    this.shadow.setScale(SHADOW_SCALE);
 
     const keyboard = scene.input.keyboard!;
     this.cursors = keyboard.createCursorKeys();
@@ -120,8 +157,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (!idle) {
       if (!this.idle) return;
       this.idle = false;
-      this.setScale(1, 1);
-      this.shadow.setScale(1, 1);
+      this.setScale(this.baseScale, this.baseScale);
+      this.shadow.setScale(SHADOW_SCALE, SHADOW_SCALE);
       this.shadow.setAlpha(1);
       return;
     }
@@ -129,10 +166,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const periodMs = 4200;
     const amplitude = 0.015;
     const wave = Math.sin((time / periodMs) * Math.PI * 2);
-    this.setScale(1, 1 + wave * amplitude);
+    this.setScale(this.baseScale, this.baseScale * (1 + wave * amplitude));
     // The shadow reacts to the same breath, but only in width/opacity — it must stay flat on the
     // ground, never lifting or scaling vertically with her.
-    this.shadow.setScale(1 + wave * 0.02, 1);
+    this.shadow.setScale(SHADOW_SCALE * (1 + wave * 0.02), SHADOW_SCALE);
     this.shadow.setAlpha(0.92 - wave * 0.08);
   }
 

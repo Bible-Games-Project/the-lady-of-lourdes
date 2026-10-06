@@ -12,41 +12,54 @@ import frontWalkBUrl from './bernadette_front_walk_b.png';
 
 /**
  * The maintainer's own finished artwork for the gameplay player character, recovered byte-for-byte
- * from the conversation that supplied it (same handling as `assets/home/home_background.png`) —
- * never redrawn/recolored/redesigned. This is the *second* full sprite-sheet swap: the maintainer
- * replaced the original 3-view reference sheet (maroon/red dress) with a brand-new one (blue
- * dress) — same side/front/back genuine-art approach, entirely different source pixels, the old
- * sheet's derived frames are gone rather than layered underneath. `side` is used as-is for `right`
- * and horizontally flipped (`setFlipX`, in `spriteFacing.ts`) for `left`; `back` is used only for
- * `up`; `front` only for `down`. All three source panels were cropped to their own precise alpha
- * bounding box and resized to the same final *height* (42px) so switching facing never jumps her
- * apparent scale or ground contact point (`Player.ts` keeps her origin at (0.5, 1), and each
- * crop's bottom edge is exactly her feet) — width is **not** forced uniform across facings (this
- * source's own side/front/back panels have genuinely different proportions — a side profile is
- * naturally narrower than a front/back view of the same shoulders — so each view keeps its own
- * true aspect ratio at that shared height rather than being artificially stretched/squeezed to
- * match the others).
+ * from the conversation that supplied it — never redrawn/recolored/redesigned. This is the
+ * *third* full sprite-sheet swap, and the first at full native resolution: every earlier round
+ * (the maroon-dress sheet, then this same blue-dress sheet) cropped each panel to its own alpha
+ * bounding box and then **resized it down** to a fixed final height (34px, then 42px) before the
+ * file ever reached the game -- the exact same anti-pattern `sisterSprite.ts` documents for its
+ * own first round, and the direct answer to "why is every NPC pixelated" investigated and
+ * confirmed in-session: `scaleX`/`scaleY` were both exactly `1` for every real-art character
+ * (Bernadette included) because there was nothing left for Phaser to scale -- the detail loss had
+ * already happened permanently inside the PNG.
  *
- * Every walk-cycle frame (`_walk_a/b.png`, all 3 views) is a cutout-puppet deformation — independent
- * small shifts on the *separate* left/right boot regions (so the two feet visibly swap which is
- * forward/planted vs. back/lifted, not just the whole foot cluster translating), opposite-arm
- * counter-swing on the hand region(s) (one hand for the side view, two — independently shifted —
- * for back/front), a waist-down skirt shear (single-direction for the side view; mirrored/opposing
- * for back/front so the skirt reads as a subtle twist rather than a uniform lean), and a sub-pixel
- * vertical bob. Generated at a larger intermediate resolution (~60px tall, one clean LANCZOS
- * resize from the untouched source crop) and then downscaled to final size with a *second* single
- * clean LANCZOS resize — deforming directly at the tiny final size left too little pixel data for
- * the two boots to read as different feet, so the larger intermediate step stays necessary. Idle
- * frames need no deformation at all (breathing is a runtime `scaleY` effect in `Player.ts`, never
- * baked into the texture) and are generated with a single direct resize from the source crop
- * straight to final size. If these frames are ever regenerated: keep working at a larger
- * intermediate size before the final downscale, and never add an `ImageFilter.UnsharpMask` (or
- * any other sharpening) pass on top of the LANCZOS resizes — that was tried in an earlier version
- * of this pipeline and was part of a reported blur regression (see `registerBernadetteSprite()`
- * below for the other, larger part of that regression: an explicit LINEAR texture filter
- * override). LANCZOS alone, once, per resize is enough; sharpening on top of it just adds ringing.
+ * Also confirmed in that same investigation: the 42px figure itself was never chosen for how the
+ * art should look. It traces back through git history to a walk-cycle animation fix (`Frame size
+ * increased from 21x34 to 26x42 ... to give the walk cycle enough resolution to animate the feet
+ * independently`) and was then propagated by convention into every other character's own frame
+ * height as a flat percentage of it (sister 85%, the boy 80%, Jeanne/the mother 100%) -- a
+ * completely different kind of number (an animation-engineering minimum) being reused as if it
+ * were a deliberate display-size decision.
+ *
+ * This round instead keeps these source panels at their full native resolution (side 315x923,
+ * front 353x933, back 327x924) and lets `Player.ts` scale them down at *render* time via the same
+ * `targetHeight` technique `NpcActor.ts` already uses for the sister/mother/Jeanne/the boy --
+ * `BERNADETTE_FRAME_HEIGHT` below is now a *display* height, decoupled from whatever resolution
+ * the source panels actually are, not a size baked into the files. The actual display height
+ * (72px, up from 42) was determined empirically, not guessed: the same source art was rendered at
+ * several sizes (28x72 through 90x288 framebuffer pixels, at `PIXEL_SCALE`'s 2x zoom) and compared
+ * directly against screenshots of this exact sheet -- 72px display height (144 actual framebuffer
+ * pixels) was the smallest size at which her face/hair/dress read as cleanly defined as the source
+ * art itself, with only diminishing returns beyond it. `side` is used as-is for `right` and
+ * horizontally flipped (`setFlipX`, in `spriteFacing.ts`) for `left`; `back` only for `up`; `front`
+ * only for `down`.
+ *
+ * Every walk-cycle frame (`_walk_a/b.png`, all 3 views) is a cutout-puppet deformation applied
+ * directly to these full-resolution crops (no intermediate resize at all now, unlike the old
+ * pipeline's "deform at ~60px tall, then downscale" two-step): independent shifts on the separate
+ * left/right boot regions, opposite-arm counter-swing on the hand region(s), and a waist-down
+ * skirt shear, same family of technique as `sisterSprite.ts`. Two refinements specific to this
+ * sheet's own art, found by inspecting the actual deformed output rather than assumed: (1) the
+ * dress has a genuine vertical shading gradient, so the flat tiled clone-fill behind a moved hand
+ * (sister's own technique) left a visible seam here -- fixed with a gradient-aware fill that
+ * blends between a reference strip sampled just above and just below the hole, tracking the
+ * fabric's own shading instead of fighting it; (2) a boot sitting at the hem (not bare over
+ * background, unlike the sister's) needs the *same* hole-fill before the shifted copy is pasted
+ * back on top, or the vacated box shows as a transparent notch cut into the dress hem. The back
+ * view's hands, by contrast, genuinely do hang past the dress's own side silhouette over bare
+ * background (confirmed by inspecting the source art directly) and use a plain clear, same as the
+ * sister's boots. Idle frames are the untouched crops, no deformation.
  */
-export const BERNADETTE_FRAME_HEIGHT = 42 as const;
+export const BERNADETTE_FRAME_HEIGHT = 72 as const;
 
 const URLS_BY_FACING: Record<FacingKey, Record<'a' | 'b' | 'idle', string>> = {
   side: { idle: sideIdleUrl, a: sideWalkAUrl, b: sideWalkBUrl },
@@ -72,21 +85,27 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
 }
 
 /**
- * Registers the walk animations, once the textures above have loaded. Deliberately does *not*
- * call `setFilter(LINEAR)` the way Home's real-photo background does — unlike that full-bleed
- * background, these frames are meant to read as pixel art like every other character (the whole
- * game already runs with `pixelArt: true` in `main.ts`, which defaults every texture's sampling to
- * NEAREST/hard-edged). An earlier version of this file explicitly forced Bernadette's textures to
- * LINEAR, reasoning she was "real illustration, not the hard-edged procedural pixel grid" — that
- * was the actual cause of a reported softness/blur regression: LINEAR interpolates between texel
- * colors on every scale-up, which is exactly what smears her small (13-18px wide, 42px tall)
- * frames into a blurred silhouette instead of the crisp, clearly-defined pixel edges the rest of
- * the game has. Leaving
- * her textures on Phaser's own NEAREST default (don't reintroduce an explicit LINEAR override here)
- * is the fix — confirmed by comparing in-game screenshots before/after.
+ * Registers the walk animations, once the textures above have loaded, and gives every texture
+ * above `LINEAR` filtering (like the sister/buildings/trees, not the flat procedural characters
+ * NEAREST is for). An earlier round of this file explicitly rejected LINEAR here, and that
+ * rejection was correct *for the sprites that existed at the time*: those PNGs had already been
+ * resized down to her tiny final display size (13-18px wide, 42px tall) before ever reaching the
+ * game, so LINEAR was interpolating between a source that was already final-size -- smearing an
+ * already-crisp image for no benefit. That reasoning no longer applies now that the source panels
+ * are kept at full native resolution (315-353px wide, 923-933px tall) and scaled *down* to display
+ * size at render time (`Player.ts`'s `targetHeight`): at that real ~6.4x minification ratio (full
+ * native height / the actual framebuffer pixels she ends up drawn at, i.e. native height /
+ * (`BERNADETTE_FRAME_HEIGHT` x `PIXEL_SCALE`)) -- comfortably inside the safe range
+ * buildings/trees already use (~8-12x) -- LINEAR is what makes the downscale read as smooth/anti
+ * -aliased instead of aliased, exactly the same reasoning `sisterSprite.ts` documents for its own
+ * texture.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
+    [textureKeyFor('bernadette', facing, null), textureKeyFor('bernadette', facing, 'a'), textureKeyFor('bernadette', facing, 'b')].forEach((key) => {
+      scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
+
     const animKey = walkAnimKeyFor('bernadette', facing);
     if (!scene.anims.exists(animKey)) {
       scene.anims.create({
