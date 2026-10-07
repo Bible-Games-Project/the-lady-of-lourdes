@@ -13,51 +13,38 @@ import frontWalkBUrl from './bernadette_front_walk_b.png';
 /**
  * The maintainer's own finished artwork for the gameplay player character, recovered byte-for-byte
  * from the conversation that supplied it — never redrawn/recolored/redesigned. This is the
- * *third* full sprite-sheet swap, and the first at full native resolution: every earlier round
- * (the maroon-dress sheet, then this same blue-dress sheet) cropped each panel to its own alpha
- * bounding box and then **resized it down** to a fixed final height (34px, then 42px) before the
- * file ever reached the game -- the exact same anti-pattern `sisterSprite.ts` documents for its
- * own first round, and the direct answer to "why is every NPC pixelated" investigated and
- * confirmed in-session: `scaleX`/`scaleY` were both exactly `1` for every real-art character
- * (Bernadette included) because there was nothing left for Phaser to scale -- the detail loss had
- * already happened permanently inside the PNG.
+ * *fourth* full sprite-sheet swap (poncho, headscarf, and rosary, replacing the previous
+ * blue-dress-only sheet), at full native resolution like the round before it: side 337x870,
+ * front 398x868, back 379x861, each cropped with a generous 40px transparent margin on every side
+ * (not just a tight 2px alpha-bbox pad like the previous round's crops were) specifically so the
+ * walk-cycle deformation below has room to shift boots/hem without touching the canvas edge -- see
+ * the "clipped boot" bug this avoided, documented in this repo's git history on the previous
+ * sheet's own walk-cycle fix.
  *
- * Also confirmed in that same investigation: the 42px figure itself was never chosen for how the
- * art should look. It traces back through git history to a walk-cycle animation fix (`Frame size
- * increased from 21x34 to 26x42 ... to give the walk cycle enough resolution to animate the feet
- * independently`) and was then propagated by convention into every other character's own frame
- * height as a flat percentage of it (sister 85%, the boy 80%, Jeanne/the mother 100%) -- a
- * completely different kind of number (an animation-engineering minimum) being reused as if it
- * were a deliberate display-size decision.
+ * `BERNADETTE_FRAME_HEIGHT` is unchanged from the previous round (72px display / 144 actual
+ * framebuffer pixels at `PIXEL_SCALE`) per explicit instruction to keep her calibrated size when
+ * swapping in this new sheet -- nothing about this sheet's proportions made that technically
+ * necessary to revisit (native panel heights ~861-870px vs. the previous round's ~923-933px is a
+ * similar order of magnitude, keeping the same LINEAR-filtering minification ratio reasoning
+ * below valid). `side` is used as-is for `right` and horizontally flipped (`setFlipX`, in
+ * `spriteFacing.ts`) for `left`; `back` only for `up`; `front` only for `down`.
  *
- * This round instead keeps these source panels at their full native resolution (side 315x923,
- * front 353x933, back 327x924) and lets `Player.ts` scale them down at *render* time via the same
- * `targetHeight` technique `NpcActor.ts` already uses for the sister/mother/Jeanne/the boy --
- * `BERNADETTE_FRAME_HEIGHT` below is now a *display* height, decoupled from whatever resolution
- * the source panels actually are, not a size baked into the files. The actual display height
- * (72px, up from 42) was determined empirically, not guessed: the same source art was rendered at
- * several sizes (28x72 through 90x288 framebuffer pixels, at `PIXEL_SCALE`'s 2x zoom) and compared
- * directly against screenshots of this exact sheet -- 72px display height (144 actual framebuffer
- * pixels) was the smallest size at which her face/hair/dress read as cleanly defined as the source
- * art itself, with only diminishing returns beyond it. `side` is used as-is for `right` and
- * horizontally flipped (`setFlipX`, in `spriteFacing.ts`) for `left`; `back` only for `up`; `front`
- * only for `down`.
- *
- * Every walk-cycle frame (`_walk_a/b.png`, all 3 views) is a cutout-puppet deformation applied
- * directly to these full-resolution crops (no intermediate resize at all now, unlike the old
- * pipeline's "deform at ~60px tall, then downscale" two-step): independent shifts on the separate
- * left/right boot regions, opposite-arm counter-swing on the hand region(s), and a waist-down
- * skirt shear, same family of technique as `sisterSprite.ts`. Two refinements specific to this
- * sheet's own art, found by inspecting the actual deformed output rather than assumed: (1) the
- * dress has a genuine vertical shading gradient, so the flat tiled clone-fill behind a moved hand
- * (sister's own technique) left a visible seam here -- fixed with a gradient-aware fill that
- * blends between a reference strip sampled just above and just below the hole, tracking the
- * fabric's own shading instead of fighting it; (2) a boot sitting at the hem (not bare over
- * background, unlike the sister's) needs the *same* hole-fill before the shifted copy is pasted
- * back on top, or the vacated box shows as a transparent notch cut into the dress hem. The back
- * view's hands, by contrast, genuinely do hang past the dress's own side silhouette over bare
- * background (confirmed by inspecting the source art directly) and use a plain clear, same as the
- * sister's boots. Idle frames are the untouched crops, no deformation.
+ * Every walk-cycle frame (`_walk_a/b.png`, all 3 views) is the same cutout-puppet deformation
+ * family as the previous round and `sisterSprite.ts`: independent boot lifts, hand counter-swing,
+ * waist-down skirt shear. Two fixes carried forward from the previous round's own walk-cycle bug
+ * fix, applied here from the start rather than discovered after shipping: (1) boots only ever
+ * lift *up* (never pushed down past the canvas edge, which is what clipped them last round); (2)
+ * the skirt shear clamps each row's shift to what that row's own silhouette can safely take
+ * instead of a flat constant. One new fix specific to this sheet: the source webp has scattered
+ * near-invisible compression specks (alpha ~1/255) well outside the actual figure silhouette,
+ * confirmed by inspecting the raw pixel data directly -- a bare `alpha > 0` test in the skirt
+ * shear's per-row clamp picked these up as "real" silhouette content, and an occasional stray
+ * speck landing near the canvas edge on one row choked that row's shift down to ~1px against its
+ * neighbors' 7-8px, producing a jagged seam; fixed by thresholding at `alpha > 20`. One new
+ * element specific to this sheet: one hand on each view holds a rosary that hangs well below the
+ * hand itself (confirmed directly in the source art) -- that hand's shift/fill box extends down
+ * to cover the full chain, so it swings rigidly with the hand instead of staying fixed in place
+ * while the hand moves. Idle frames are the untouched crops, no deformation.
  */
 export const BERNADETTE_FRAME_HEIGHT = 72 as const;
 
@@ -87,18 +74,13 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
 /**
  * Registers the walk animations, once the textures above have loaded, and gives every texture
  * above `LINEAR` filtering (like the sister/buildings/trees, not the flat procedural characters
- * NEAREST is for). An earlier round of this file explicitly rejected LINEAR here, and that
- * rejection was correct *for the sprites that existed at the time*: those PNGs had already been
- * resized down to her tiny final display size (13-18px wide, 42px tall) before ever reaching the
- * game, so LINEAR was interpolating between a source that was already final-size -- smearing an
- * already-crisp image for no benefit. That reasoning no longer applies now that the source panels
- * are kept at full native resolution (315-353px wide, 923-933px tall) and scaled *down* to display
- * size at render time (`Player.ts`'s `targetHeight`): at that real ~6.4x minification ratio (full
- * native height / the actual framebuffer pixels she ends up drawn at, i.e. native height /
- * (`BERNADETTE_FRAME_HEIGHT` x `PIXEL_SCALE`)) -- comfortably inside the safe range
- * buildings/trees already use (~8-12x) -- LINEAR is what makes the downscale read as smooth/anti
- * -aliased instead of aliased, exactly the same reasoning `sisterSprite.ts` documents for its own
- * texture.
+ * NEAREST is for) -- still correct with this (fourth) sheet's native panels (337-398px wide,
+ * 861-870px tall) scaled *down* to display size at render time (`Player.ts`'s `targetHeight`): at
+ * that real ~6x minification ratio (full native height / the actual framebuffer pixels she ends
+ * up drawn at, i.e. native height / (`BERNADETTE_FRAME_HEIGHT` x `PIXEL_SCALE`)) -- comfortably
+ * inside the safe range buildings/trees already use (~8-12x) -- LINEAR is what makes the downscale
+ * read as smooth/anti-aliased instead of aliased, exactly the same reasoning `sisterSprite.ts`
+ * documents for its own texture.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
