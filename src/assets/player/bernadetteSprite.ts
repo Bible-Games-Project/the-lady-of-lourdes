@@ -45,6 +45,16 @@ import frontWalkBUrl from './bernadette_front_walk_b.png';
  * hand itself (confirmed directly in the source art) -- that hand's shift/fill box extends down
  * to cover the full chain, so it swings rigidly with the hand instead of staying fixed in place
  * while the hand moves. Idle frames are the untouched crops, no deformation.
+ *
+ * The front/back boots originally only lifted *straight up* (no horizontal component), which
+ * reported back as reading like bobbing/dancing in place rather than stepping ("parece que baila,
+ * no mueve los pies") -- confirmed by simulating the actual in-game render size (144 framebuffer
+ * pixels tall, via a Lanczos downsample matching the real scale factor): a vertical-only lift of a
+ * few native pixels is essentially invisible at that size, so the *only* visible motion was the
+ * skirt sway, with the feet reading as stationary. Fixed by also shifting each lifting boot
+ * outward (away from the centerline) by a magnitude close to its vertical lift, large enough to
+ * still read clearly once downscaled to display size -- confirmed by re-running that same
+ * in-game-scale simulation after the fix and seeing the two feet visibly alternate position.
  */
 export const BERNADETTE_FRAME_HEIGHT = 72 as const;
 
