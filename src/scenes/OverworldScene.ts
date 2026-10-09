@@ -587,16 +587,43 @@ export class OverworldScene extends Phaser.Scene {
    * still renders pixel-snapped exactly as before. `camera.setBounds()`'s own edge clamping still
    * applies for free: Phaser's `preRender()` always runs `clampX`/`clampY` on `this.scrollX`/
    * `scrollY` after this method sets them, follow or not.
+   *
+   * **Frame-rate-dependent lerp found and fixed** (reported again as persistent shake/jitter after
+   * the above was all re-verified correct): `lerp` was applied once per *call* to this method, i.e.
+   * once per rendered frame, never scaled by how much real time that frame actually covered. The
+   * "steady state converges to a constant, zero further on-screen ticks" argument two paragraphs up
+   * is only true if this method runs at a perfectly constant rate. Measured directly (logging
+   * `camScrollY` and `player.y - camScrollY` every frame, not just the rounded `cam.scrollY`) during
+   * a plain constant-velocity walk with every animation frame/deformation disabled (so the sprite
+   * itself was provably static): whenever a render frame's `delta` was large enough to span more
+   * than one physics tick -- which real browsers hit on any ordinary frame-time hitch, not just a
+   * contrived slow one -- the player's position jumped by more than one tick's worth, but this
+   * method still only closed 12% of the *now-larger* gap that single call, same as any other frame.
+   * The continuous gap (`player.y - camScrollY`) was never actually converging to a constant; across
+   * a run with somewhat irregular frame timing it drifted steadily through *several whole integers*
+   * (125 -> 124 -> 123 -> 122 -> 121 in under a second), and `Math.round()` of that drifting gap
+   * didn't always tick the same direction the player was walking -- it occasionally ticked backward
+   * for one frame before resuming forward, which is a literal on-screen jiggle, confirmed with the
+   * camera frozen entirely (`updateCameraFollow` stubbed to a no-op) showing *zero* jitter in the
+   * same test, isolating the cause to this method and ruling out the sprite/animation system.
+   * Fixed by time-compensating the lerp factor against `delta` (ms since last frame) so the camera
+   * converges at the same real-world-time rate regardless of the actual render interval, instead of
+   * a fixed fraction of whatever the gap happens to be on a given call -- the standard fix for
+   * frame-rate-dependent exponential smoothing. `refMs` is the frame duration `lerp = 0.12`'s feel
+   * was originally tuned against (60fps); at exactly that rate `factor` reduces back to `0.12`,
+   * preserving the existing look when frame timing is steady, and scales correctly when it isn't.
    */
-  private updateCameraFollow(): void {
+  private updateCameraFollow(delta: number): void {
     const cam = this.cameras.main;
     const lerp = 0.12;
+    const refMs = 1000 / 60;
+    const factor = 1 - Math.pow(1 - lerp, delta / refMs);
     // `/ cam.zoom` -- see the matching correction (and its doc comment) on `camScrollX`/`camScrollY`'s
     // initial seed in `create()` above.
     const targetX = this.player.x - cam.width / 2 / cam.zoom;
     const targetY = this.player.y - cam.height / 2 / cam.zoom;
-    this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, lerp);
-    this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, lerp);
+    this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, factor);
+    this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, factor);
     cam.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
     cam.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
   }
@@ -688,7 +715,7 @@ export class OverworldScene extends Phaser.Scene {
     // this scene's life once `editorViewMode` is set -- the normal player-follow lerp would
     // otherwise fight it every frame, including after "Close editor" hides the side panel.
     if (!this.editorViewMode) {
-      this.updateCameraFollow();
+      this.updateCameraFollow(delta);
     }
 
     // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it

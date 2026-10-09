@@ -8,6 +8,16 @@ import type { TouchControls } from './TouchControls';
 
 const SPEED = 70;
 
+// DIAGNOSTIC ONLY -- temporarily forces the idle pose/texture even while walking, so NONE of the
+// generated walk frames (skirt shear, boot lift, hand/rosary swing) ever get displayed, to isolate
+// whether the reported shake comes from that artwork/deformation or from something else entirely
+// (movement coordinates, rendering, scaling, camera). Does not touch spriteFacing.ts (shared with
+// every NpcActor), does not delete any animation code or assets, and does not change velocity/
+// movement -- she still physically walks at the same speed, she just always *displays* as the
+// stationary pose for her current facing while doing so. Flip back to `false` to restore the real
+// walk animation once the diagnostic is done.
+const DIAGNOSTIC_DISABLE_WALK_ANIMATION = true;
+
 // Feet-box proportions, as fractions of her own frame height -- same values `NpcActor.ts`'s own
 // FEET_*_FRAC constants were originally derived from (this file's old fixed `body.setSize(7, 11);
 // body.setOffset(4, 30)` on her old 42px-tall frame: 7/42, 11/42, 30/42). Kept as fractions
@@ -131,7 +141,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (moving) {
       const len = Math.hypot(vx, vy) || 1;
       body.setVelocity((vx / len) * SPEED, (vy / len) * SPEED);
-      this.facing = updateFacingAnimation(this, 'bernadette', vx, vy, this.facing, true, true);
+      this.facing = updateFacingAnimation(this, 'bernadette', vx, vy, this.facing, !DIAGNOSTIC_DISABLE_WALK_ANIMATION, true);
     } else {
       body.setVelocity(0, 0);
       updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
