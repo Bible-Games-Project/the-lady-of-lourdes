@@ -18,6 +18,13 @@ const SPEED = 70;
 // walk animation once the diagnostic is done.
 const DIAGNOSTIC_DISABLE_WALK_ANIMATION = true;
 
+// DIAGNOSTIC ONLY -- skips updateBreathing() entirely (idle AND moving), so nothing ever touches
+// scaleX/scaleY after construction. Added specifically to test the hypothesis "breathing is still
+// running while walking" directly rather than assuming the existing `updateBreathing(!moving,
+// time)` early-return (see that method below) already prevents it. Flip back to `false` to restore
+// breathing once the diagnostic is done.
+const DIAGNOSTIC_DISABLE_BREATHING = true;
+
 // Feet-box proportions, as fractions of her own frame height -- same values `NpcActor.ts`'s own
 // FEET_*_FRAC constants were originally derived from (this file's old fixed `body.setSize(7, 11);
 // body.setOffset(4, 30)` on her old 42px-tall frame: 7/42, 11/42, 30/42). Kept as fractions
@@ -120,7 +127,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       // idempotent) rather than only once, matching how the unlocked branch below re-evaluates
       // moving/not-moving every frame too.
       updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
-      this.updateBreathing(true, time);
+      if (!DIAGNOSTIC_DISABLE_BREATHING) this.updateBreathing(true, time);
       this.syncShadow();
       return;
     }
@@ -146,7 +153,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       body.setVelocity(0, 0);
       updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
     }
-    this.updateBreathing(!moving, time);
+    if (!DIAGNOSTIC_DISABLE_BREATHING) this.updateBreathing(!moving, time);
     this.syncShadow();
   }
 
