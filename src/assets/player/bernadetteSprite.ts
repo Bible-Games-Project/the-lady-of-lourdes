@@ -1,14 +1,20 @@
 import Phaser from 'phaser';
 import { textureKeyFor, walkAnimKeyFor, type FacingKey } from '../../pixelart/characters';
 import sideIdleUrl from './bernadette_side_idle.png';
-import sideWalkAUrl from './bernadette_side_walk_a.png';
-import sideWalkBUrl from './bernadette_side_walk_b.png';
+import sideWalkA1Url from './bernadette_side_walk_a1.png';
+import sideWalkA2Url from './bernadette_side_walk_a2.png';
+import sideWalkB1Url from './bernadette_side_walk_b1.png';
+import sideWalkB2Url from './bernadette_side_walk_b2.png';
 import backIdleUrl from './bernadette_back_idle.png';
-import backWalkAUrl from './bernadette_back_walk_a.png';
-import backWalkBUrl from './bernadette_back_walk_b.png';
+import backWalkA1Url from './bernadette_back_walk_a1.png';
+import backWalkA2Url from './bernadette_back_walk_a2.png';
+import backWalkB1Url from './bernadette_back_walk_b1.png';
+import backWalkB2Url from './bernadette_back_walk_b2.png';
 import frontIdleUrl from './bernadette_front_idle.png';
-import frontWalkAUrl from './bernadette_front_walk_a.png';
-import frontWalkBUrl from './bernadette_front_walk_b.png';
+import frontWalkA1Url from './bernadette_front_walk_a1.png';
+import frontWalkA2Url from './bernadette_front_walk_a2.png';
+import frontWalkB1Url from './bernadette_front_walk_b1.png';
+import frontWalkB2Url from './bernadette_front_walk_b2.png';
 
 /**
  * The maintainer's own finished artwork for the gameplay player character, recovered byte-for-byte
@@ -29,41 +35,50 @@ import frontWalkBUrl from './bernadette_front_walk_b.png';
  * below valid). `side` is used as-is for `right` and horizontally flipped (`setFlipX`, in
  * `spriteFacing.ts`) for `left`; `back` only for `up`; `front` only for `down`.
  *
- * Every walk-cycle frame (`_walk_a/b.png`, all 3 views) is the same cutout-puppet deformation
- * family as the previous round and `sisterSprite.ts`: independent boot lifts, hand counter-swing,
- * waist-down skirt shear. Two fixes carried forward from the previous round's own walk-cycle bug
- * fix, applied here from the start rather than discovered after shipping: (1) boots only ever
- * lift *up* (never pushed down past the canvas edge, which is what clipped them last round); (2)
- * the skirt shear clamps each row's shift to what that row's own silhouette can safely take
- * instead of a flat constant. One new fix specific to this sheet: the source webp has scattered
- * near-invisible compression specks (alpha ~1/255) well outside the actual figure silhouette,
- * confirmed by inspecting the raw pixel data directly -- a bare `alpha > 0` test in the skirt
- * shear's per-row clamp picked these up as "real" silhouette content, and an occasional stray
- * speck landing near the canvas edge on one row choked that row's shift down to ~1px against its
- * neighbors' 7-8px, producing a jagged seam; fixed by thresholding at `alpha > 20`. One new
- * element specific to this sheet: one hand on each view holds a rosary that hangs well below the
- * hand itself (confirmed directly in the source art) -- that hand's shift/fill box extends down
- * to cover the full chain, so it swings rigidly with the hand instead of staying fixed in place
- * while the hand moves. Idle frames are the untouched crops, no deformation.
+ * Reported as "visibly shakes/jitters" and separately "doesn't look like real walking" -- both
+ * traced to the same root cause, confirmed by measurement rather than guessed (every other
+ * hypothesis -- canvas size/alignment per facing, the feet-to-canvas-bottom margin, per-facing
+ * origin/anchor, animation frames moving `player.x/y`, the camera following anything but
+ * `player.x/y` -- was individually checked this round and found NOT to be the issue; see this
+ * repo's commit history for the measurements). The previous version played only 2 distinct
+ * deformed poses (`walk_a`/`walk_b`) in a 4-frame cycle `[a, idle, b, idle]`: the alpha-weighted
+ * visual centroid of the whole figure moved ~6-8 native px between idle and each extreme, and
+ * ~12-14px (roughly 9% of her total width) in the single hard cut between the two extremes twice
+ * per cycle, with nothing in between -- a real human stride's visible mass never jumps between two
+ * maximally-different poses with zero interpolation, so that hard cut is what read as a
+ * shake/wobble rather than a step.
  *
- * The front/back boots originally only lifted *straight up* (no horizontal component), which
- * reported back as reading like bobbing/dancing in place rather than stepping ("parece que baila,
- * no mueve los pies") -- confirmed by simulating the actual in-game render size (144 framebuffer
- * pixels tall, via a Lanczos downsample matching the real scale factor): a vertical-only lift of a
- * few native pixels is essentially invisible at that size, so the *only* visible motion was the
- * skirt sway, with the feet reading as stationary. Fixed by also shifting each lifting boot
- * outward (away from the centerline) by a magnitude close to its vertical lift, large enough to
- * still read clearly once downscaled to display size -- confirmed by re-running that same
- * in-game-scale simulation after the fix and seeing the two feet visibly alternate position.
+ * Fixed by generating a full 8-phase sinusoidal cycle from the same deformation primitives
+ * (independent boot lift+outward shift, hand/rosary counter-swing, waist-down skirt shear) at
+ * graduated magnitudes t = sin(2*pi*i/8) for i in 0..7, instead of only ever evaluating them at
+ * the two extremes -- consecutive frames now differ by at most ~30% of the old single jump, and
+ * the sinusoidal (not linear) spacing eases in/out at the extremes and moves fastest through the
+ * middle, the same qualitative shape real limb motion has. Since sin(pi/4) == sin(3*pi/4), the
+ * approaching and retreating frames on each side of the cycle are pixel-identical, so only 4 new
+ * deformed images per facing are needed (`_walk_a1/a2/b1/b2`, at t = +0.707/+1/-0.707/-1) to cover
+ * all 8 steps: `[idle, a1, a2, a1, idle, b1, b2, b1]`. The boots only ever lift *up* (never pushed
+ * down past the canvas edge) and the skirt shear clamps each row's shift to what that row's own
+ * silhouette can safely take (both carried forward from the previous round's own walk-cycle fix);
+ * one hand on each view holds a rosary whose shift/fill box covers the full chain, so it swings
+ * rigidly with the hand. Idle is the untouched crop, no deformation.
  */
 export const BERNADETTE_FRAME_HEIGHT = 72 as const;
 
-const URLS_BY_FACING: Record<FacingKey, Record<'a' | 'b' | 'idle', string>> = {
-  side: { idle: sideIdleUrl, a: sideWalkAUrl, b: sideWalkBUrl },
-  up: { idle: backIdleUrl, a: backWalkAUrl, b: backWalkBUrl },
-  down: { idle: frontIdleUrl, a: frontWalkAUrl, b: frontWalkBUrl },
+type WalkStep = 'idle' | 'a1' | 'a2' | 'b1' | 'b2';
+
+const URLS_BY_FACING: Record<FacingKey, Record<WalkStep, string>> = {
+  side: { idle: sideIdleUrl, a1: sideWalkA1Url, a2: sideWalkA2Url, b1: sideWalkB1Url, b2: sideWalkB2Url },
+  up: { idle: backIdleUrl, a1: backWalkA1Url, a2: backWalkA2Url, b1: backWalkB1Url, b2: backWalkB2Url },
+  down: { idle: frontIdleUrl, a1: frontWalkA1Url, a2: frontWalkA2Url, b1: frontWalkB1Url, b2: frontWalkB2Url },
 };
 const ALL_FACINGS: FacingKey[] = ['down', 'up', 'side'];
+
+/** Walk-cycle frame keys never go through the shared `textureKeyFor()`/`StepFrame` system (that
+ * type is pinned to `'a' | 'b' | null` for the generic procedural NPC roster) -- kept entirely
+ * local to this file so the extra in-between frames can't affect any other character. */
+function walkFrameKey(facing: FacingKey, step: Exclude<WalkStep, 'idle'>): string {
+  return `${textureKeyFor('bernadette', facing, null)}_walk_${step}`;
+}
 
 /**
  * Loads the real art under the *exact* key strings
@@ -76,8 +91,9 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
     const urls = URLS_BY_FACING[facing];
     scene.load.image(textureKeyFor('bernadette', facing, null), urls.idle);
-    scene.load.image(textureKeyFor('bernadette', facing, 'a'), urls.a);
-    scene.load.image(textureKeyFor('bernadette', facing, 'b'), urls.b);
+    (['a1', 'a2', 'b1', 'b2'] as const).forEach((step) => {
+      scene.load.image(walkFrameKey(facing, step), urls[step]);
+    });
   });
 }
 
@@ -91,24 +107,28 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
  * inside the safe range buildings/trees already use (~8-12x) -- LINEAR is what makes the downscale
  * read as smooth/anti-aliased instead of aliased, exactly the same reasoning `sisterSprite.ts`
  * documents for its own texture.
+ *
+ * 8 frames at frameRate 12 keeps the same ~0.67s-per-cycle cadence the old 4-frame/6fps animation
+ * had (4/6 == 8/12) -- twice the sample density over the same real-world stride duration, not a
+ * faster or slower walk.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
-    [textureKeyFor('bernadette', facing, null), textureKeyFor('bernadette', facing, 'a'), textureKeyFor('bernadette', facing, 'b')].forEach((key) => {
+    const idleKey = textureKeyFor('bernadette', facing, null);
+    [idleKey, ...(['a1', 'a2', 'b1', 'b2'] as const).map((step) => walkFrameKey(facing, step))].forEach((key) => {
       scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 
     const animKey = walkAnimKeyFor('bernadette', facing);
     if (!scene.anims.exists(animKey)) {
+      const a1 = walkFrameKey(facing, 'a1');
+      const a2 = walkFrameKey(facing, 'a2');
+      const b1 = walkFrameKey(facing, 'b1');
+      const b2 = walkFrameKey(facing, 'b2');
       scene.anims.create({
         key: animKey,
-        frames: [
-          { key: textureKeyFor('bernadette', facing, 'a') },
-          { key: textureKeyFor('bernadette', facing, null) },
-          { key: textureKeyFor('bernadette', facing, 'b') },
-          { key: textureKeyFor('bernadette', facing, null) },
-        ],
-        frameRate: 6,
+        frames: [idleKey, a1, a2, a1, idleKey, b1, b2, b1].map((key) => ({ key })),
+        frameRate: 12,
         repeat: -1,
       });
     }
