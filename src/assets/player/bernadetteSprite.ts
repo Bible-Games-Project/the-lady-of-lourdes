@@ -61,6 +61,28 @@ import frontWalkB2Url from './bernadette_front_walk_b2.png';
  * silhouette can safely take (both carried forward from the previous round's own walk-cycle fix);
  * one hand on each view holds a rosary whose shift/fill box covers the full chain, so it swings
  * rigidly with the hand. Idle is the untouched crop, no deformation.
+ *
+ * The 8-phase cycle above *reduced* the shake but a maintainer report after shipping it said the
+ * feet/body still visibly shift on every frame change -- re-investigated from scratch rather than
+ * trusting the previous round's diagnosis, and this time it was a real bug, not just "too much
+ * motion": `skirt_shear()`'s row loop ran `range(waist_y, H)` (all the way to the canvas bottom)
+ * instead of stopping at `hem_y`. The per-row shift magnitude is clamped at 1.0x past `hem_y`, but
+ * the loop kept *applying* that capped shift to every row below it too -- including the boots,
+ * which have their own independent lift logic a few lines down. Measured directly: in the
+ * *resting* boot (the one with zero lift that frame, which should therefore be byte-for-byte
+ * identical to idle), 4346 of its 5005 pixels differed, purely from this bleed -- on every single
+ * generated frame, in all 3 facings. A second, smaller bug compounded it: `strip_fill()` painted
+ * the *entire rectangular* fill box opaque when a boot lifted, including corner pixels where the
+ * source art's own boot silhouette was transparent (a boot isn't a perfect rectangle), extending
+ * the visible figure very slightly past idle's own footprint at the box edges. Both fixed (loop
+ * now stops at `hem_y`; `strip_fill` only overwrites pixels that were already opaque in the
+ * source) and reverified: every resting boot across all 3 facings and all 4 walk frames is now
+ * exactly pixel-identical to idle (measured, not assumed), and the lowest visible row of every
+ * frame matches idle's exactly in all 3 facings (previously off by 1px in `back`). The 8-phase
+ * frame count and timing from the previous round were kept unchanged -- the bug, not the frame count,
+ * was the actual cause, confirmed by the fact that it reproduces identically regardless of how
+ * many frames are generated (it was already present in the original 2-pose version, just not
+ * caught at the time).
  */
 export const BERNADETTE_FRAME_HEIGHT = 72 as const;
 
