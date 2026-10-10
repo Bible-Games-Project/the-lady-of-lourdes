@@ -263,10 +263,10 @@ export class CachotScene extends Phaser.Scene {
       .setDepth(DEPTH.UI);
   }
 
-  update(time: number): void {
+  update(_time: number): void {
     const blocked = this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
     this.player.setLocked(blocked);
-    this.player.update(time);
+    this.player.update();
 
     if (blocked) {
       this.interactionPrompt.hide();

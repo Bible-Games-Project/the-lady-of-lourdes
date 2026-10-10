@@ -234,11 +234,6 @@ export class OverworldScene extends Phaser.Scene {
    */
   private editorViewMode = false;
 
-  // True-float camera scroll accumulator for the hand-rolled follow in `updateCameraFollow()` --
-  // see that method's own doc comment for why this can't just be `camera.startFollow()`.
-  private camScrollX = 0;
-  private camScrollY = 0;
-
   // Free-look camera panning, map-editor-only (see `setupEditorCameraPan()`) -- right-mouse-button
   // drag, tracked as the pointer position and camera scroll at drag-start so pan math is a plain
   // delta regardless of how long the drag has been going. `null` whenever no such drag is active.
@@ -372,21 +367,14 @@ export class OverworldScene extends Phaser.Scene {
 
     setCameraBounds(this, 0, 0, MAP_W, MAP_H);
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
-    // Hand-rolled follow (`updateCameraFollow()`, ticked from `update()`) instead of
-    // `camera.startFollow(this.player, true, 0.12, 0.12)` -- see that method's own doc comment for
-    // the real bugs this works around (diagonal-movement camera shake, and player-vs-world relative
-    // jitter). Seed the accumulator here so the very first frame doesn't lerp in from scroll (0,0);
-    // the gap is exactly width/2 at this instant, so the round-trip through updateCameraFollow()'s
-    // own formula is exact here too, not just an approximation.
-    // `cameras.main.width/height` are raw canvas-pixel dimensions (RENDER_WIDTH/HEIGHT), not
-    // camera/zoom-aware -- dividing by `.zoom` (== PIXEL_SCALE, set in `core/scaleMode.ts`) gets
-    // back the logical GAME_WIDTH/HEIGHT half-extent this formula actually wants; see
-    // `constants.ts`'s own doc comment on `PIXEL_SCALE`. `updateCameraFollow()` below needs the
-    // same correction.
-    this.camScrollX = this.player.x - this.cameras.main.width / 2 / this.cameras.main.zoom;
-    this.camScrollY = this.player.y - this.cameras.main.height / 2 / this.cameras.main.zoom;
-    this.cameras.main.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
-    this.cameras.main.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
+    // Seed the camera on the player immediately so the very first rendered frame is already
+    // centered on her, instead of starting at scroll (0, 0) for one frame. See
+    // `updateCameraFollow()`'s own doc comment for why this is a direct assignment, not a lerp,
+    // and why it is wired to `POST_UPDATE` below rather than called inline from `update()`.
+    this.updateCameraFollow();
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, () => {
+      if (!this.editorViewMode) this.updateCameraFollow();
+    });
 
     this.dialogueBox = new DialogueBox(this);
     this.tasksPanel = new TasksPanel(this);
@@ -542,90 +530,54 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * Replaces `camera.startFollow(this.player, true, 0.12, 0.12)`. That built-in combination has a
-   * real bug, traced into Phaser's own `Camera.preRender()` source: every frame it lerps
-   * `scrollX`/`scrollY` toward the player, floors the result for crisp pixel-art rendering, then
-   * **writes that floored value back into `this.scrollX`/`scrollY`** — so next frame's lerp starts
-   * from an already-truncated base, not the true continuous position, instead of only rounding for
-   * that one frame's render. Fixed by keeping our own float accumulator (`camScrollX`/`camScrollY`)
-   * that Phaser's floored value never gets written back into — lerp *that*, never the corrupted copy.
+   * Rebuilt from scratch (see git history for the previous lerp-based accumulator this replaced,
+   * and the several rounds of jitter it was fixed for and chased but never fully resolved).
    *
-   * **A second rounding issue was fixed after that** (reported as "horizontal movement still looks
-   * slightly stuttery"): `camera.roundPixels` makes Phaser's render pipeline floor the player
-   * sprite's own `x` (`MultiPipeline.js`: `gx = Math.floor(gameObject.x)`) independently of whatever
-   * this method assigns to `camera.scrollX` — and `floor(a) - floor(b)` can differ from the
-   * mathematically "correct" `round(a - b)` by a full pixel depending on how `a` and `b`'s own
-   * fractional parts happen to line up that frame, which read as the player twitching by a pixel
-   * relative to the world. That round was fixed by deriving scroll from `Math.floor(player.x) -
-   * Math.round(player.x - camScrollX)`, making the player's on-screen position exactly a single
-   * rounding of the smooth lerped gap — no second, independently-phased rounding left to disagree
-   * with it.
+   * This is a direct, un-smoothed follow: the camera is centered on the player's exact world
+   * position every single frame, with no interpolation, no accumulator, and no separate rounding
+   * step of its own:
    *
-   * **A diagonal-specific desync was suspected and ruled out here** (investigated after a report of
-   * "the character looks like it is slightly flickering/jittering/shaking from frame to frame" during
-   * diagonal walking only): the theory was that `camScrollX`/`camScrollY` are two independent lerp
-   * filters that can carry different residual lag from movement *before* a diagonal stroke began, so
-   * `round(player.x - camScrollX)` and `round(player.y - camScrollY)` might tick on different frames
-   * even during perfectly-locked-step diagonal motion. Tried replacing this method with
-   * `cam.scrollX = Math.round(camScrollX)` (rounding the accumulator directly, sidestepping the gap
-   * entirely) and measured both formulas from *inside* `updateCameraFollow()` itself (the only
-   * reliable technique — external probes read stale/torn state, see AGENTS.md) across a genuine
-   * constant-velocity **steady state** (the regime that matters — a sustained walk, not the brief
-   * transient right after a turn). Result: the *existing* formula below settles to **zero** further
-   * on-screen ticks once steady state is reached — mathematically inevitable, since for constant
-   * velocity input an exponential lerp filter's lag converges to an exact constant, making
-   * `player.pos - camScrollAxis` an exact constant too, so its rounding never changes again; the
-   * player sits rock-solid on screen while the world scrolls under her, which *is* the correct look
-   * for a camera locked onto constant-speed motion. The alternative (`round(camScrollX)` directly)
-   * re-introduced steady-state ticking instead (confirmed empirically, dozens of extra ticks over the
-   * same window) by recombining `Math.floor(player.x)` with an independently-rounded `camScrollX` —
-   * the exact class of bug the *previous* fix (below) exists to prevent. So the formula below is the
-   * more correct one; it was left unchanged. (The real cause of the diagonal-only flicker report
-   * turned out to be elsewhere — see `bernadetteSprite.ts`'s walk-frame alignment fix.)
+   *   scrollX = player.x - C          (C = cam.width / 2 / cam.zoom, constant while not in the
+   *                                     editor's free-look/zoom mode)
+   *   on-screen x = (player.x - scrollX) * zoom = (player.x - (player.x - C)) * zoom = C * zoom
    *
-   * `camera.roundPixels` stays on globally (from `pixelArt: true`) throughout, so every sprite/tile
-   * still renders pixel-snapped exactly as before. `camera.setBounds()`'s own edge clamping still
-   * applies for free: Phaser's `preRender()` always runs `clampX`/`clampY` on `this.scrollX`/
-   * `scrollY` after this method sets them, follow or not.
+   * `player.x` cancels out of its own follow formula exactly, every frame, regardless of her
+   * speed or the current frame's `delta` -- there is no gap left to round, lerp, or drift,
+   * because the quantity actually being rendered is a constant, not a converging approximation
+   * of one. But that is only true if `player.x`/`.y` here is the SAME value the renderer is about
+   * to draw her at -- which is where the *actual* root cause of every previous round of jitter
+   * turned out to be, confirmed directly from Phaser's own source (`Body.postUpdate()` in
+   * `phaser/src/physics/arcade/Body.js`) and by measurement, not assumption:
    *
-   * **Frame-rate-dependent lerp found and fixed** (reported again as persistent shake/jitter after
-   * the above was all re-verified correct): `lerp` was applied once per *call* to this method, i.e.
-   * once per rendered frame, never scaled by how much real time that frame actually covered. The
-   * "steady state converges to a constant, zero further on-screen ticks" argument two paragraphs up
-   * is only true if this method runs at a perfectly constant rate. Measured directly (logging
-   * `camScrollY` and `player.y - camScrollY` every frame, not just the rounded `cam.scrollY`) during
-   * a plain constant-velocity walk with every animation frame/deformation disabled (so the sprite
-   * itself was provably static): whenever a render frame's `delta` was large enough to span more
-   * than one physics tick -- which real browsers hit on any ordinary frame-time hitch, not just a
-   * contrived slow one -- the player's position jumped by more than one tick's worth, but this
-   * method still only closed 12% of the *now-larger* gap that single call, same as any other frame.
-   * The continuous gap (`player.y - camScrollY`) was never actually converging to a constant; across
-   * a run with somewhat irregular frame timing it drifted steadily through *several whole integers*
-   * (125 -> 124 -> 123 -> 122 -> 121 in under a second), and `Math.round()` of that drifting gap
-   * didn't always tick the same direction the player was walking -- it occasionally ticked backward
-   * for one frame before resuming forward, which is a literal on-screen jiggle, confirmed with the
-   * camera frozen entirely (`updateCameraFollow` stubbed to a no-op) showing *zero* jitter in the
-   * same test, isolating the cause to this method and ruling out the sprite/animation system.
-   * Fixed by time-compensating the lerp factor against `delta` (ms since last frame) so the camera
-   * converges at the same real-world-time rate regardless of the actual render interval, instead of
-   * a fixed fraction of whatever the gap happens to be on a given call -- the standard fix for
-   * frame-rate-dependent exponential smoothing. `refMs` is the frame duration `lerp = 0.12`'s feel
-   * was originally tuned against (60fps); at exactly that rate `factor` reduces back to `0.12`,
-   * preserving the existing look when frame timing is steady, and scales correctly when it isn't.
+   * Arcade Physics does NOT write a moving body's new position into `gameObject.x`/`.y`
+   * immediately. `World.update()` (which computes it) runs on the Scene's `UPDATE` event, which
+   * fires *before* `scene.update()` -- but `World.postUpdate()`, which is what actually does
+   * `gameObject.x += dx; gameObject.y += dy` for every body, is wired to the Scene's
+   * `POST_UPDATE` event, which fires *after* `scene.update()` returns. So any code that reads
+   * `this.player.x`/`.y` from inside `update()` -- this method's own previous callers included --
+   * is reading a value that is one physics tick *stale* relative to what Arcade is about to write
+   * into the sprite moments later that same frame. Measured directly (logging `player.y` and this
+   * method's computed scroll at the `update`, `postupdate`, and `POST_UPDATE` Scene events
+   * separately during a plain constant-velocity walk): the gap this method's formula produces is
+   * NOT a constant when evaluated from inside `update()` (exactly the small, bounded,
+   * back-and-forth pattern every previous round kept reporting, previously misattributed to
+   * sub-pixel speed/zoom rounding) but IS a single bit-exact constant, every single frame with
+   * zero variation, once evaluated after Arcade's own `POST_UPDATE` sync. Fixed by moving this
+   * method's call (see `create()` above) off the inline `update()` call it used to be and onto a
+   * `Phaser.Scenes.Events.POST_UPDATE` listener instead -- same formula, same method, just read at
+   * the point in the frame where `player.x`/`.y` is actually final.
+   *
+   * `camera.roundPixels` (on globally from `pixelArt: true`) still pixel-snaps every sprite/tile
+   * for crisp rendering, and `camera.setBounds()`'s own edge clamping still applies for free:
+   * Phaser's `preRender()` always runs `clampX`/`clampY` on `scrollX`/`scrollY` after this method
+   * sets them. The one tradeoff versus the old lerp is the soft "camera lag" feel on direction
+   * changes is gone -- the camera now tracks her instantly and exactly, which is what a simple,
+   * stable follow means.
    */
-  private updateCameraFollow(delta: number): void {
+  private updateCameraFollow(): void {
     const cam = this.cameras.main;
-    const lerp = 0.12;
-    const refMs = 1000 / 60;
-    const factor = 1 - Math.pow(1 - lerp, delta / refMs);
-    // `/ cam.zoom` -- see the matching correction (and its doc comment) on `camScrollX`/`camScrollY`'s
-    // initial seed in `create()` above.
-    const targetX = this.player.x - cam.width / 2 / cam.zoom;
-    const targetY = this.player.y - cam.height / 2 / cam.zoom;
-    this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, factor);
-    this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, factor);
-    cam.scrollX = Math.floor(this.player.x) - Math.round(this.player.x - this.camScrollX);
-    cam.scrollY = Math.floor(this.player.y) - Math.round(this.player.y - this.camScrollY);
+    cam.scrollX = this.player.x - cam.width / 2 / cam.zoom;
+    cam.scrollY = this.player.y - cam.height / 2 / cam.zoom;
   }
 
   /**
@@ -644,10 +596,10 @@ export class OverworldScene extends Phaser.Scene {
    * pan/zoom and "no player control" exactly as they were; see `editorViewMode`'s own doc comment
    * for why that distinction matters.
    *
-   * `update()`'s own `updateCameraFollow()` call is skipped for the rest of the scene's life once
-   * `editorViewMode` is set (see below) so this manual scroll/zoom isn't fought/overwritten every
-   * frame by the player-follow lerp — the player is never controllable in this mode (`uiBlocked`),
-   * so there is no "current" player position this pan would ever need to catch up to.
+   * The `POST_UPDATE`-driven `updateCameraFollow()` call (see `create()`) checks `editorViewMode`
+   * itself and no-ops for the rest of the scene's life once it's set, so this manual scroll/zoom
+   * isn't fought/overwritten every frame by the player-follow — the player is never controllable
+   * in this mode (`uiBlocked`), so there is no "current" player position to catch up to anyway.
    */
   private setupEditorCameraPan(): void {
     this.input.mouse?.disableContextMenu();
@@ -710,13 +662,7 @@ export class OverworldScene extends Phaser.Scene {
     const uiBlocked = this.editorViewMode || this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
-    this.player.update(time);
-    // Free-look editor panning/zoom (see `setupEditorCameraPan()`) owns the camera for the rest of
-    // this scene's life once `editorViewMode` is set -- the normal player-follow lerp would
-    // otherwise fight it every frame, including after "Close editor" hides the side panel.
-    if (!this.editorViewMode) {
-      this.updateCameraFollow(delta);
-    }
+    this.player.update();
 
     // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it
     // kept easing the sister toward the (now-locked) player position and re-setting her facing
