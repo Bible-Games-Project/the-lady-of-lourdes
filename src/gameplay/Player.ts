@@ -2,12 +2,11 @@ import Phaser from 'phaser';
 import { DEPTH } from '../core/constants';
 import { BERNADETTE_SHADOW_KEY, textureKeyFor } from '../pixelart/characters';
 import { BERNADETTE_FRAME_HEIGHT } from '../assets/player/bernadetteSprite';
+import { updateFacingAnimation, type Facing } from './spriteFacing';
 import { depthForY } from './utils';
 import type { TouchControls } from './TouchControls';
 
 const SPEED = 70;
-
-export type Facing = 'down' | 'up' | 'left' | 'right';
 
 // Feet-box proportions, as fractions of her own frame height -- same values `NpcActor.ts`'s own
 // FEET_*_FRAC constants were originally derived from (this file's old fixed `body.setSize(7, 11);
@@ -24,35 +23,21 @@ const FEET_OFFSET_Y_FRAC = 30 / 42;
 const SHADOW_SCALE = BERNADETTE_FRAME_HEIGHT / 42;
 
 /**
- * Deliberately picks only between the 3 static directional poses that exist as real art (front,
- * back, side -- mirrored for right) -- no walk cycle, no breathing, no generated/deformed frames.
- * Vertical wins on any diagonal (there is no separate diagonal pose to pick), matching the
- * previous shared `spriteFacing.ts` behavior Bernadette used to go through (`preferVerticalOnDiagonal:
- * true`) -- kept here as a tiny Bernadette-only function instead, since that shared file still
- * drives every procedural NPC's real walk-cycle animation and must not be touched for this rebuild.
- */
-function facingFromVector(vx: number, vy: number, lastFacing: Facing): Facing {
-  if (vy !== 0) return vy < 0 ? 'up' : 'down';
-  if (vx !== 0) return vx < 0 ? 'left' : 'right';
-  return lastFacing;
-}
-
-/**
- * Bernadette's player avatar, rebuilt from scratch (see git history for the previous, much more
- * complex version chasing a persistent walking jitter across many rounds of fixes that never
- * fully resolved it). This version is deliberately as simple as possible:
+ * Bernadette's player avatar. Movement/rendering/camera were rebuilt from scratch in an earlier
+ * round (see git history) after a persistent walking jitter was finally traced to
+ * `OverworldScene.ts#updateCameraFollow()` reading a one-physics-tick-stale position -- nothing in
+ * this file's architecture was ever the cause, and that architecture is unchanged here:
  *
- * - Rendering: exactly 3 static textures (front/back/side, side mirrored via `setFlipX` for
- *   left), swapped only when `facing` actually changes direction -- never a per-frame texture
- *   reassignment, never a scale change, never an animation. The sprite's `x`/`y` (the single
- *   authoritative world position, owned entirely by the Arcade Physics body) is never touched by
- *   anything in this file related to rendering/texture selection.
  * - Movement: velocity set directly from input direction each frame, normalized so diagonal speed
  *   equals cardinal speed. No separate position bookkeeping -- `this.x`/`this.y` (via the physics
  *   body) is the one and only source of truth every other system (camera, depth sorting, shadow,
- *   collisions, scripted sequences) reads from.
- *
- * See `OverworldScene.ts#updateCameraFollow()` for the matching camera-side rebuild.
+ *   collisions, scripted sequences) reads from. `update()`'s movement block below is untouched
+ *   from the stable rebuild.
+ * - Rendering: facing/texture/animation selection is delegated to the same shared
+ *   `updateFacingAnimation()` every procedural NPC already uses (`spriteFacing.ts`) -- it only ever
+ *   sets `texture`/`flipX`/the current animation frame, never `x`/`y`/`scale`, so reusing it here
+ *   carries no risk to the position stability above. See `bernadetteSprite.ts` for what the walk
+ *   animation it plays actually looks like (a restrained, re-inspected 4-frame loop) and why.
  */
 export class Player extends Phaser.Physics.Arcade.Sprite {
   private facing: Facing = 'down';
@@ -102,7 +87,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.keyD = keyboard.addKey('D');
     this.touch = touch;
 
-    this.applyFacingTexture();
+    updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
   }
 
   setLocked(locked: boolean): void {
@@ -122,7 +107,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const body = this.body as Phaser.Physics.Arcade.Body;
     if (this.locked) {
       body.setVelocity(0, 0);
-      this.applyFacingTexture();
+      updateFacingAnimation(this, 'bernadette', 0, 0, this.facing, false, true);
       this.syncShadow();
       return;
     }
@@ -139,29 +124,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       vy = this.touch.vector.y;
     }
 
-    if (vx !== 0 || vy !== 0) {
+    const moving = vx !== 0 || vy !== 0;
+    if (moving) {
       // Normalize so diagonal movement isn't faster than a single cardinal direction.
       const len = Math.hypot(vx, vy) || 1;
       body.setVelocity((vx / len) * SPEED, (vy / len) * SPEED);
-      this.facing = facingFromVector(vx, vy, this.facing);
     } else {
       body.setVelocity(0, 0);
     }
-    this.applyFacingTexture();
+    // Only ever sets texture/flipX/the current animation frame -- never `x`/`y`/`scale` -- so this
+    // cannot affect the world position or camera above, regardless of whether she's animating.
+    this.facing = updateFacingAnimation(this, 'bernadette', vx, vy, this.facing, moving, true);
     this.syncShadow();
-  }
-
-  /**
-   * Only ever sets `texture`/`flipX` -- never touches `x`/`y`/`scale`, and only actually does
-   * anything when `facing` changed since the last call (the common case, every frame while
-   * walking in a straight line or standing still, is a no-op check and nothing else).
-   */
-  private applyFacingTexture(): void {
-    const textureFacing = this.facing === 'left' || this.facing === 'right' ? 'side' : this.facing;
-    const key = textureKeyFor('bernadette', textureFacing);
-    const flipX = this.facing === 'left';
-    if (this.texture.key !== key) this.setTexture(key);
-    if (this.flipX !== flipX) this.setFlipX(flipX);
   }
 
   /** The shadow tracks her x/y (ground position) only. */
