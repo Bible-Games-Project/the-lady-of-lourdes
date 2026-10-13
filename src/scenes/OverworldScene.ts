@@ -241,6 +241,12 @@ export class OverworldScene extends Phaser.Scene {
 
   private phase: Phase = 'explore';
 
+  // Set every frame from `update()`'s own `uiBlocked` (dialogue/tasks/settings open), read back by
+  // the POST_UPDATE-driven follower listener below so a dialogue opening still freezes her walk
+  // animation immediately, same as before that listener moved off the inline `update()` call --
+  // see that listener's own doc comment for why it had to move at all.
+  private sisterFollowBlocked = false;
+
   constructor() {
     super(SCENE_KEYS.OVERWORLD);
   }
@@ -374,6 +380,27 @@ export class OverworldScene extends Phaser.Scene {
     this.updateCameraFollow();
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, () => {
       if (!this.editorViewMode) this.updateCameraFollow();
+    });
+    // Wired to POST_UPDATE for the same reason as `updateCameraFollow()` above -- see
+    // `Follower.ts#updateFollowerPosition()`'s own doc comment. Reading `this.player.x`/`.y` from
+    // inside `update()` (where this call used to live) is always one physics tick stale relative
+    // to what Arcade is about to sync into the sprite moments later that same frame; since the
+    // player's own target position doesn't advance in perfectly smooth, constant-sized steps (it
+    // only updates in discrete physics-tick jumps, and a stale read means the follower sometimes
+    // sees one tick's worth of catch-up and sometimes more, correlated with that frame's `delta`),
+    // the previously time-compensated-only fix still left a small residual oscillation in the
+    // continuous target-minus-follower gap (measured directly: gapX wobbling within an ~0.9px band
+    // instead of settling to a constant, with an occasional backward tick in her rounded on-screen
+    // position -- confirmed via the same instrumentation technique used to find the original camera
+    // bug). Moving this to POST_UPDATE removes that staleness the same way it did for the camera.
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, (_time: number, delta: number) => {
+      if (this.phase === 'explore') {
+        updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, delta, DEPTH.ACTORS);
+        // Position easing continues even while blocked (same as before this moved to POST_UPDATE)
+        // -- only the walk animation freezes, matching the `uiBlocked` block further down in
+        // `update()` which does the same for the friend/boy's own wander updates.
+        if (this.sisterFollowBlocked) this.sister.setMoving(false);
+      }
     });
 
     this.dialogueBox = new DialogueBox(this);
@@ -655,24 +682,16 @@ export class OverworldScene extends Phaser.Scene {
     });
   }
 
-  update(time: number, delta: number): void {
+  update(_time: number, delta: number): void {
     // The `MapEditorPanel` (see `create()`) is only ever constructed when `editorViewMode` is
     // already true, so that first clause alone already covers every case its own `isOpen()` used
     // to need to be checked for separately here.
     const uiBlocked = this.editorViewMode || this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
+    this.sisterFollowBlocked = uiBlocked;
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
     this.player.update();
 
-    // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it
-    // kept easing the sister toward the (now-locked) player position and re-setting her facing
-    // *during* the scripted river-crossing tween below, fighting that tween's own position/facing
-    // every frame and producing the wrong-direction walk animation the crossing was supposed to
-    // show. `this.leader` (Jeanne's own leader-follow logic) already had this same guard; the
-    // sister's follower update just hadn't been given it.
-    if (this.phase === 'explore') {
-      updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, time, DEPTH.ACTORS);
-    }
     if (this.friendMet && this.phase === 'explore' && this.leader) {
       this.leader.update(this.player, delta, DEPTH.ACTORS);
     }
