@@ -19,17 +19,21 @@ import frontIdleUrl from './bernadette_front_idle.png';
  * `OverworldScene.ts#updateCameraFollow()`. This file now only loads/filters the 3 idle poses; the
  * old generated walk-frame PNGs and the animation this file used to register for them are gone.
  *
- * `BERNADETTE_FRAME_HEIGHT` was 72px display (144 actual framebuffer pixels at `PIXEL_SCALE`)
- * before this line; per explicit instruction to set her displayed size to exactly 40% of that,
- * it is now derived from that original value rather than hand-typed, so the 0.4 factor is visible
- * at the definition instead of being baked into an opaque new number. Nothing else about how she's
- * rendered changes: `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT / this.height` already
- * derives her actual render scale from this one constant, so the 40% reduction applies uniformly
- * to every facing/texture that constant feeds into (and to her shadow via `SHADOW_SCALE`, which is
- * itself derived from this same constant) -- no source art file is touched.
+ * `BERNADETTE_FRAME_HEIGHT` started at 72px display (144 actual framebuffer pixels at
+ * `PIXEL_SCALE`), then became 40% of that (28.8) per an earlier explicit request. The most recent
+ * request is "increase the player's CURRENT displayed size to 200% of its current size" -- "current"
+ * here means exactly what was live and on-screen at the time of that request, i.e. the 40% value
+ * (28.8), not the original pre-resize 72 -- so this doubles *that*, to 57.6 (which works out to 80%
+ * of the very first calibrated size, not 200% of it; that's an artifact of the two requests
+ * compounding, not a mistake). Expressed as a multiply against the prior constant rather than a new
+ * hand-typed number so the factor stays visible at the definition and the history stays traceable.
+ * Nothing else about how she's rendered changes: `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT
+ * / this.height` already derives her actual render scale from this one constant, so the resize
+ * applies uniformly to every facing/texture that constant feeds into (and to her shadow via
+ * `SHADOW_SCALE`, itself derived from this same constant) -- no source art file is touched.
  */
-const BERNADETTE_DISPLAY_HEIGHT_BEFORE_RESIZE = 72;
-export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_RESIZE * 0.4;
+const BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE = 72 * 0.4;
+export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE * 2;
 
 const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
   side: sideIdleUrl,
@@ -53,12 +57,11 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
 /**
  * Gives her 3 idle textures `LINEAR` filtering (like the sister/buildings/trees, not the flat
  * procedural characters NEAREST is for) — her native panels (337-398px wide, ~861-870px tall) are
- * scaled *down* to display size at render time (`Player.ts`'s `baseScale`). At the 40%-smaller
- * `BERNADETTE_FRAME_HEIGHT` above, that minification ratio is steeper than it used to be (native
- * height / actual framebuffer pixels she's drawn at is now ~15x, vs. the ~6x before the resize,
- * and above the ~8-12x range buildings/trees are comfortably within) -- LINEAR still reads as a
- * clean, smooth downscale rather than aliased noise at this ratio (confirmed visually after the
- * resize, not assumed), so it was left as-is rather than switched to NEAREST.
+ * scaled *down* to display size at render time (`Player.ts`'s `baseScale`). At the current
+ * `BERNADETTE_FRAME_HEIGHT` above, that minification ratio (native height / actual framebuffer
+ * pixels she's drawn at) is back down to ~7.5x -- comfortably inside the ~8-12x range buildings/
+ * trees are already proven safe at (actually slightly under it) -- so LINEAR continues to read as
+ * a clean, smooth downscale here, confirmed visually, not assumed.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
