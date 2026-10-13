@@ -16,7 +16,7 @@ import { GameplayTopBar } from '../gameplay/GameplayTopBar';
 import { InteractionPrompt } from '../gameplay/InteractionPrompt';
 import { Caption } from '../gameplay/Caption';
 import { RosaryUI } from '../gameplay/RosaryUI';
-import { updateFollowerPosition } from '../gameplay/Follower';
+import { PositionTrail, updateFollowerFromTrail } from '../gameplay/Follower';
 import { LeaderNpc, type Point } from '../gameplay/LeaderNpc';
 import { WanderNpc } from '../gameplay/WanderNpc';
 import { MissionManager } from '../gameplay/MissionManager';
@@ -247,6 +247,18 @@ export class OverworldScene extends Phaser.Scene {
   // see that listener's own doc comment for why it had to move at all.
   private sisterFollowBlocked = false;
 
+  // Records the player's own real position/facing/moving history every frame -- see
+  // `Follower.ts#PositionTrail`'s own doc comment for why the sister's follow logic is now built
+  // on replaying this instead of easing toward a live target, and for why the lag is counted in
+  // frames rather than milliseconds. `SISTER_LAG_FRAMES` (16 frames ≈ 270ms at 60fps) matches the
+  // settling distance the previous lerp-based follow converged to at its old 0.06-per-60fps-frame
+  // factor (time constant τ = -1 / (60 * ln(1 - 0.06)) ≈ 0.27s), so she keeps roughly the same
+  // visual following distance on ordinary steady-refresh-rate hardware, arrived at by an entirely
+  // different (and exact, not approximated) mechanism. 60 frames of history is comfortably more
+  // than this lag will ever need.
+  private readonly playerTrail = new PositionTrail(60);
+  private static readonly SISTER_LAG_FRAMES = 16;
+
   constructor() {
     super(SCENE_KEYS.OVERWORLD);
   }
@@ -381,23 +393,18 @@ export class OverworldScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, () => {
       if (!this.editorViewMode) this.updateCameraFollow();
     });
-    // Wired to POST_UPDATE for the same reason as `updateCameraFollow()` above -- see
-    // `Follower.ts#updateFollowerPosition()`'s own doc comment. Reading `this.player.x`/`.y` from
-    // inside `update()` (where this call used to live) is always one physics tick stale relative
-    // to what Arcade is about to sync into the sprite moments later that same frame; since the
-    // player's own target position doesn't advance in perfectly smooth, constant-sized steps (it
-    // only updates in discrete physics-tick jumps, and a stale read means the follower sometimes
-    // sees one tick's worth of catch-up and sometimes more, correlated with that frame's `delta`),
-    // the previously time-compensated-only fix still left a small residual oscillation in the
-    // continuous target-minus-follower gap (measured directly: gapX wobbling within an ~0.9px band
-    // instead of settling to a constant, with an occasional backward tick in her rounded on-screen
-    // position -- confirmed via the same instrumentation technique used to find the original camera
-    // bug). Moving this to POST_UPDATE removes that staleness the same way it did for the camera.
-    this.events.on(Phaser.Scenes.Events.POST_UPDATE, (_time: number, delta: number) => {
+    // Wired to POST_UPDATE so every recorded sample is the player's fully-synced, final-for-this
+    // -frame position (reading `this.player.x`/`.y` from inside `update()` would bake a one
+    // -physics-tick-stale position into the trail every frame -- see `Follower.ts#PositionTrail`'s
+    // own doc comment). Recording runs unconditionally, regardless of `this.phase`, so the trail
+    // always has continuous history ready the moment the sister needs it (e.g. right after the
+    // river-crossing phase change) instead of replaying a stale gap.
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, () => {
+      this.playerTrail.record(this.player.x, this.player.y, this.player.getFacing(), this.player.isMoving());
       if (this.phase === 'explore') {
-        updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, delta, DEPTH.ACTORS);
-        // Position easing continues even while blocked (same as before this moved to POST_UPDATE)
-        // -- only the walk animation freezes, matching the `uiBlocked` block further down in
+        updateFollowerFromTrail(this.sister, this.playerTrail, OverworldScene.SISTER_LAG_FRAMES, -16, 4, DEPTH.ACTORS);
+        // Position replay continues even while blocked (same as the old follower's behavior) --
+        // only the walk animation freezes, matching the `uiBlocked` block further down in
         // `update()` which does the same for the friend/boy's own wander updates.
         if (this.sisterFollowBlocked) this.sister.setMoving(false);
       }

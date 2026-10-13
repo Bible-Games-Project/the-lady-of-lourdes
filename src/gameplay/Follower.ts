@@ -1,70 +1,91 @@
 import type { NpcActor } from './NpcActor';
+import type { Facing } from './spriteFacing';
 import { depthForY } from './utils';
 
-// Below this many px of movement along an axis, that axis reads as "not really moving there" --
-// dx/dy are the raw distance-to-target on each axis and are essentially never exactly 0 (floating
-// -point easing), so a strict `!== 0` check would treat almost every frame as "diagonal." Matches
-// the threshold this function's own old `Math.abs(dy) > 1` check already used for the same purpose.
-const AXIS_MOVE_THRESHOLD = 1;
-
-// Reference frame duration the lerp factor below was tuned against (60fps) -- see this function's
-// own doc comment for why `delta` has to scale it.
-const REF_FRAME_MS = 1000 / 60;
-const LERP = 0.06;
+export interface TrailSample {
+  x: number;
+  y: number;
+  facing: Facing;
+  moving: boolean;
+}
 
 /**
- * Eases a companion NPC toward a target point behind the player, with facing + a real walk
- * animation.
+ * Rebuilt from scratch (see git history for two earlier attempts at this file -- a plain per-call
+ * lerp, then a time-compensated one -- each chasing the same reported shake with progressively
+ * more careful *approximations* of "follow the leader," neither of which fully eliminated it).
  *
- * **Time-compensated lerp** (root-caused and fixed the same way `OverworldScene.ts#
- * updateCameraFollow()`'s own doc comment documents for the camera's own near-identical bug,
- * confirmed here by the same measurement technique rather than assumed to be the same bug just
- * because it looked similar): this used to do `actor.x += dx * 0.06` once per call to this
- * function, i.e. once per rendered frame, never scaled by how much real time that frame actually
- * covered (`_time` was accepted but never used). Measured directly (logging the continuous
- * target-minus-actor gap every frame during a sustained diagonal walk, under this environment's
- * own irregular frame timing -- delta observed ranging ~17-42ms, not a steady 16.7ms): the gap
- * never settled to a constant the way a correctly time-compensated exponential filter's lag
- * should under constant-velocity following. Instead it crept further behind on larger-delta
- * frames (since only 6% of whatever the *current* gap happened to be was closed, regardless of
- * how much extra ground the player covered that frame), and her on-screen position advanced by a
- * different pixel count essentially every single frame instead of a smooth, consistent amount --
- * the visible "shake" being reported. Fixed with the identical time-compensated-exponential-
- * smoothing formula the camera already uses: `factor = 1 - (1 - lerp) ** (delta / refMs)`, which
- * reduces back to the original `0.06` at exactly 60fps (preserving the existing follow feel at
- * steady frame rate) and scales correctly when it isn't steady.
+ * This version records the leader's own real position/facing/moving state once per rendered
+ * frame, and a follower is simply placed at whatever state was recorded exactly `lagFrames` frames
+ * ago -- a direct historical lookup, not an approximation of one.
  *
- * **Facing follows the same "prefer vertical on any diagonal" rule `Player.ts` uses for Bernadette
- * herself** (via `spriteFacing.ts`'s own `preferVerticalOnDiagonal` flag) -- moving purely left or
- * right uses the side pose, purely up or down uses back/front, and *any* diagonal (both axes moving
- * at once) always uses back (up-left/up-right) or front (down-left/down-right), never the side
- * pose. The previous logic (`if (abs(dx) > abs(dy)) side else vertical`) picked whichever axis's
- * raw distance-to-target happened to be larger that single frame -- during genuinely diagonal
- * following, that comparison flips essentially at random frame-to-frame (the easing target rarely
- * sits at a clean 45°), so she'd visibly flicker into the side pose mid-diagonal-walk. This
- * function doesn't share `spriteFacing.ts`'s own helper (that one drives a `Sprite`'s texture/anim
- * directly; `NpcActor.setFacing()` is `Follower`'s own actor's equivalent), so the same rule is
- * reimplemented here directly rather than reachable through it.
+ * **Why frame-count, not elapsed time (and why a first version of this using elapsed-time lookup
+ * with linear interpolation still showed a smaller residual jitter, measured directly rather than
+ * assumed fixed):** measured directly (logging the leader's own raw per-frame position delta next
+ * to the real elapsed time between those frames), this engine/environment's Arcade Physics body
+ * advances by *exactly* one fixed physics tick's worth of distance on every single rendered frame,
+ * regardless of how much real time that frame actually spanned (observed: a constant 1.167px
+ * step every frame, whether the frame's own real elapsed time was 33ms or 67ms) -- the physics
+ * world defers/catches-up ticks internally rather than always stepping once per elapsed-tick. That
+ * makes the leader's own recorded (time, position) pairs a classic *tick-quantized* signal: each
+ * frame's position step is a fixed size, but the real-time spacing between frames is irregular.
+ * Linearly interpolating a tick-quantized signal against *continuous elapsed time* doesn't just
+ * replay it -- it redistributes it, smoothing the irregular real-time spacing back toward a
+ * continuous curve, which locally over- or under-shoots the original per-frame step size (measured:
+ * a follower using that approach showed single-frame steps as small as 0 and as large as 1.75x the
+ * leader's own actual per-frame step, inconsistently). A frame-count lag sidesteps this completely:
+ * there is no interpolation to redistribute anything, because the lookup is a direct index into
+ * history -- "exactly what frame N-lag looked like" -- which reproduces the leader's own per-frame
+ * step pattern bit-for-bit, just offset by a fixed number of frames instead of a fixed duration.
  */
-export function updateFollowerPosition(actor: NpcActor, targetX: number, targetY: number, delta: number, depthBase: number): void {
-  if (!actor.visible) return;
+export class PositionTrail {
+  private samples: TrailSample[] = [];
+  private readonly maxSamples: number;
 
-  const dx = targetX - actor.x;
-  const dy = targetY - actor.y;
-  const dist = Math.hypot(dx, dy);
-
-  if (dist > 2) {
-    const factor = 1 - Math.pow(1 - LERP, delta / REF_FRAME_MS);
-    actor.x += dx * factor;
-    actor.y += dy * factor;
-    const movingX = Math.abs(dx) > AXIS_MOVE_THRESHOLD;
-    const movingY = Math.abs(dy) > AXIS_MOVE_THRESHOLD;
-    if (movingX && movingY) actor.setFacing(dy < 0 ? 'up' : 'down');
-    else if (movingX) actor.setFacing(dx < 0 ? 'left' : 'right');
-    else if (movingY) actor.setFacing(dy < 0 ? 'up' : 'down');
+  constructor(maxSamples: number) {
+    this.maxSamples = maxSamples;
   }
 
+  record(x: number, y: number, facing: Facing, moving: boolean): void {
+    this.samples.push({ x, y, facing, moving });
+    if (this.samples.length > this.maxSamples) this.samples.shift();
+  }
+
+  /** The sample from `lagFrames` frames ago, or the oldest available sample if fewer than that
+   * many frames have been recorded yet (e.g. right at scene start) -- never `null` once at least
+   * one frame has been recorded. */
+  sampleLagged(lagFrames: number): TrailSample | null {
+    const s = this.samples;
+    if (s.length === 0) return null;
+    const idx = Math.max(0, s.length - 1 - lagFrames);
+    return s[idx];
+  }
+}
+
+/**
+ * Places a follower actor directly on the leader's own recorded path, `lagFrames` frames behind,
+ * offset by a fixed visual (`offsetX`, `offsetY`) so she doesn't render exactly on top of the
+ * leader's own footprints. No easing, no distance threshold, no per-frame "is this close enough"
+ * branching -- every frame she is simply wherever the trail says the leader was `lagFrames` frames
+ * ago, which by construction reproduces the leader's own already-proven-stable per-frame motion
+ * exactly, including correctly-normalized diagonals (inherited for free, since it's literally a
+ * copy of positions the leader's own already-normalized movement produced).
+ */
+export function updateFollowerFromTrail(
+  actor: NpcActor,
+  trail: PositionTrail,
+  lagFrames: number,
+  offsetX: number,
+  offsetY: number,
+  depthBase: number,
+): void {
+  if (!actor.visible) return;
+  const sample = trail.sampleLagged(lagFrames);
+  if (!sample) return;
+
+  actor.x = sample.x + offsetX;
+  actor.y = sample.y + offsetY;
+  actor.setFacing(sample.facing);
+  actor.setMoving(sample.moving);
   actor.setDepth(depthForY(actor.y, depthBase));
-  actor.setMoving(dist > 4);
   actor.syncShadow();
 }

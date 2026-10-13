@@ -1,46 +1,72 @@
 import Phaser from 'phaser';
-import { textureKeyFor, type FacingKey } from '../../pixelart/characters';
+import { textureKeyFor, walkAnimKeyFor, type FacingKey } from '../../pixelart/characters';
 import sideIdleUrl from './bernadette_side_idle.png';
+import sideWalkA1Url from './bernadette_side_walk_a1.png';
+import sideWalkB1Url from './bernadette_side_walk_b1.png';
 import backIdleUrl from './bernadette_back_idle.png';
+import backWalkA1Url from './bernadette_back_walk_a1.png';
+import backWalkB1Url from './bernadette_back_walk_b1.png';
 import frontIdleUrl from './bernadette_front_idle.png';
+import frontWalkA1Url from './bernadette_front_walk_a1.png';
+import frontWalkB1Url from './bernadette_front_walk_b1.png';
 
 /**
  * The maintainer's own finished artwork for the gameplay player character, recovered byte-for-byte
- * from the conversation that supplied it — never redrawn/recolored/redesigned. Only the 3 original
- * static poses (front/back/side, side mirrored for left in `Player.ts`) are used; there is no
- * walk-cycle, breathing, or generated/deformed frame art anymore.
+ * from the conversation that supplied it for the idle poses — never redrawn/recolored/redesigned.
  *
- * Several rounds of walk-cycle deformation (boot lift, skirt shear, hand/rosary counter-swing) were
- * built and shipped here previously, chasing a persistent walking jitter report that survived every
- * fix to that artwork and to the camera. After the jitter was confirmed (by direct frame-by-frame
- * instrumentation) to persist even with every one of those generated frames disabled and breathing
- * disabled — i.e. with the sprite provably 100% static — the whole player movement/rendering/camera
- * system was rebuilt from scratch rather than patched further; see `Player.ts` and
- * `OverworldScene.ts#updateCameraFollow()`. This file now only loads/filters the 3 idle poses; the
- * old generated walk-frame PNGs and the animation this file used to register for them are gone.
+ * `BERNADETTE_FRAME_HEIGHT` started at 72px display, became 40% of that (28.8), then 2x *that*
+ * (57.6) per two separate earlier resize requests. The current request is "make Bernadette 15%
+ * smaller... a scale factor of 0.85 relative to her current size" -- "current" again means exactly
+ * what was live at request time (57.6), so this is `57.6 * 0.85` = 48.96, not a fresh 85% of the
+ * original 72. Expressed as a multiply against the prior constant so the full history of resize
+ * requests stays traceable at the definition instead of collapsing into one opaque number.
+ * `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT / this.height` derives her actual render scale
+ * from this one constant, so the resize applies uniformly to every facing/texture/animation frame
+ * (and her shadow via `SHADOW_SCALE`) -- no source art file is touched.
  *
- * `BERNADETTE_FRAME_HEIGHT` started at 72px display (144 actual framebuffer pixels at
- * `PIXEL_SCALE`), then became 40% of that (28.8) per an earlier explicit request. The most recent
- * request is "increase the player's CURRENT displayed size to 200% of its current size" -- "current"
- * here means exactly what was live and on-screen at the time of that request, i.e. the 40% value
- * (28.8), not the original pre-resize 72 -- so this doubles *that*, to 57.6 (which works out to 80%
- * of the very first calibrated size, not 200% of it; that's an artifact of the two requests
- * compounding, not a mistake). Expressed as a multiply against the prior constant rather than a new
- * hand-typed number so the factor stays visible at the definition and the history stays traceable.
- * Nothing else about how she's rendered changes: `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT
- * / this.height` already derives her actual render scale from this one constant, so the resize
- * applies uniformly to every facing/texture that constant feeds into (and to her shadow via
- * `SHADOW_SCALE`, itself derived from this same constant) -- no source art file is touched.
+ * Walk animation: after three earlier rounds either chased camera/movement bugs that turned out to
+ * be unrelated to this art, or concluded (via direct per-pixel measurement) that this artwork has
+ * no margin around the boots/hands to shift an existing patch into without touching the skirt --
+ * the maintainer explicitly authorized creating new pixel content rather than only rearranging
+ * existing pixels ("create suitable frames that preserve the original design instead of claiming
+ * the animation is complete when it is not"). `_walk_a1`/`_walk_b1` below are generated from the
+ * idle crops via the same boot-lift + hand/rosary-swing technique used throughout this file's
+ * history (independent per-limb patch shift + gradient/strip fill for the vacated area), with the
+ * skirt_shear() step *not* called at all -- the skirt fabric's own pixels are never read or moved.
+ * Because the boot boxes sit flush against the hem with zero gap in this artwork (measured, not
+ * assumed), a lifted/shifted boot's new position does occlude a small number of hem-colored pixels
+ * in these two walk frames specifically (a few thousand native px out of ~170k opaque px per
+ * facing, confirmed by direct pixel-diff against idle) -- that is the boot's own unmodified art
+ * drawn on top of where the hem used to show through, the same category of occlusion any 2D
+ * character's limb naturally produces when it moves in front of a garment, not a deformation of
+ * the garment itself. The idle texture and the skirt region within these walk frames are otherwise
+ * untouched. Only the smaller-magnitude pair (t = ±sin(π/4) ≈ 0.707) is used, in a plain 4-frame
+ * loop (`[idle, a1, idle, b1]`) -- deliberately restrained rather than the full 8-phase cycle
+ * earlier rounds tried.
  */
-const BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE = 72 * 0.4;
-export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE * 2;
+const BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE = 72 * 0.4 * 2;
+export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE * 0.85;
+
+type WalkStep = 'a1' | 'b1';
 
 const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
   side: sideIdleUrl,
   up: backIdleUrl,
   down: frontIdleUrl,
 };
+const WALK_URLS_BY_FACING: Record<FacingKey, Record<WalkStep, string>> = {
+  side: { a1: sideWalkA1Url, b1: sideWalkB1Url },
+  up: { a1: backWalkA1Url, b1: backWalkB1Url },
+  down: { a1: frontWalkA1Url, b1: frontWalkB1Url },
+};
 const ALL_FACINGS: FacingKey[] = ['down', 'up', 'side'];
+
+/** Walk-cycle frame keys never go through the shared `textureKeyFor()`/`StepFrame` system (that
+ * type is pinned to `'a' | 'b' | null` for the generic procedural NPC roster) -- kept entirely
+ * local to this file so these extra frames can't affect any other character. */
+function walkFrameKey(facing: FacingKey, step: WalkStep): string {
+  return `${textureKeyFor('bernadette', facing, null)}_walk_${step}`;
+}
 
 /**
  * Loads the real art under the *exact* key strings
@@ -51,20 +77,40 @@ const ALL_FACINGS: FacingKey[] = ['down', 'up', 'side'];
 export function preloadBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
     scene.load.image(textureKeyFor('bernadette', facing, null), IDLE_URL_BY_FACING[facing]);
+    (['a1', 'b1'] as const).forEach((step) => {
+      scene.load.image(walkFrameKey(facing, step), WALK_URLS_BY_FACING[facing][step]);
+    });
   });
 }
 
 /**
- * Gives her 3 idle textures `LINEAR` filtering (like the sister/buildings/trees, not the flat
- * procedural characters NEAREST is for) — her native panels (337-398px wide, ~861-870px tall) are
- * scaled *down* to display size at render time (`Player.ts`'s `baseScale`). At the current
- * `BERNADETTE_FRAME_HEIGHT` above, that minification ratio (native height / actual framebuffer
- * pixels she's drawn at) is back down to ~7.5x -- comfortably inside the ~8-12x range buildings/
- * trees are already proven safe at (actually slightly under it) -- so LINEAR continues to read as
- * a clean, smooth downscale here, confirmed visually, not assumed.
+ * Gives her textures `LINEAR` filtering (like the sister/buildings/trees, not the flat procedural
+ * characters NEAREST is for) — her native panels (337-398px wide, ~861-870px tall) are scaled
+ * *down* to display size at render time (`Player.ts`'s `baseScale`); LINEAR is what makes that
+ * downscale read as smooth/anti-aliased instead of aliased at this minification ratio, the same
+ * reasoning the sister/buildings/trees already use.
+ *
+ * Registers one restrained walk animation per facing: `[idle, a1, idle, b1]`, 4 frames at
+ * `frameRate: 6` (~0.67s per full step cycle). `Player.ts` only plays this while actually moving,
+ * and stops it (back to the idle texture) the instant she stops.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
-    scene.textures.get(textureKeyFor('bernadette', facing, null)).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    const idleKey = textureKeyFor('bernadette', facing, null);
+    const a1 = walkFrameKey(facing, 'a1');
+    const b1 = walkFrameKey(facing, 'b1');
+    [idleKey, a1, b1].forEach((key) => {
+      scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
+
+    const animKey = walkAnimKeyFor('bernadette', facing);
+    if (!scene.anims.exists(animKey)) {
+      scene.anims.create({
+        key: animKey,
+        frames: [idleKey, a1, idleKey, b1].map((key) => ({ key })),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
   });
 }
