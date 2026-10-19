@@ -271,6 +271,10 @@ export class OverworldScene extends Phaser.Scene {
 
   create(data: OverworldSceneData): void {
     useLetterboxScale(this);
+    // See `updateCameraFollow()`'s doc comment: with roundPixels on, Phaser floors the scroll to
+    // whole *world* pixels (PIXEL_SCALE framebuffer pixels at once), so the ground advanced in
+    // uneven jumps -- and on diagonals the two axes jumped out of step ("marea").
+    this.cameras.main.setRoundPixels(false);
     this.cameras.main.fadeIn(400, 0, 0, 0);
     this.phase = 'explore';
     this.friendMet = false;
@@ -484,6 +488,12 @@ export class OverworldScene extends Phaser.Scene {
     )!;
     const grassLayer = grassMap.createLayer(0, grassTileset, 0, 0)!;
     grassLayer.setDepth(DEPTH.GROUND - 1);
+    // Phaser culls tiles against `camera.worldView`, which it computes assuming the camera's origin
+    // is its centre -- this game pins it to the top-left (`core/scaleMode.ts`), so worldView sits
+    // `(width - width/zoom) / 2` px off. At PIXEL_SCALE 2 the default one-tile cull padding happened
+    // to cover that; at 4 it doesn't, and most of the ground went missing. The whole map is only
+    // 3x6 of these 157px tiles, so just draw them all.
+    grassLayer.setSkipCull(true);
 
     // The vertical arm beside the grotto is never crossable on foot -- only the scripted ford
     // cutscene crosses it (see this method's own doc comment above for why the collider stays even
@@ -611,8 +621,15 @@ export class OverworldScene extends Phaser.Scene {
    * `Phaser.Scenes.Events.POST_UPDATE` listener instead -- same formula, same method, just read at
    * the point in the frame where `player.x`/`.y` is actually final.
    *
-   * `camera.roundPixels` (on globally from `pixelArt: true`) still pixel-snaps every sprite/tile
-   * for crisp rendering, and `camera.setBounds()`'s own edge clamping still applies for free:
+   * `camera.roundPixels` is turned OFF for this scene's camera (see `create()`), even though
+   * `pixelArt: true` turns it on globally: Phaser's `Camera.preRender()` then `Math.floor()`s the
+   * scroll to whole WORLD pixels -- `PIXEL_SCALE` framebuffer pixels per step -- so at walking
+   * speed the ground advanced in uneven jumps (measured from the framebuffer: 3,3,5,3,3,7 px per
+   * frame walking right, and on diagonals the x and y jumps landing on different frames, which is
+   * what read as dizzying). Without the floor the scroll is exact, so she stays exactly centred and
+   * the world moves by the same amount every frame; NEAREST tiles still sample whole texels, just
+   * at the framebuffer's much finer pixel grid. `camera.setBounds()`'s own edge clamping still
+   * applies for free:
    * Phaser's `preRender()` always runs `clampX`/`clampY` on `scrollX`/`scrollY` after this method
    * sets them. The one tradeoff versus the old lerp is the soft "camera lag" feel on direction
    * changes is gone -- the camera now tracks her instantly and exactly, which is what a simple,

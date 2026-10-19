@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { idleAnimKeyFor, textureKeyFor, walkAnimKeyFor, type FacingKey } from '../../pixelart/characters';
 import sideIdleUrl from './bernadette_side_idle.png';
+import sideWalkCUrl from './bernadette_side_walk_c.png';
 import sideWalkA1Url from './bernadette_side_walk_a1.png';
 import sideWalkA2Url from './bernadette_side_walk_a2.png';
 import sideWalkB1Url from './bernadette_side_walk_b1.png';
@@ -8,6 +9,7 @@ import sideWalkB2Url from './bernadette_side_walk_b2.png';
 import sideBreath1Url from './bernadette_side_breath_1.png';
 import sideBreath2Url from './bernadette_side_breath_2.png';
 import backIdleUrl from './bernadette_back_idle.png';
+import backWalkCUrl from './bernadette_back_walk_c.png';
 import backWalkA1Url from './bernadette_back_walk_a1.png';
 import backWalkA2Url from './bernadette_back_walk_a2.png';
 import backWalkB1Url from './bernadette_back_walk_b1.png';
@@ -15,6 +17,7 @@ import backWalkB2Url from './bernadette_back_walk_b2.png';
 import backBreath1Url from './bernadette_back_breath_1.png';
 import backBreath2Url from './bernadette_back_breath_2.png';
 import frontIdleUrl from './bernadette_front_idle.png';
+import frontWalkCUrl from './bernadette_front_walk_c.png';
 import frontWalkA1Url from './bernadette_front_walk_a1.png';
 import frontWalkA2Url from './bernadette_front_walk_a2.png';
 import frontWalkB1Url from './bernadette_front_walk_b1.png';
@@ -38,30 +41,37 @@ import frontBreath2Url from './bernadette_front_breath_2.png';
  * this one constant, so it applies uniformly to every facing/texture/animation frame (and her
  * shadow via `SHADOW_SCALE`).
  *
- * Walk frames (`_walk_a1/a2/b1/b2`): each idle image splits cleanly at a measured `feet_top` row
- * (side 760, front 758, back 764) below which there is nothing but boots. Every pixel above that
- * row -- head, veil, cape, hands, rosary and the entire habit -- is copied verbatim into every walk
- * frame (verified identical to idle, frame by frame). Only the boots below it are recomposed, by
- * pure integer translation of the original boot pixels, and whatever a raised foot would push
- * above `feet_top` is clipped away: the foot disappears *behind* the hem rather than over it.
- *  - Front/back: the stepping foot rises behind the hem (half, then full lift) while the other
- *    stays planted; `a*` lifts the left foot, `b*` the right.
- *  - Side: idle is the passing pose; stride frames spread the near foot forward and a slightly
- *    darkened copy of it (the far foot) back with its heel raised, `a*` near-foot-forward,
- *    `b*` far-foot-forward.
- * In every frame the planted foot keeps the idle pose's exact lowest row, so the ground-contact
- * line and the canvas/origin never move.
+ * Walk frames (`_walk_c/a1/a2/b1/b2`), livelier second pass ("que se mueva más, también los
+ * brazos"). Still nothing but whole-pixel moves of the original pixels -- no redrawing, no
+ * resampling -- in three layers:
+ *  - Feet: below a measured `feet_top` row (side 760, front 758, back 764) there is nothing but
+ *    boots. Front/back: the stepping foot rises behind the hem (14, then 28 px) while the other
+ *    stays planted; `a*` lifts the image-left foot, `b*` the right. Side: the near foot strides
+ *    forward and a slightly darkened copy of it (the far foot) back with its heel raised (+-20,
+ *    then +-40 px). Anything pushed above `feet_top` is clipped: feet go *behind* the hem.
+ *  - Arms, swinging against the feet: front/back -- the forward arm's forearm/hand(/rosary)
+ *    slides up 16 px (its sleeve loses that many rows: foreshortening) while the other slides
+ *    down 8 (its sleeve repeats a few rows of itself); the gap under a raised hand is filled with
+ *    the vertically-striped skirt right below it. Side -- sleeve, hand and rosary shear sideways,
+ *    0 at the shoulder growing to +-18 px at the hand (a small swing about the shoulder), the gap
+ *    behind filled by extending the neighbouring fabric of the same row. Arm regions were traced
+ *    from zoomed, gridded crops of the idle art.
+ *  - Bob: everything above a seam row low in the skirt drops by 0/6/12 px (rows of plain skirt
+ *    removed at the seam): lowest at contact, highest at passing. Hem and boots never move.
+ * `c` is the contact pose for front/back (feet together, arms neutral, body low) and the passing
+ * pose for side (identical to idle). In every frame the ground-contact row stays the idle pose's,
+ * so the canvas/origin never moves.
  *
  * Breathing frames (`_breath_1/2`): everything above a seam row low in the skirt sinks by 5 / 10
- * native px (about half / one framebuffer pixel at her display size), by dropping that many rows
- * of the plain vertically-striped skirt at the seam -- whole rows of the original pixels, no
+ * native px (about 1 / 2.5 framebuffer pixels at her display size), by dropping that many rows of
+ * the plain vertically-striped skirt at the seam -- whole rows of the original pixels, no
  * resampling. Below the seam (hem and boots) nothing changes. The seam row was picked per facing
  * where dropping rows is least visible (side 662, front 631, back 701).
  */
 const BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE = 72 * 0.4 * 2;
 export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE * 0.85;
 
-const WALK_STEPS = ['a1', 'a2', 'b1', 'b2'] as const;
+const WALK_STEPS = ['c', 'a1', 'a2', 'b1', 'b2'] as const;
 type WalkStep = (typeof WALK_STEPS)[number];
 
 const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
@@ -70,9 +80,9 @@ const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
   down: frontIdleUrl,
 };
 const WALK_URLS_BY_FACING: Record<FacingKey, Record<WalkStep, string>> = {
-  side: { a1: sideWalkA1Url, a2: sideWalkA2Url, b1: sideWalkB1Url, b2: sideWalkB2Url },
-  up: { a1: backWalkA1Url, a2: backWalkA2Url, b1: backWalkB1Url, b2: backWalkB2Url },
-  down: { a1: frontWalkA1Url, a2: frontWalkA2Url, b1: frontWalkB1Url, b2: frontWalkB2Url },
+  side: { c: sideWalkCUrl, a1: sideWalkA1Url, a2: sideWalkA2Url, b1: sideWalkB1Url, b2: sideWalkB2Url },
+  up: { c: backWalkCUrl, a1: backWalkA1Url, a2: backWalkA2Url, b1: backWalkB1Url, b2: backWalkB2Url },
+  down: { c: frontWalkCUrl, a1: frontWalkA1Url, a2: frontWalkA2Url, b1: frontWalkB1Url, b2: frontWalkB2Url },
 };
 const BREATH_URLS_BY_FACING: Record<FacingKey, [string, string]> = {
   side: [sideBreath1Url, sideBreath2Url],
@@ -115,7 +125,7 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
  * and LINEAR is what makes that downscale read smooth instead of aliased.
  *
  * One walk animation per facing, 8 frames at 12fps (~0.67s per full two-step cycle):
- * `[idle, a1, a2, a1, idle, b1, b2, b1]` -- each foot eases up and back down rather than snapping.
+ * `[c, a1, a2, a1, c, b1, b2, b1]` -- each step eases in and back out rather than snapping.
  * `Player.ts` only plays this while actually moving.
  *
  * One idle (breathing) animation per facing, played whenever she stands still (including while
@@ -136,7 +146,7 @@ export function registerBernadetteSprite(scene: Phaser.Scene): void {
     if (!scene.anims.exists(animKey)) {
       scene.anims.create({
         key: animKey,
-        frames: [idleKey, key('a1'), key('a2'), key('a1'), idleKey, key('b1'), key('b2'), key('b1')].map((k) => ({ key: k })),
+        frames: [key('c'), key('a1'), key('a2'), key('a1'), key('c'), key('b1'), key('b2'), key('b1')].map((k) => ({ key: k })),
         frameRate: 12,
         repeat: -1,
       });

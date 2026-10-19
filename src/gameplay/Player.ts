@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEPTH } from '../core/constants';
+import { DEPTH, PIXEL_SCALE } from '../core/constants';
 import { BERNADETTE_SHADOW_KEY, textureKeyFor } from '../pixelart/characters';
 import { BERNADETTE_FRAME_HEIGHT } from '../assets/player/bernadetteSprite';
 import { updateFacingAnimation, type Facing } from './spriteFacing';
@@ -50,6 +50,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private touch: TouchControls | null;
   private locked = false;
   private shadow: Phaser.GameObjects.Image;
+  private lastDiagonal: string | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number, touch: TouchControls | null = null) {
     super(scene, x, y, textureKeyFor('bernadette', 'down'));
@@ -79,6 +80,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.shadow = scene.add.image(x, y - 1, BERNADETTE_SHADOW_KEY);
     this.shadow.setOrigin(0.5, 0.5);
     this.shadow.setScale(SHADOW_SCALE);
+    // Arcade only writes this frame's movement into x/y on POST_UPDATE (see
+    // `OverworldScene.ts#updateCameraFollow()`), so syncing from `update()` alone left the shadow
+    // one frame behind her feet while walking.
+    scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncShadow, this);
 
     const keyboard = scene.input.keyboard!;
     this.cursors = keyboard.createCursorKeys();
@@ -139,6 +144,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.moving = vx !== 0 || vy !== 0;
+    this.syncDiagonalPhase(vx, vy);
     if (this.moving) {
       // Normalize so diagonal movement isn't faster than a single cardinal direction.
       const len = Math.hypot(vx, vy) || 1;
@@ -152,12 +158,40 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.syncShadow();
   }
 
+  /**
+   * On an exact diagonal (keyboard: |vx| == |vy|) the camera scrolls the same distance on both
+   * axes every frame, but the ground can only land on whole framebuffer pixels -- and if her x and
+   * y sit at different sub-pixel phases, the x and y one-pixel steps happen on *different* frames,
+   * so the ground wobbles sideways around the direction of travel ("marea", worst on diagonals).
+   * When a diagonal starts, nudge y by under one framebuffer pixel (1/PIXEL_SCALE of a world pixel
+   * -- invisible, the camera follows her exactly) so both axes share one phase and step together.
+   * Measured against a sharp test grid on the framebuffer, all four diagonals: without this the
+   * axes were out of step on 11-18 of 23 frames, with it on none once the diagonal is under way.
+   * Done once per diagonal, never per frame, so sliding along a wall can't turn it into a
+   * back-and-forth.
+   */
+  private syncDiagonalPhase(vx: number, vy: number): void {
+    const diagonal = vx !== 0 && Math.abs(vx) === Math.abs(vy) ? `${Math.sign(vx)},${Math.sign(vy)}` : null;
+    if (diagonal && diagonal !== this.lastDiagonal) {
+      const frac = (v: number) => v * PIXEL_SCALE - Math.floor(v * PIXEL_SCALE);
+      const fx = frac(this.x);
+      // Same direction on both axes -> same phase; opposite directions -> mirrored phase.
+      const target = Math.sign(vx) === Math.sign(vy) ? fx : (1 - fx) % 1;
+      let dy = target - frac(this.y);
+      if (dy > 0.5) dy -= 1;
+      if (dy < -0.5) dy += 1;
+      this.y += dy / PIXEL_SCALE;
+    }
+    this.lastDiagonal = diagonal;
+  }
+
   /** The shadow tracks her x/y (ground position) only. */
   private syncShadow(): void {
     this.shadow.setPosition(this.x, this.y - 1);
   }
 
   destroy(fromScene?: boolean): void {
+    this.scene?.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncShadow, this);
     this.shadow.destroy();
     super.destroy(fromScene);
   }

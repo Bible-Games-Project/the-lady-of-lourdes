@@ -38,7 +38,13 @@ const config: Phaser.Types.Core.GameConfig = {
   },
   physics: {
     default: 'arcade',
-    arcade: { debug: false },
+    // `fixedStep: false`: step physics once per rendered frame by that frame's real delta, instead
+    // of in fixed 1/60s ticks. With fixed ticks, any display that isn't exactly 60Hz (59.94, 75,
+    // 120, 144...) gets frames with zero or two physics steps in an uneven rhythm -- measured on
+    // the framebuffer at 144Hz the ground moved 0,4,0,5,0,0,5,... px per frame -- which reads as
+    // stutter/dizziness while walking. Speeds are low enough that per-frame steps can't tunnel
+    // through any collider.
+    arcade: { debug: false, fixedStep: false },
   },
   // Phaser renders simultaneously-active scenes in this array's order (earlier = further back),
   // regardless of which was launched more recently — `scene.launch()` activates an already
@@ -59,4 +65,14 @@ const config: Phaser.Types.Core.GameConfig = {
   ],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// `pixelArt: true` also makes Phaser style the canvas `image-rendering: pixelated`, i.e. the browser
+// scales the whole framebuffer to the window with nearest-neighbour. Now that the framebuffer is
+// usually *larger* than what the window shows (`PIXEL_SCALE` in `constants.ts`), nearest-neighbour
+// would just drop rows/columns -- uneven, and crawling while the camera scrolls -- so let the browser
+// scale it smoothly instead. Sprites/tiles themselves are still crisp; that's decided per texture
+// on the GPU, not by this CSS.
+game.events.once(Phaser.Core.Events.READY, () => {
+  game.canvas.style.imageRendering = 'auto';
+});

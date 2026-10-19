@@ -27,7 +27,13 @@ export const GAME_HEIGHT = 270;
 // use `pointer.worldX`/`worldY` instead -- see `TouchControls.ts`, `Slider.ts`, `MapEditorPanel.ts`'s
 // panel-edge check, `OverworldScene.ts`'s editor pan, and `ApparitionJourneyScene.ts`'s drag/tap for
 // the handful of call sites that needed this fix.
-export const PIXEL_SCALE = 2;
+//
+// Raised again from 2 to 4 ("¿por qué se ve peor que la imagen que te mandé?"): at 2 Bernadette's
+// ~800px-tall art was being squeezed into ~98 framebuffer pixels, which is what made her look so
+// much rougher in game than the sheet itself. At 4 she gets ~196, and the framebuffer (1920x1080)
+// is at least as large as most screens show it, so the browser only ever scales it *down*
+// (smoothly -- see `main.ts`), never up into uneven blocky pixels.
+export const PIXEL_SCALE = 4;
 
 export const RENDER_WIDTH = GAME_WIDTH * PIXEL_SCALE;
 export const RENDER_HEIGHT = GAME_HEIGHT * PIXEL_SCALE;
