@@ -103,6 +103,12 @@ const FIREWOOD_SPOTS = [
 const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
 const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
+// Temporary, per the maintainer ("de momento haz invisible a la hermana, que me distrae"): keeps
+// the sister hidden while Bernadette's walk animation is being reviewed. Her story logic (following,
+// river crossing, wandering) keeps running untouched -- only her visibility is suppressed. Set to
+// `false` to bring her back.
+const HIDE_SISTER_TEMPORARILY = true;
+
 // Le Cachot's connection point to `CachotScene` — independent of whatever building art (if any)
 // the map editor currently has placed over it, so the enter/exit plumbing
 // (`buildCachotEntrance()` below, `CachotScene.ts`'s `fromCachot` exit) never needs to change no
@@ -329,7 +335,7 @@ export class OverworldScene extends Phaser.Scene {
       true,
       SISTER_FRAME_HEIGHT,
     );
-    this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
+    this.setSisterVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
     // Permanently non-colliding: the maintainer reported physically bumping into her while she
     // trails behind Bernadette (before the river crossing, she's following close; after, she's
@@ -561,6 +567,10 @@ export class OverworldScene extends Phaser.Scene {
       this.editorZones.set(zone.id, zone);
       if (zone.type === 'blocked') addEditorZoneCollider(this, zone, this.editorZoneColliders, this.colliderBodies);
     });
+  }
+
+  private setSisterVisible(visible: boolean): void {
+    this.sister.setVisible(visible && !HIDE_SISTER_TEMPORARILY);
   }
 
   /**
@@ -811,7 +821,7 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.friendMet && isNear(player, this.friend, INTERACT_RADIUS)) {
       this.dialogueBox.start(mission01Dialogue.friendMeet, () => {
         this.friendMet = true;
-        this.sister.setVisible(true);
+        this.setSisterVisible(true);
         this.leader = new LeaderNpc(this.friend, JEANNE_WAYPOINTS, JEANNE_SPEED, JEANNE_MAX_DISTANCE, JEANNE_RESUME_DISTANCE);
         MissionManager.advanceObjective();
         this.tasksPanel.notifyNewObjective();

@@ -2,52 +2,53 @@ import Phaser from 'phaser';
 import { textureKeyFor, walkAnimKeyFor, type FacingKey } from '../../pixelart/characters';
 import sideIdleUrl from './bernadette_side_idle.png';
 import sideWalkA1Url from './bernadette_side_walk_a1.png';
+import sideWalkA2Url from './bernadette_side_walk_a2.png';
 import sideWalkB1Url from './bernadette_side_walk_b1.png';
+import sideWalkB2Url from './bernadette_side_walk_b2.png';
 import backIdleUrl from './bernadette_back_idle.png';
 import backWalkA1Url from './bernadette_back_walk_a1.png';
+import backWalkA2Url from './bernadette_back_walk_a2.png';
 import backWalkB1Url from './bernadette_back_walk_b1.png';
+import backWalkB2Url from './bernadette_back_walk_b2.png';
 import frontIdleUrl from './bernadette_front_idle.png';
 import frontWalkA1Url from './bernadette_front_walk_a1.png';
+import frontWalkA2Url from './bernadette_front_walk_a2.png';
 import frontWalkB1Url from './bernadette_front_walk_b1.png';
+import frontWalkB2Url from './bernadette_front_walk_b2.png';
 
 /**
- * The maintainer's own finished artwork for the gameplay player character, recovered byte-for-byte
- * from the conversation that supplied it for the idle poses — never redrawn/recolored/redesigned.
+ * The maintainer's own finished artwork for the gameplay player character. The idle crops are
+ * byte-identical to the spritesheet the maintainer supplied (re-verified against a fresh copy of
+ * that sheet, pixel for pixel, in all three facings) — never redrawn/recolored/redesigned.
  *
  * `BERNADETTE_FRAME_HEIGHT` started at 72px display, became 40% of that (28.8), then 2x *that*
- * (57.6) per two separate earlier resize requests. The current request is "make Bernadette 15%
- * smaller... a scale factor of 0.85 relative to her current size" -- "current" again means exactly
- * what was live at request time (57.6), so this is `57.6 * 0.85` = 48.96, not a fresh 85% of the
- * original 72. Expressed as a multiply against the prior constant so the full history of resize
- * requests stays traceable at the definition instead of collapsing into one opaque number.
- * `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT / this.height` derives her actual render scale
- * from this one constant, so the resize applies uniformly to every facing/texture/animation frame
- * (and her shadow via `SHADOW_SCALE`) -- no source art file is touched.
+ * (57.6), then 85% of that (48.96), per successive explicit resize requests, each relative to her
+ * size at the time. Expressed as a chain of multiplies so that history stays traceable.
+ * `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT / this.height` derives her render scale from
+ * this one constant, so it applies uniformly to every facing/texture/animation frame (and her
+ * shadow via `SHADOW_SCALE`).
  *
- * Walk animation: after three earlier rounds either chased camera/movement bugs that turned out to
- * be unrelated to this art, or concluded (via direct per-pixel measurement) that this artwork has
- * no margin around the boots/hands to shift an existing patch into without touching the skirt --
- * the maintainer explicitly authorized creating new pixel content rather than only rearranging
- * existing pixels ("create suitable frames that preserve the original design instead of claiming
- * the animation is complete when it is not"). `_walk_a1`/`_walk_b1` below are generated from the
- * idle crops via the same boot-lift + hand/rosary-swing technique used throughout this file's
- * history (independent per-limb patch shift + gradient/strip fill for the vacated area), with the
- * skirt_shear() step *not* called at all -- the skirt fabric's own pixels are never read or moved.
- * Because the boot boxes sit flush against the hem with zero gap in this artwork (measured, not
- * assumed), a lifted/shifted boot's new position does occlude a small number of hem-colored pixels
- * in these two walk frames specifically (a few thousand native px out of ~170k opaque px per
- * facing, confirmed by direct pixel-diff against idle) -- that is the boot's own unmodified art
- * drawn on top of where the hem used to show through, the same category of occlusion any 2D
- * character's limb naturally produces when it moves in front of a garment, not a deformation of
- * the garment itself. The idle texture and the skirt region within these walk frames are otherwise
- * untouched. Only the smaller-magnitude pair (t = ±sin(π/4) ≈ 0.707) is used, in a plain 4-frame
- * loop (`[idle, a1, idle, b1]`) -- deliberately restrained rather than the full 8-phase cycle
- * earlier rounds tried.
+ * Walk frames (`_walk_a1/a2/b1/b2`): each idle image splits cleanly at a measured `feet_top` row
+ * (front 762, back 761, side 776) below which there is nothing but legs and boots. Every pixel
+ * above that row -- head, torso, poncho, hands, rosary and the entire skirt -- is copied verbatim
+ * into every walk frame (verified identical to idle, frame by frame). Only the legs/boots below it
+ * are recomposed, by pure integer translation of the original leg/boot pixels (no resampling, no
+ * blending of new colors), and whatever a raised foot would push above `feet_top` is clipped away:
+ * the leg disappears *behind* the hem rather than being painted over it.
+ *  - Front/back: the stepping foot rises behind the hem (half, then full lift) while the other
+ *    stays planted; `a*` lifts the left foot, `b*` the right.
+ *  - Side: idle is the passing pose; stride frames spread the near leg forward and a slightly
+ *    darkened copy of the same leg (the far leg) back with its heel raised, `a*` near-foot-forward,
+ *    `b*` far-foot-forward.
+ * In every frame the planted foot keeps the idle pose's exact lowest row, so the ground-contact
+ * line and the canvas/origin never move. Hands stay still: moving them would mean painting over
+ * the skirt or inventing what's behind them.
  */
 const BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE = 72 * 0.4 * 2;
 export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE * 0.85;
 
-type WalkStep = 'a1' | 'b1';
+const WALK_STEPS = ['a1', 'a2', 'b1', 'b2'] as const;
+type WalkStep = (typeof WALK_STEPS)[number];
 
 const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
   side: sideIdleUrl,
@@ -55,9 +56,9 @@ const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
   down: frontIdleUrl,
 };
 const WALK_URLS_BY_FACING: Record<FacingKey, Record<WalkStep, string>> = {
-  side: { a1: sideWalkA1Url, b1: sideWalkB1Url },
-  up: { a1: backWalkA1Url, b1: backWalkB1Url },
-  down: { a1: frontWalkA1Url, b1: frontWalkB1Url },
+  side: { a1: sideWalkA1Url, a2: sideWalkA2Url, b1: sideWalkB1Url, b2: sideWalkB2Url },
+  up: { a1: backWalkA1Url, a2: backWalkA2Url, b1: backWalkB1Url, b2: backWalkB2Url },
+  down: { a1: frontWalkA1Url, a2: frontWalkA2Url, b1: frontWalkB1Url, b2: frontWalkB2Url },
 };
 const ALL_FACINGS: FacingKey[] = ['down', 'up', 'side'];
 
@@ -77,7 +78,7 @@ function walkFrameKey(facing: FacingKey, step: WalkStep): string {
 export function preloadBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
     scene.load.image(textureKeyFor('bernadette', facing, null), IDLE_URL_BY_FACING[facing]);
-    (['a1', 'b1'] as const).forEach((step) => {
+    WALK_STEPS.forEach((step) => {
       scene.load.image(walkFrameKey(facing, step), WALK_URLS_BY_FACING[facing][step]);
     });
   });
@@ -85,30 +86,28 @@ export function preloadBernadetteSprite(scene: Phaser.Scene): void {
 
 /**
  * Gives her textures `LINEAR` filtering (like the sister/buildings/trees, not the flat procedural
- * characters NEAREST is for) — her native panels (337-398px wide, ~861-870px tall) are scaled
- * *down* to display size at render time (`Player.ts`'s `baseScale`); LINEAR is what makes that
- * downscale read as smooth/anti-aliased instead of aliased at this minification ratio, the same
- * reasoning the sister/buildings/trees already use.
+ * characters NEAREST is for) — her native panels are scaled *down* to display size at render time,
+ * and LINEAR is what makes that downscale read smooth instead of aliased.
  *
- * Registers one restrained walk animation per facing: `[idle, a1, idle, b1]`, 4 frames at
- * `frameRate: 6` (~0.67s per full step cycle). `Player.ts` only plays this while actually moving,
- * and stops it (back to the idle texture) the instant she stops.
+ * One walk animation per facing, 8 frames at 12fps (~0.67s per full two-step cycle):
+ * `[idle, a1, a2, a1, idle, b1, b2, b1]` -- each foot eases up and back down rather than snapping.
+ * `Player.ts` only plays this while actually moving and returns to the idle texture the instant she
+ * stops.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
     const idleKey = textureKeyFor('bernadette', facing, null);
-    const a1 = walkFrameKey(facing, 'a1');
-    const b1 = walkFrameKey(facing, 'b1');
-    [idleKey, a1, b1].forEach((key) => {
-      scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    const key = (step: WalkStep) => walkFrameKey(facing, step);
+    [idleKey, ...WALK_STEPS.map(key)].forEach((k) => {
+      scene.textures.get(k).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 
     const animKey = walkAnimKeyFor('bernadette', facing);
     if (!scene.anims.exists(animKey)) {
       scene.anims.create({
         key: animKey,
-        frames: [idleKey, a1, idleKey, b1].map((key) => ({ key })),
-        frameRate: 6,
+        frames: [idleKey, key('a1'), key('a2'), key('a1'), idleKey, key('b1'), key('b2'), key('b1')].map((k) => ({ key: k })),
+        frameRate: 12,
         repeat: -1,
       });
     }
