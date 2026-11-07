@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_HEIGHT, GAME_WIDTH } from '../core/constants';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 
 /** On-screen virtual joystick + interact button for touch devices (mobile app builds). */
 export class TouchControls {
@@ -25,18 +25,23 @@ export class TouchControls {
     });
 
     const interactButton = scene.add.circle(GAME_WIDTH - 40, GAME_HEIGHT - 42, 20, 0xfffaf0, 0.4);
-    const interactLabel = scene.add
-      .text(GAME_WIDTH - 40, GAME_HEIGHT - 42, '●', textStyle({ fontSize: '14px', color: '#3a3226' }))
-      .setOrigin(0.5);
-    [interactButton, interactLabel].forEach((shape) => {
-      shape.setScrollFactor(0);
-      shape.setDepth(DEPTH.UI);
-    });
+    const interactLabel = createText(scene, GAME_WIDTH - 40, GAME_HEIGHT - 42, '●', { fontSize: '14px', color: '#3a3226' });
+    interactLabel.setOrigin(0.5);
+    interactButton.setScrollFactor(0);
+    interactButton.setDepth(DEPTH.UI);
+    interactLabel.setScrollFactor(0);
+    interactLabel.setDepth(DEPTH.UI);
     interactButton.setInteractive({ useHandCursor: false });
     interactButton.on('pointerdown', () => this.onInteract?.());
 
+    // `pointer.x`/`.y` are raw canvas-pixel coordinates (0..RENDER_WIDTH/HEIGHT) -- NOT camera
+    // -zoom-aware like `pointer.worldX`/`worldY` -- while `baseX`/`baseY` are logical GAME_WIDTH
+    // /GAME_HEIGHT-space positions. Dividing by the camera's own zoom (== PIXEL_SCALE, set in
+    // `core/scaleMode.ts`) converts the raw pointer reading back into that same logical space; see
+    // `constants.ts`'s own doc comment on `PIXEL_SCALE` for why this is needed at all.
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      const distance = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.baseX, this.baseY);
+      const zoom = scene.cameras.main.zoom;
+      const distance = Phaser.Math.Distance.Between(pointer.x / zoom, pointer.y / zoom, this.baseX, this.baseY);
       if (distance < this.radius + 20 && this.pointerId === null) {
         this.pointerId = pointer.id;
       }
@@ -44,8 +49,9 @@ export class TouchControls {
 
     scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (this.pointerId !== pointer.id) return;
-      const dx = pointer.x - this.baseX;
-      const dy = pointer.y - this.baseY;
+      const zoom = scene.cameras.main.zoom;
+      const dx = pointer.x / zoom - this.baseX;
+      const dy = pointer.y / zoom - this.baseY;
       const length = Math.hypot(dx, dy) || 1;
       const clamped = Math.min(length, this.radius);
       this.knob.setPosition(this.baseX + (dx / length) * clamped, this.baseY + (dy / length) * clamped);

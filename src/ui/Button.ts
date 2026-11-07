@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { UI_KEYS, UI_BUTTON_SLICE } from '../pixelart/ui';
-import { textStyle } from './text';
+import { createText } from './text';
 
 export interface ButtonStyle {
   textureKey?: string;
@@ -11,6 +11,10 @@ export interface ButtonStyle {
   panelAlpha?: number;
   /** Outline around the label, for readability when the panel itself is very transparent. */
   textStroke?: { color: string; thickness: number };
+  /** Label font size. Defaults to '14px', matching every existing call site's own buttons. */
+  fontSize?: string;
+  /** Label font family. Defaults to `ui/text.ts`'s own `FONT_SERIF` fallback. */
+  fontFamily?: string;
 }
 
 /**
@@ -66,21 +70,23 @@ export function createButton(
   const strokeProps = style.textStroke
     ? { stroke: style.textStroke.color, strokeThickness: style.textStroke.thickness }
     : {};
-  const text = scene.add
-    .text(
-      localX,
-      localY,
-      label,
-      textStyle({
-        fontSize: '14px',
-        color: style.textColor ?? '#3a3226',
-        fontStyle: 'bold',
-        ...strokeProps,
-      }),
-    )
-    .setOrigin(0.5);
+  // DOM-based text (see `ui/text.ts`) can't be nested inside this `Container` the way `panel` is --
+  // confirmed empirically that a DOMElement added as a Container child never gets positioned at all
+  // (its transform sync relies on machinery the Container's own render path doesn't invoke). Kept
+  // independent instead, with the container's own `setPosition()` overridden below to move the
+  // label in step -- this button's container is the one Game Object in the codebase that gets
+  // repositioned *after* creation (see `HomeScene.ts`'s safe-area layout), so this can't be a
+  // one-time absolute-position computation the way `DialogueBox.ts`'s static panel is.
+  const text = createText(scene, x + localX, y + localY, label, {
+    fontSize: style.fontSize ?? '14px',
+    fontFamily: style.fontFamily,
+    color: style.textColor ?? '#3a3226',
+    fontStyle: 'bold',
+    ...strokeProps,
+  });
+  text.setOrigin(0.5);
 
-  const container = scene.add.container(x, y, [panel, text]);
+  const container = scene.add.container(x, y, [panel]);
   container.setSize(width, height);
   // Phaser's Container *always* offsets hit-testing by its own fixed displayOrigin
   // (`width/2, height/2` — Container's `originX`/`originY` are read-only 0.5, unlike
@@ -104,6 +110,38 @@ export function createButton(
     event.stopPropagation();
     onClick();
   });
+
+  // Keep the independent label in step with the container -- `text` isn't a child of `container`
+  // (see this function's own doc comment above on why), so every mutator a call site actually uses
+  // on the returned button needs its own override here, or the label silently drifts out of sync
+  // with the container it's supposed to belong to.
+  const originalSetPosition = container.setPosition.bind(container);
+  container.setPosition = ((...args: Parameters<typeof originalSetPosition>) => {
+    originalSetPosition(...args);
+    text.setPosition(container.x + localX, container.y + localY);
+    return container;
+  }) as typeof container.setPosition;
+  // Same reasoning as `setPosition` above: `text` isn't a child of `container`, so a plain
+  // `btn.setScrollFactor(0)` at a call site (every existing one does this, to pin a button to the
+  // screen in a scrolling scene) only affects the container's own panel graphic — the independent
+  // label keeps its default `scrollFactor = 1` and drifts in world space as the camera scrolls,
+  // landing far off-screen the moment the player has moved. Mirror the override so both move
+  // together, the same way `setPosition` already does.
+  const originalSetScrollFactor = container.setScrollFactor.bind(container);
+  container.setScrollFactor = ((...args: Parameters<typeof originalSetScrollFactor>) => {
+    originalSetScrollFactor(...args);
+    // DOMElement's own setScrollFactor only takes (x, y) -- Container's 3rd `updateChildren`
+    // param doesn't apply to `text` (it isn't a child of `container` at all).
+    text.setScrollFactor(args[0], args[1]);
+    return container;
+  }) as typeof container.setScrollFactor;
+  const originalSetVisible = container.setVisible.bind(container);
+  container.setVisible = ((...args: Parameters<typeof originalSetVisible>) => {
+    originalSetVisible(...args);
+    text.setVisible(args[0]);
+    return container;
+  }) as typeof container.setVisible;
+  container.once(Phaser.GameObjects.Events.DESTROY, () => text.destroy());
 
   return container;
 }

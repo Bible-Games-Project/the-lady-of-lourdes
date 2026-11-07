@@ -1,103 +1,167 @@
 import Phaser from 'phaser';
-import { textureKeyFor, walkAnimKeyFor, type FacingKey } from '../../pixelart/characters';
+import { idleAnimKeyFor, textureKeyFor, walkAnimKeyFor, type FacingKey } from '../../pixelart/characters';
 import sideIdleUrl from './bernadette_side_idle.png';
-import sideWalkAUrl from './bernadette_side_walk_a.png';
-import sideWalkBUrl from './bernadette_side_walk_b.png';
+import sideWalkCUrl from './bernadette_side_walk_c.png';
+import sideWalkA1Url from './bernadette_side_walk_a1.png';
+import sideWalkA2Url from './bernadette_side_walk_a2.png';
+import sideWalkB1Url from './bernadette_side_walk_b1.png';
+import sideWalkB2Url from './bernadette_side_walk_b2.png';
+import sideBreath1Url from './bernadette_side_breath_1.png';
+import sideBreath2Url from './bernadette_side_breath_2.png';
 import backIdleUrl from './bernadette_back_idle.png';
-import backWalkAUrl from './bernadette_back_walk_a.png';
-import backWalkBUrl from './bernadette_back_walk_b.png';
+import backWalkCUrl from './bernadette_back_walk_c.png';
+import backWalkA1Url from './bernadette_back_walk_a1.png';
+import backWalkA2Url from './bernadette_back_walk_a2.png';
+import backWalkB1Url from './bernadette_back_walk_b1.png';
+import backWalkB2Url from './bernadette_back_walk_b2.png';
+import backBreath1Url from './bernadette_back_breath_1.png';
+import backBreath2Url from './bernadette_back_breath_2.png';
 import frontIdleUrl from './bernadette_front_idle.png';
-import frontWalkAUrl from './bernadette_front_walk_a.png';
-import frontWalkBUrl from './bernadette_front_walk_b.png';
+import frontWalkCUrl from './bernadette_front_walk_c.png';
+import frontWalkA1Url from './bernadette_front_walk_a1.png';
+import frontWalkA2Url from './bernadette_front_walk_a2.png';
+import frontWalkB1Url from './bernadette_front_walk_b1.png';
+import frontWalkB2Url from './bernadette_front_walk_b2.png';
+import frontBreath1Url from './bernadette_front_breath_1.png';
+import frontBreath2Url from './bernadette_front_breath_2.png';
 
 /**
- * The maintainer's own finished artwork for the gameplay player character, recovered byte-for-byte
- * from the conversation that supplied it (same handling as `assets/home/home_background.png`) —
- * never redrawn/recolored/redesigned. This is the *second* full sprite-sheet swap: the maintainer
- * replaced the original 3-view reference sheet (maroon/red dress) with a brand-new one (blue
- * dress) — same side/front/back genuine-art approach, entirely different source pixels, the old
- * sheet's derived frames are gone rather than layered underneath. `side` is used as-is for `right`
- * and horizontally flipped (`setFlipX`, in `spriteFacing.ts`) for `left`; `back` is used only for
- * `up`; `front` only for `down`. All three source panels were cropped to their own precise alpha
- * bounding box and resized to the same final *height* (42px) so switching facing never jumps her
- * apparent scale or ground contact point (`Player.ts` keeps her origin at (0.5, 1), and each
- * crop's bottom edge is exactly her feet) — width is **not** forced uniform across facings (this
- * source's own side/front/back panels have genuinely different proportions — a side profile is
- * naturally narrower than a front/back view of the same shoulders — so each view keeps its own
- * true aspect ratio at that shared height rather than being artificially stretched/squeezed to
- * match the others).
+ * The maintainer's own finished artwork for the gameplay player character (second version of the
+ * sheet: side, front, back). Each idle image is that figure cut straight out of the sheet --
+ * never redrawn, recolored or resampled -- and placed on one common 312x805 canvas shared by every
+ * facing and every frame (feet on the bottom row, horizontally centred on the hem), so switching
+ * facing or frame never changes her size or anchor. The only change to the source pixels is alpha
+ * cleanup of the lossy-WebP export: near-invisible background noise (alpha <= 8) became fully
+ * transparent and the near-opaque body (alpha ~253) became fully opaque.
  *
- * Every walk-cycle frame (`_walk_a/b.png`, all 3 views) is a cutout-puppet deformation — independent
- * small shifts on the *separate* left/right boot regions (so the two feet visibly swap which is
- * forward/planted vs. back/lifted, not just the whole foot cluster translating), opposite-arm
- * counter-swing on the hand region(s) (one hand for the side view, two — independently shifted —
- * for back/front), a waist-down skirt shear (single-direction for the side view; mirrored/opposing
- * for back/front so the skirt reads as a subtle twist rather than a uniform lean), and a sub-pixel
- * vertical bob. Generated at a larger intermediate resolution (~60px tall, one clean LANCZOS
- * resize from the untouched source crop) and then downscaled to final size with a *second* single
- * clean LANCZOS resize — deforming directly at the tiny final size left too little pixel data for
- * the two boots to read as different feet, so the larger intermediate step stays necessary. Idle
- * frames need no deformation at all (breathing is a runtime `scaleY` effect in `Player.ts`, never
- * baked into the texture) and are generated with a single direct resize from the source crop
- * straight to final size. If these frames are ever regenerated: keep working at a larger
- * intermediate size before the final downscale, and never add an `ImageFilter.UnsharpMask` (or
- * any other sharpening) pass on top of the LANCZOS resizes — that was tried in an earlier version
- * of this pipeline and was part of a reported blur regression (see `registerBernadetteSprite()`
- * below for the other, larger part of that regression: an explicit LINEAR texture filter
- * override). LANCZOS alone, once, per resize is enough; sharpening on top of it just adds ringing.
+ * `BERNADETTE_FRAME_HEIGHT` started at 72px display, became 40% of that (28.8), then 2x *that*
+ * (57.6), then 85% of that (48.96), per successive explicit resize requests, each relative to her
+ * size at the time. Expressed as a chain of multiplies so that history stays traceable.
+ * `Player.ts`'s `baseScale = BERNADETTE_FRAME_HEIGHT / this.height` derives her render scale from
+ * this one constant, so it applies uniformly to every facing/texture/animation frame (and her
+ * shadow via `SHADOW_SCALE`).
+ *
+ * Walk frames (`_walk_c/a1/a2/b1/b2`), livelier second pass ("que se mueva más, también los
+ * brazos"). Still nothing but whole-pixel moves of the original pixels -- no redrawing, no
+ * resampling -- in three layers:
+ *  - Feet: below a measured `feet_top` row (side 760, front 758, back 764) there is nothing but
+ *    boots. Front/back: the stepping foot rises behind the hem (14, then 28 px) while the other
+ *    stays planted; `a*` lifts the image-left foot, `b*` the right. Side: the near foot strides
+ *    forward and a slightly darkened copy of it (the far foot) back with its heel raised (+-20,
+ *    then +-40 px). Anything pushed above `feet_top` is clipped: feet go *behind* the hem.
+ *  - Arms, swinging against the feet: front/back -- the forward arm's forearm/hand(/rosary)
+ *    slides up 16 px (its sleeve loses that many rows: foreshortening) while the other slides
+ *    down 8 (its sleeve repeats a few rows of itself); the gap under a raised hand is filled with
+ *    the vertically-striped skirt right below it. Side -- sleeve, hand and rosary shear sideways,
+ *    0 at the shoulder growing to +-18 px at the hand (a small swing about the shoulder), the gap
+ *    behind filled by extending the neighbouring fabric of the same row. Arm regions were traced
+ *    from zoomed, gridded crops of the idle art.
+ *  - Bob: everything above a seam row low in the skirt drops by 0/6/12 px (rows of plain skirt
+ *    removed at the seam): lowest at contact, highest at passing. Hem and boots never move.
+ * `c` is the contact pose for front/back (feet together, arms neutral, body low) and the passing
+ * pose for side (identical to idle). In every frame the ground-contact row stays the idle pose's,
+ * so the canvas/origin never moves.
+ *
+ * Breathing frames (`_breath_1/2`): everything above a seam row low in the skirt sinks by 5 / 10
+ * native px (about 1 / 2.5 framebuffer pixels at her display size), by dropping that many rows of
+ * the plain vertically-striped skirt at the seam -- whole rows of the original pixels, no
+ * resampling. Below the seam (hem and boots) nothing changes. The seam row was picked per facing
+ * where dropping rows is least visible (side 662, front 631, back 701).
  */
-export const BERNADETTE_FRAME_HEIGHT = 42 as const;
+const BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE = 72 * 0.4 * 2;
+export const BERNADETTE_FRAME_HEIGHT = BERNADETTE_DISPLAY_HEIGHT_BEFORE_THIS_RESIZE * 0.85;
 
-const URLS_BY_FACING: Record<FacingKey, Record<'a' | 'b' | 'idle', string>> = {
-  side: { idle: sideIdleUrl, a: sideWalkAUrl, b: sideWalkBUrl },
-  up: { idle: backIdleUrl, a: backWalkAUrl, b: backWalkBUrl },
-  down: { idle: frontIdleUrl, a: frontWalkAUrl, b: frontWalkBUrl },
+const WALK_STEPS = ['c', 'a1', 'a2', 'b1', 'b2'] as const;
+type WalkStep = (typeof WALK_STEPS)[number];
+
+const IDLE_URL_BY_FACING: Record<FacingKey, string> = {
+  side: sideIdleUrl,
+  up: backIdleUrl,
+  down: frontIdleUrl,
+};
+const WALK_URLS_BY_FACING: Record<FacingKey, Record<WalkStep, string>> = {
+  side: { c: sideWalkCUrl, a1: sideWalkA1Url, a2: sideWalkA2Url, b1: sideWalkB1Url, b2: sideWalkB2Url },
+  up: { c: backWalkCUrl, a1: backWalkA1Url, a2: backWalkA2Url, b1: backWalkB1Url, b2: backWalkB2Url },
+  down: { c: frontWalkCUrl, a1: frontWalkA1Url, a2: frontWalkA2Url, b1: frontWalkB1Url, b2: frontWalkB2Url },
+};
+const BREATH_URLS_BY_FACING: Record<FacingKey, [string, string]> = {
+  side: [sideBreath1Url, sideBreath2Url],
+  up: [backBreath1Url, backBreath2Url],
+  down: [frontBreath1Url, frontBreath2Url],
 };
 const ALL_FACINGS: FacingKey[] = ['down', 'up', 'side'];
 
+/** Walk-cycle frame keys never go through the shared `textureKeyFor()`/`StepFrame` system (that
+ * type is pinned to `'a' | 'b' | null` for the generic procedural NPC roster) -- kept entirely
+ * local to this file so these extra frames can't affect any other character. */
+function walkFrameKey(facing: FacingKey, step: WalkStep): string {
+  return `${textureKeyFor('bernadette', facing, null)}_walk_${step}`;
+}
+
+function breathFrameKey(facing: FacingKey, n: 1 | 2): string {
+  return `${textureKeyFor('bernadette', facing, null)}_breath_${n}`;
+}
+
 /**
  * Loads the real art under the *exact* key strings
- * `pixelart/characters.ts#textureKeyFor('bernadette', facing, step)` would have used for the
- * procedural version — `Player.ts`, `spriteFacing.ts`, and `NpcActor.ts` all address her purely
- * through those key-generating functions, so nothing about the shared movement/animation code
- * needs to know or care that her textures now come from real images.
+ * `pixelart/characters.ts#textureKeyFor('bernadette', facing, null)` would have used for the
+ * procedural version — `Player.ts` addresses her purely through that key-generating function, so
+ * nothing about movement/rendering needs to know or care that her textures come from real images.
  */
 export function preloadBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
-    const urls = URLS_BY_FACING[facing];
-    scene.load.image(textureKeyFor('bernadette', facing, null), urls.idle);
-    scene.load.image(textureKeyFor('bernadette', facing, 'a'), urls.a);
-    scene.load.image(textureKeyFor('bernadette', facing, 'b'), urls.b);
+    scene.load.image(textureKeyFor('bernadette', facing, null), IDLE_URL_BY_FACING[facing]);
+    WALK_STEPS.forEach((step) => {
+      scene.load.image(walkFrameKey(facing, step), WALK_URLS_BY_FACING[facing][step]);
+    });
+    scene.load.image(breathFrameKey(facing, 1), BREATH_URLS_BY_FACING[facing][0]);
+    scene.load.image(breathFrameKey(facing, 2), BREATH_URLS_BY_FACING[facing][1]);
   });
 }
 
 /**
- * Registers the walk animations, once the textures above have loaded. Deliberately does *not*
- * call `setFilter(LINEAR)` the way Home's real-photo background does — unlike that full-bleed
- * background, these frames are meant to read as pixel art like every other character (the whole
- * game already runs with `pixelArt: true` in `main.ts`, which defaults every texture's sampling to
- * NEAREST/hard-edged). An earlier version of this file explicitly forced Bernadette's textures to
- * LINEAR, reasoning she was "real illustration, not the hard-edged procedural pixel grid" — that
- * was the actual cause of a reported softness/blur regression: LINEAR interpolates between texel
- * colors on every scale-up, which is exactly what smears her small (13-18px wide, 42px tall)
- * frames into a blurred silhouette instead of the crisp, clearly-defined pixel edges the rest of
- * the game has. Leaving
- * her textures on Phaser's own NEAREST default (don't reintroduce an explicit LINEAR override here)
- * is the fix — confirmed by comparing in-game screenshots before/after.
+ * Gives her textures `LINEAR` filtering (like the sister/buildings/trees, not the flat procedural
+ * characters NEAREST is for) — her native panels are scaled *down* to display size at render time,
+ * and LINEAR is what makes that downscale read smooth instead of aliased.
+ *
+ * One walk animation per facing, 8 frames at 12fps (~0.67s per full two-step cycle):
+ * `[c, a1, a2, a1, c, b1, b2, b1]` -- each step eases in and back out rather than snapping.
+ * `Player.ts` only plays this while actually moving.
+ *
+ * One idle (breathing) animation per facing, played whenever she stands still (including while
+ * locked for dialogue): rest -> half -> full exhale -> half, about 2.4s per breath. It starts on
+ * the rest pose, so stopping never jumps.
  */
 export function registerBernadetteSprite(scene: Phaser.Scene): void {
   ALL_FACINGS.forEach((facing) => {
+    const idleKey = textureKeyFor('bernadette', facing, null);
+    const key = (step: WalkStep) => walkFrameKey(facing, step);
+    const breath1 = breathFrameKey(facing, 1);
+    const breath2 = breathFrameKey(facing, 2);
+    [idleKey, ...WALK_STEPS.map(key), breath1, breath2].forEach((k) => {
+      scene.textures.get(k).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
+
     const animKey = walkAnimKeyFor('bernadette', facing);
     if (!scene.anims.exists(animKey)) {
       scene.anims.create({
         key: animKey,
+        frames: [key('c'), key('a1'), key('a2'), key('a1'), key('c'), key('b1'), key('b2'), key('b1')].map((k) => ({ key: k })),
+        frameRate: 12,
+        repeat: -1,
+      });
+    }
+
+    const idleAnimKey = idleAnimKeyFor('bernadette', facing);
+    if (!scene.anims.exists(idleAnimKey)) {
+      scene.anims.create({
+        key: idleAnimKey,
         frames: [
-          { key: textureKeyFor('bernadette', facing, 'a') },
-          { key: textureKeyFor('bernadette', facing, null) },
-          { key: textureKeyFor('bernadette', facing, 'b') },
-          { key: textureKeyFor('bernadette', facing, null) },
+          { key: idleKey, duration: 900 },
+          { key: breath1, duration: 300 },
+          { key: breath2, duration: 900 },
+          { key: breath1, duration: 300 },
         ],
-        frameRate: 6,
         repeat: -1,
       });
     }

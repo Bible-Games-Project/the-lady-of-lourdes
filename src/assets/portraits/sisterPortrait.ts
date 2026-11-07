@@ -16,17 +16,24 @@ import talkBlinkUrl from './sister_portrait_talkBlink.png';
  *                 just below each eye (not from within the box itself, which would read back
  *                 eye-colored pixels near its lower edge), with a thin closed-lid line drawn across
  *                 each box's own vertical center in a slightly darker skin tone.
- *   - `talk`      **not** a new shape painted over the face (a first pass that did — an open-mouth
- *                 ellipse — didn't actually land on her own lips: her real closed-lip line sits at
- *                 native y38-39, x25-31, but that first attempt painted at y43-44, inside the
- *                 jaw/chin-shadow curve well below her mouth, reading as "doesn't match her actual
- *                 lips"). Fixed by measuring her actual neutral-pose lip pixels directly (a
- *                 `V = R+G+B` per-pixel darkness scan in a tight box around the mouth only,
- *                 `V < 450` at native y38-39 — excludes y37, which is nose-shadow, and the
- *                 chin-shadow curve below y40) and darkening *only those already-existing lip
- *                 pixels* in place by a fixed 0.6x multiplier — the same "thicken/darken the real
- *                 lip line, don't paint a new one" technique `bernadettePortrait.ts`'s own talk edit
- *                 and `boyPortrait.ts`'s corrected talk edit both use.
+ *   - `talk`      **fixed twice now.** The first pass (an open-mouth ellipse) never landed on her
+ *                 lips at all (see git history). The *second* pass darkened native y38-39 in place
+ *                 — technically her own closed-lip line, confirmed by direct pixel measurement —
+ *                 but at this portrait's real 58x67 display size that row sits close enough to the
+ *                 nostril shadow just above it (y35-36, with only one largely-untouched row, y37,
+ *                 as a buffer) that darkening it read as "the mouth merged into the nose" ("talking
+ *                 through her nose"), confirmed by rendering both versions at realistic display
+ *                 scale side by side, not just in an exaggerated zoom. Her lips actually span a
+ *                 wider native y37-42 range with **two** natural dark bands separated by a bright
+ *                 highlight row (y40, the lower lip's own catch-light) — y38-39 is the closed
+ *                 upper-lip seam (too close to the nose to safely darken further), y41-42 is the
+ *                 lower lip's own bottom shadow/crease, comfortably 5-6 rows clear of the nostrils.
+ *                 This pass leaves y38-39 completely untouched (her natural resting smile still
+ *                 reads exactly as it does in `neutral`) and instead darkens the existing y41-42
+ *                 pixels only (`V = R+G+B` scan, `V < 480`, native x23-32) by the same 0.6x
+ *                 multiplier `bernadettePortrait.ts`'s own talk edit uses — still her own real lip
+ *                 pixels, still no new shape painted, just shifted to the part of her mouth with
+ *                 actual visual clearance from her nose.
  *   - `talkBlink` the same in-place darkening applied to `blink`'s own mouth pixels (identical to
  *                 `neutral`'s there — confirmed by diffing them before reusing this technique).
  */

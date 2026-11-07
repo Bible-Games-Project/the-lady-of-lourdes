@@ -32,6 +32,11 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
   private idle = true;
   private depthBase: number;
   private autoDepthEnabled: boolean;
+  /** The sprite's own resting scale (from `targetHeight`, or 1 for every character whose texture
+   * is already pre-sized) -- `preUpdate()`'s breathing effect must multiply/offset *this*, not
+   * hardcode `1`, or it silently stomps a non-1 `targetHeight` scale back to native size every
+   * single frame (see that method's own doc comment for the bug this was). */
+  private baseScale = 1;
 
   /**
    * `shadowScale` lets a real-art character's shadow track its own height instead of always
@@ -77,6 +82,7 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
     breathingEnabled = false,
     depthBase: number = DEPTH.ACTORS,
     autoDepthEnabled = true,
+    targetHeight?: number,
   ) {
     const textureFacing = facing === 'left' || facing === 'right' ? 'side' : facing;
     super(scene, x, y, textureKeyFor(id, textureFacing, null));
@@ -86,6 +92,29 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1);
     scene.add.existing(this);
     scene.physics.add.existing(this);
+
+    // `targetHeight` is for a real-art character whose *source* texture is supplied at a much
+    // higher native resolution than it should actually appear on screen at (see
+    // `assets/npc/sisterSprite.ts`'s own doc comment) -- every other character's texture is
+    // already pre-sized to its final display height, so `targetHeight` stays `undefined` and
+    // `setScale()` is a no-op (scale 1) for them, completely unaffected. The feet-collider math
+    // just below reads `this.width`/`this.height`, which stay the texture's *native* (unscaled)
+    // pixel size regardless of `setScale()` -- Arcade Physics bodies store their size in that same
+    // local/native space and are meant to multiply by the GameObject's current scale on their own
+    // each physics step, so this proportional math (and the shadow's own separately-supplied
+    // `shadowScale`) keeps working without any special-casing here -- *except* that this
+    // auto-rescale is itself driven by the body's own `preUpdate()`, which the physics world never
+    // calls for a disabled body (see `setCollisionEnabled()`'s own doc comment -- the sister is
+    // permanently non-colliding). Without a push, a disabled body's cached world size stays frozen
+    // at whatever it was the one time `setSize()` below happened to run relative to this scale
+    // change, which cost nothing with collision off but would be a real trap for any future
+    // `targetHeight` character built with collision left on. `body.updateFromGameObject()`
+    // (called once, right after `setSize()`/`setOffset()` below) forces that sync immediately
+    // instead of leaving it to a physics step that may never come.
+    if (targetHeight !== undefined) {
+      this.baseScale = targetHeight / this.height;
+      this.setScale(this.baseScale);
+    }
 
     // Feet-only collider (see FEET_*_FRAC above) sized from this instance's own initial frame —
     // every real-art character is pre-sized to a stable height across all its own facings (the
@@ -97,6 +126,7 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
     const feetHeight = Math.max(1, Math.round(this.height * FEET_HEIGHT_FRAC));
     body.setSize(feetWidth, feetHeight);
     body.setOffset(Math.round((this.width - feetWidth) / 2), Math.round(this.height * FEET_OFFSET_Y_FRAC));
+    if (targetHeight !== undefined) body.updateFromGameObject();
     // Immovable: the player (and any other NpcActor) colliding with this one gets stopped/pushed
     // back, but this actor itself never gets shoved aside — walking into an NPC should feel like
     // meeting something solid, not gently nudging it out of the way. (Two immovable NpcActors
@@ -139,7 +169,7 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
     if (this.moving) {
       if (!this.idle) return;
       this.idle = false;
-      this.setScale(1, 1);
+      this.setScale(this.baseScale, this.baseScale);
       this.shadow.setScale(this.shadowScale, this.shadowScale);
       this.shadow.setAlpha(1);
       return;
@@ -148,7 +178,7 @@ export class NpcActor extends Phaser.Physics.Arcade.Sprite {
     const periodMs = 4200;
     const amplitude = 0.015;
     const wave = Math.sin((time / periodMs) * Math.PI * 2);
-    this.setScale(1, 1 + wave * amplitude);
+    this.setScale(this.baseScale, this.baseScale * (1 + wave * amplitude));
     // Shadow reacts to the same breath, but only in width/opacity, same as Player.ts's — it must
     // stay flat on the ground, never lifting or scaling vertically with her.
     this.shadow.setScale(this.shadowScale * (1 + wave * 0.02), this.shadowScale);

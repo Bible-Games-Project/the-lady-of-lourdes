@@ -4,13 +4,13 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { MISSIONS, getMission, getMissionState, type MissionState } from '../data/missions/missionRegistry';
 import { getRouteCurvePoints, getRouteNodePoints } from '../data/journeyRoute';
-import { JOURNEY_ICON_KEYS } from '../pixelart/journeyIcons';
+import { JOURNEY_ICON_KEYS, LOCK_DISPLAY_H, LOCK_DISPLAY_W, MEDALLION_DISPLAY_SIZE } from '../pixelart/journeyIcons';
 import { JOURNEY_PALETTE } from '../pixelart/journeyPalette';
 import { JOURNEY_MAP_KEY, JOURNEY_MAP_SIZE } from '../assets/journey/journeyMap';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { Toast } from '../gameplay/Toast';
-import { textStyle } from '../ui/text';
-import { useFullBleedScale } from '../core/scaleMode';
+import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
+import { useFullBleedScale, setCameraBounds } from '../core/scaleMode';
 import { onSafeAreaChange, type SafeAreaInsets } from '../core/safeArea';
 
 const NODE_COUNT = MISSIONS.length;
@@ -23,7 +23,7 @@ interface NodeVisual {
   y: number;
   medallion: Phaser.GameObjects.Image;
   badge: Phaser.GameObjects.Image | null;
-  numberText: Phaser.GameObjects.Text;
+  numberText: Phaser.GameObjects.DOMElement;
 }
 
 interface JourneyLeaf {
@@ -60,7 +60,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
   // scroll range (so a node near the world's own top/bottom edge doesn't land in the cropped,
   // invisible strip) reads this instead of raw 0/GAME_HEIGHT.
   private insets: SafeAreaInsets = { left: 0, right: 0, top: 0, bottom: 0 };
-  private title!: Phaser.GameObjects.Text;
+  private title!: Phaser.GameObjects.DOMElement;
   private backBtn!: Phaser.GameObjects.Image;
   private upBtn!: Phaser.GameObjects.Image;
   private upBtnBackdrop!: Phaser.GameObjects.Arc;
@@ -105,15 +105,19 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.keyUp = this.input.keyboard!.addKey('UP');
     this.keyDown = this.input.keyboard!.addKey('DOWN');
 
+    // `p.y` is a raw canvas-pixel coordinate, not camera/zoom-aware -- `/ zoom` converts back to
+    // the logical GAME_HEIGHT-space `insets.top` is defined in, and to world-space scroll units;
+    // see `constants.ts`'s own doc comment on `PIXEL_SCALE`.
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.y > this.insets.top + 40) {
-        this.dragStartY = p.y;
+      const y = p.y / this.cameras.main.zoom;
+      if (y > this.insets.top + 40) {
+        this.dragStartY = y;
         this.dragStartScroll = this.cameras.main.scrollY;
       }
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.dragStartY === null || !p.isDown) return;
-      const dy = p.y - this.dragStartY;
+      const dy = p.y / this.cameras.main.zoom - this.dragStartY;
       this.scrollTarget = this.clampScroll(this.dragStartScroll - dy);
       this.cameras.main.scrollY = this.scrollTarget;
     });
@@ -175,9 +179,30 @@ export class ApparitionJourneyScene extends Phaser.Scene {
   }
 
   /** Widens the camera's own scrollable bounds to match `clampScroll()`'s range -- see that
-   * method's doc comment for why both are required together. */
+   * method's doc comment for why both are required together.
+   *
+   * Also anchors the camera horizontally so the map's own *left* edge (world x = 0, where the
+   * route begins and apparitions 1/2/3 sit -- see `buildPath()`'s doc comment) is always the
+   * left-most thing visible, instead of the plain, un-shifted `scrollX = 0` every other scene
+   * uses. The map's world width is scaled to exactly `GAME_WIDTH` (`buildBackground()`), so under
+   * plain `FIT` (or a 16:9 device) the camera's own `GAME_WIDTH`-wide view already shows the whole
+   * map edge-to-edge and this is a no-op (`insets.left` is `0`). Under `ENVELOP` on a
+   * narrower-than-16:9 device, though, `insets.left`/`insets.right` crop *symmetric* strips off
+   * both edges of that same view -- with the camera un-shifted, that crop eats into the map's own
+   * left edge exactly as much as its right, silently pushing node 1 (and often 2/3) into the
+   * cropped-off, invisible strip with no way to scroll back to it (unlike the vertical direction,
+   * which already has up/down scroll for exactly this reason). Shifting `scrollX` left by
+   * `insets.left` moves the *visible* window to start at world x = 0 instead of x = insets.left,
+   * so the left edge is never cropped -- the map's own right edge absorbs the *entire* crop
+   * instead of splitting it, which is the explicitly correct trade-off here (the beginning of the
+   * journey is the priority; the right edge extending off-screen on a narrow device is
+   * acceptable). `setBounds()`'s left edge must widen to match, or `Camera#preRender()`'s own
+   * per-frame bounds-clamp (see `clampScroll()`'s doc comment for why this isn't just assumed)
+   * would silently snap `scrollX` straight back to 0.
+   */
   private updateCameraBounds(): void {
-    this.cameras.main.setBounds(0, -this.insets.top, GAME_WIDTH, this.worldHeight + this.insets.top + this.insets.bottom);
+    setCameraBounds(this, -this.insets.left, -this.insets.top, GAME_WIDTH + this.insets.left, this.worldHeight + this.insets.top + this.insets.bottom);
+    this.cameras.main.scrollX = -this.insets.left;
   }
 
   /** Repositions every screen-pinned element against the *visible* screen edges -- see `insets`'s
@@ -215,7 +240,7 @@ export class ApparitionJourneyScene extends Phaser.Scene {
     this.worldScale = GAME_WIDTH / JOURNEY_MAP_SIZE.width;
     bg.setScale(this.worldScale);
     this.worldHeight = JOURNEY_MAP_SIZE.height * this.worldScale;
-    this.cameras.main.setBounds(0, 0, GAME_WIDTH, this.worldHeight);
+    setCameraBounds(this, 0, 0, GAME_WIDTH, this.worldHeight);
   }
 
   /**
@@ -243,15 +268,24 @@ export class ApparitionJourneyScene extends Phaser.Scene {
       const state = getMissionState(mission.index);
 
       const medallion = this.add.image(x, y, JOURNEY_ICON_KEYS.MEDALLION);
+      medallion.setDisplaySize(MEDALLION_DISPLAY_SIZE, MEDALLION_DISPLAY_SIZE);
       medallion.setDepth(DEPTH.ACTORS);
       medallion.setInteractive({ useHandCursor: true });
       medallion.on('pointerup', () => this.onNodeTap(mission.index));
 
       let badge: Phaser.GameObjects.Image | null = null;
       if (state === 'locked') {
+        // `lockedStone`/alpha were both tuned brighter/less transparent than before (see
+        // journeyPalette.ts's own doc comment on `lockedStone`) -- `setTint()` is multiplicative,
+        // so the medallion's own cream face was being dragged down toward the tint color on every
+        // channel; the previous darker grey crushed it toward near-black, reading as "far too
+        // black" circles for every locked apparition, which is most of them by default.
         medallion.setTint(hex(JOURNEY_PALETTE.lockedStone));
-        medallion.setAlpha(0.7);
-        badge = this.add.image(x + 7, y - 7, JOURNEY_ICON_KEYS.LOCK).setDepth(DEPTH.ACTORS + 1).setScale(0.85);
+        medallion.setAlpha(0.88);
+        badge = this.add
+          .image(x + 7, y - 7, JOURNEY_ICON_KEYS.LOCK)
+          .setDepth(DEPTH.ACTORS + 1)
+          .setDisplaySize(LOCK_DISPLAY_W * 0.85, LOCK_DISPLAY_H * 0.85);
       } else if (state === 'completed') {
         medallion.setTint(hex(JOURNEY_PALETTE.glowGold));
         badge = this.add.image(x + 7, y - 7, JOURNEY_ICON_KEYS.CHECK).setDepth(DEPTH.ACTORS + 1).setScale(0.9);
@@ -264,15 +298,31 @@ export class ApparitionJourneyScene extends Phaser.Scene {
         this.tweens.add({ targets: ring, scale: 1.18, alpha: 0.4, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
 
-      const numberText = this.add
-        .text(x, y, String(mission.index), textStyle({ fontSize: '12px', color: JOURNEY_PALETTE.cream, fontStyle: 'bold', stroke: JOURNEY_PALETTE.ink, strokeThickness: 3 }))
+      // `FONT_BODY` is now Pixelify Sans (see `ui/text.ts`'s own doc comment for the full font
+      // history) -- still no stroke here, since the medallion's cream face (see
+      // `journeyIcons.ts#medallion()`) fills nearly the whole disc and a dark ink fill already
+      // reads cleanly on top of it without needing one.
+      const numberText = createText(this, x, y, String(mission.index), {
+        fontSize: '13px',
+        fontFamily: FONT_BODY,
+        color: JOURNEY_PALETTE.ink,
+        fontStyle: 'bold',
+      })
         .setOrigin(0.5)
         .setDepth(DEPTH.ACTORS + 1);
 
       if (mission.dateKey) {
         const dateSide = x < GAME_WIDTH / 2 ? 1 : -1;
-        this.add
-          .text(x + dateSide * 20, y, Localization.t(mission.dateKey), textStyle({ fontSize: '9px', color: JOURNEY_PALETTE.cream, stroke: JOURNEY_PALETTE.ink, strokeThickness: 2 }))
+        // Dates sit beside the medallion, over the map artwork itself rather than a light medallion
+        // face -- `cream` stays the fill (matching the route line/title) since the map's own tones
+        // here run darker/mid than light, and the bold weight carries the contrast that used to
+        // come from the stroke.
+        createText(this, x + dateSide * 20, y, Localization.t(mission.dateKey), {
+          fontSize: '10px',
+          fontFamily: FONT_BODY,
+          color: JOURNEY_PALETTE.cream,
+          fontStyle: 'bold',
+        })
           .setOrigin(dateSide > 0 ? 0 : 1, 0.5)
           .setDepth(DEPTH.ACTORS);
       }
@@ -288,12 +338,22 @@ export class ApparitionJourneyScene extends Phaser.Scene {
    * (see `onSafeAreaChange`'s own doc comment) calls `layoutSafeAreaUI()` before the first frame
    * ever renders, so the placeholder position is never actually visible. */
   private buildHeader(): void {
-    this.title = this.add.text(
-      0,
-      0,
-      Localization.t(K.JOURNEY_TITLE),
-      textStyle({ fontSize: '16px', color: JOURNEY_PALETTE.cream, fontStyle: 'bold', stroke: JOURNEY_PALETTE.ink, strokeThickness: 3 }),
-    );
+    // `FONT_DISPLAY` is now Pixelify Sans (see `ui/text.ts`'s own doc comment on the font's full
+    // history) -- a thin ink stroke was added here matching Home's own title treatment, since a
+    // pixel-grid font's thinner strokes benefit from the contrast boost against this screen's own
+    // busy, scrolling map art, the same reasoning `journeyIcons.ts#medallion()`'s thin ink rim
+    // uses. Gold fill matches Home's own title treatment; verified live that it stays legible
+    // against the map artwork scrolling underneath this screen-pinned header at every scroll
+    // position.
+    this.title = createText(this, 0, 0, Localization.t(K.JOURNEY_TITLE), {
+      fontSize: '16px',
+      fontFamily: FONT_DISPLAY,
+      color: JOURNEY_PALETTE.glowGold,
+      fontStyle: 'bold',
+      letterSpacing: '0.5px',
+      stroke: JOURNEY_PALETTE.ink,
+      strokeThickness: 1.5,
+    });
     this.title.setOrigin(0.5);
     this.title.setScrollFactor(0);
     this.title.setDepth(DEPTH.UI);

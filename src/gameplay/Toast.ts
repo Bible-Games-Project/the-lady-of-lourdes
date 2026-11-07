@@ -1,28 +1,23 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_HEIGHT, GAME_WIDTH } from '../core/constants';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
 
 /** Brief centered narration/notice bubble, e.g. for locked-location notes. */
 export class Toast {
   private scene: Phaser.Scene;
   private bg: Phaser.GameObjects.Rectangle;
-  private text: Phaser.GameObjects.Text;
+  private text: Phaser.GameObjects.DOMElement;
   private timer: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.bg = scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 76, 10, 10, 0x1c1815, 0.75);
-    this.text = scene.add.text(
-      GAME_WIDTH / 2,
-      GAME_HEIGHT - 76,
-      '',
-      textStyle({
-        fontSize: '12px',
-        color: '#fffaf0',
-        align: 'center',
-        wordWrap: { width: GAME_WIDTH - 100 },
-      }),
-    );
+    this.text = createText(scene, GAME_WIDTH / 2, GAME_HEIGHT - 76, '', {
+      fontSize: '12px',
+      color: '#fffaf0',
+      align: 'center',
+      wordWrap: { width: GAME_WIDTH - 100 },
+    });
     this.text.setOrigin(0.5);
     [this.bg, this.text].forEach((obj) => {
       obj.setScrollFactor(0);
@@ -33,8 +28,7 @@ export class Toast {
 
   show(message: string, duration = 2200): void {
     this.text.setText(message);
-    const bounds = this.text.getBounds();
-    this.bg.setSize(bounds.width + 24, bounds.height + 16);
+    this.bg.setSize(this.text.width + 24, this.text.height + 16);
     this.bg.setVisible(true);
     this.text.setVisible(true);
     this.timer?.remove();

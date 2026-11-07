@@ -10,7 +10,8 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { createButton, type ButtonStyle } from '../ui/Button';
 import { createToggle } from '../ui/Toggle';
 import { createSlider } from '../ui/Slider';
-import { textStyle } from '../ui/text';
+import { createText } from '../ui/text';
+import { restoreSceneDom } from '../core/domPause';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useFullBleedScale, useLetterboxScale } from '../core/scaleMode';
 
@@ -41,6 +42,10 @@ export class SettingsScene extends Phaser.Scene {
   private showingLanguageList = false;
   private confirmDialog!: ConfirmDialog;
   private keyEsc!: Phaser.Input.Keyboard.Key;
+  // `redraw()` wipes the scene via `this.children.removeAll(true)`, but DOM-based text (see
+  // `ui/text.ts`) lives in Phaser's separate DOM container, not `this.children` -- these are never
+  // touched by that call and must be torn down manually or they'd leak/stack on every redraw.
+  private domTexts: Phaser.GameObjects.DOMElement[] = [];
 
   constructor() {
     super(SCENE_KEYS.SETTINGS);
@@ -75,10 +80,14 @@ export class SettingsScene extends Phaser.Scene {
     }
     this.scene.stop();
     this.scene.resume(this.returnTo);
+    const returning = this.scene.get(this.returnTo);
+    if (returning) restoreSceneDom(returning);
   }
 
   private redraw(): void {
     this.children.removeAll(true);
+    this.domTexts.forEach((t) => t.destroy());
+    this.domTexts = [];
     const overlayColor = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.ink).color;
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, overlayColor, 0.6);
 
@@ -87,6 +96,15 @@ export class SettingsScene extends Phaser.Scene {
     } else {
       this.renderMainPanel();
     }
+  }
+
+  /** `createText()` result, tracked in `domTexts` so `redraw()` can tear it down -- see that
+   * field's own doc comment. Every DOM label in this scene must go through this, not `createText`
+   * directly. */
+  private label(x: number, y: number, content: string, style: Parameters<typeof createText>[4]): Phaser.GameObjects.DOMElement {
+    const text = createText(this, x, y, content, style);
+    this.domTexts.push(text);
+    return text;
   }
 
   private panel(cx: number, cy: number, w: number, h: number): void {
@@ -111,16 +129,14 @@ export class SettingsScene extends Phaser.Scene {
     const cy = GAME_HEIGHT / 2;
     this.panel(cx, cy, panelW, panelH);
 
-    this.add
-      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_TITLE), textStyle({ fontSize: '16px', color: HOME_PALETTE.ink, fontStyle: 'bold' }))
-      .setOrigin(0.5);
+    this.label(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_TITLE), { fontSize: '16px', color: HOME_PALETTE.ink, fontStyle: 'bold' }).setOrigin(0.5);
 
     const rowX = cx - panelW / 2 + 20;
     let rowY = cy - panelH / 2 + 44;
-    const labelStyle = textStyle({ fontSize: '12px', color: HOME_PALETTE.ink });
+    const labelStyle = { fontSize: '12px', color: HOME_PALETTE.ink };
 
     // Language.
-    this.add.text(rowX, rowY, Localization.t(K.SETTINGS_LANGUAGE), labelStyle).setOrigin(0, 0.5);
+    this.label(rowX, rowY, Localization.t(K.SETTINGS_LANGUAGE), labelStyle).setOrigin(0, 0.5);
     const currentLanguage = SUPPORTED_LANGUAGES.find((l) => l.code === Localization.getLanguage());
     createButton(
       this,
@@ -139,7 +155,7 @@ export class SettingsScene extends Phaser.Scene {
     rowY += 40;
 
     // Music.
-    this.add.text(rowX, rowY, Localization.t(K.SETTINGS_MUSIC), labelStyle).setOrigin(0, 0.5);
+    this.label(rowX, rowY, Localization.t(K.SETTINGS_MUSIC), labelStyle).setOrigin(0, 0.5);
     const music = SaveData.get().music;
     const musicSlider = createSlider(this, rowX + 160, rowY, panelW - 210, music.volume, (v) => {
       SaveData.setMusicSettings({ volume: v });
@@ -155,7 +171,7 @@ export class SettingsScene extends Phaser.Scene {
     rowY += 34;
 
     // SFX.
-    this.add.text(rowX, rowY, Localization.t(K.SETTINGS_SFX), labelStyle).setOrigin(0, 0.5);
+    this.label(rowX, rowY, Localization.t(K.SETTINGS_SFX), labelStyle).setOrigin(0, 0.5);
     const sfx = SaveData.get().sfx;
     const sfxSlider = createSlider(this, rowX + 160, rowY, panelW - 210, sfx.volume, (v) => {
       SaveData.setSfxSettings({ volume: v });
@@ -169,7 +185,7 @@ export class SettingsScene extends Phaser.Scene {
     rowY += 34;
 
     // Game Dev Mode.
-    this.add.text(rowX, rowY, Localization.t(K.SETTINGS_GAME_DEV_MODE), labelStyle).setOrigin(0, 0.5);
+    this.label(rowX, rowY, Localization.t(K.SETTINGS_GAME_DEV_MODE), labelStyle).setOrigin(0, 0.5);
     createToggle(this, rowX + 90, rowY, SaveData.get().gameDevMode, (v) => {
       SaveData.setGameDevMode(v);
     });
@@ -210,9 +226,7 @@ export class SettingsScene extends Phaser.Scene {
     const cy = GAME_HEIGHT / 2;
     this.panel(cx, cy, panelW, panelH);
 
-    this.add
-      .text(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_LANGUAGE), textStyle({ fontSize: '16px', color: HOME_PALETTE.ink, fontStyle: 'bold' }))
-      .setOrigin(0.5);
+    this.label(cx, cy - panelH / 2 + 16, Localization.t(K.SETTINGS_LANGUAGE), { fontSize: '16px', color: HOME_PALETTE.ink, fontStyle: 'bold' }).setOrigin(0.5);
 
     const rows = Math.ceil(SUPPORTED_LANGUAGES.length / 2);
     const colW = panelW / 2;

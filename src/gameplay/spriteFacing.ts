@@ -1,5 +1,5 @@
 import type { CharacterId } from '../pixelart/characters';
-import { textureKeyFor, walkAnimKeyFor } from '../pixelart/characters';
+import { idleAnimKeyFor, textureKeyFor, walkAnimKeyFor } from '../pixelart/characters';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -44,8 +44,15 @@ export function updateFacingAnimation(
       sprite.play(animKey, true);
     }
   } else {
-    sprite.anims.stop();
-    sprite.setTexture(textureKeyFor(id, textureFacing, null));
+    const idleKey = idleAnimKeyFor(id, textureFacing);
+    if (sprite.scene.anims.exists(idleKey)) {
+      if (sprite.anims.currentAnim?.key !== idleKey || !sprite.anims.isPlaying) {
+        sprite.play(idleKey, true);
+      }
+    } else {
+      sprite.anims.stop();
+      sprite.setTexture(textureKeyFor(id, textureFacing, null));
+    }
   }
 
   return facing;

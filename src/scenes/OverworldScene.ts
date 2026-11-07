@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
-import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE } from '../core/constants';
+import { SCENE_KEYS, GAME_WIDTH, GAME_HEIGHT, DEPTH, TILE_SIZE, PIXEL_SCALE } from '../core/constants';
 import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
-import { TILE, TILESET_KEY } from '../pixelart/tiles';
-import { LOURDES_GRASS_KEY, LOURDES_GRASS_TILE_SIZE } from '../assets/terrain/lourdesGrass';
+import { LOURDES_GROUND_ROCKY_KEY, LOURDES_GROUND_ROCKY_TILE_SIZE } from '../assets/terrain/lourdesGroundRocky';
 import { SISTER_FRAME_HEIGHT } from '../assets/npc/sisterSprite';
 import { JEANNE_FRAME_HEIGHT } from '../assets/npc/jeanneSprite';
 import { BOY_FRAME_HEIGHT } from '../assets/npc/boySprite';
@@ -17,7 +16,7 @@ import { GameplayTopBar } from '../gameplay/GameplayTopBar';
 import { InteractionPrompt } from '../gameplay/InteractionPrompt';
 import { Caption } from '../gameplay/Caption';
 import { RosaryUI } from '../gameplay/RosaryUI';
-import { updateFollowerPosition } from '../gameplay/Follower';
+import { PositionTrail, updateFollowerFromTrail } from '../gameplay/Follower';
 import { LeaderNpc, type Point } from '../gameplay/LeaderNpc';
 import { WanderNpc } from '../gameplay/WanderNpc';
 import { MissionManager } from '../gameplay/MissionManager';
@@ -26,26 +25,36 @@ import { boyAmbientDialogue } from '../data/dialogue/ambientDialogue';
 import { createBlocker, depthForY, isNear } from '../gameplay/utils';
 import { fadeToScene } from '../gameplay/transitions';
 import { wait, tweenPromise } from '../gameplay/async';
-import { textStyle } from '../ui/text';
-import { useLetterboxScale } from '../core/scaleMode';
+import { createText } from '../ui/text';
+import { useLetterboxScale, setCameraBounds } from '../core/scaleMode';
+import { DEV_MODE } from '../core/devMode';
+import { MapEditorPanel } from '../editor/MapEditorPanel';
+import { createEditorAssetInstance, type EditorAssetRegistry } from '../editor/editorAssetRender';
+import {
+  type EditorZoneRegistry,
+  type EditorZoneColliderRegistry,
+  addZoneCollider as addEditorZoneCollider,
+} from '../editor/editorZoneRender';
+import { loadEditorMapData } from '../editor/mapEditorData';
 
 // One continuous map: the open field around the grotto sits north (low rows), the Gave de Pau
 // bends from a vertical arm (east of the grotto) into a horizontal arm that forms the town's
 // northern edge (crossable only via the bridge), and the town sits south of that.
 //
-// **The single large painted town PNG has been removed entirely** (per an explicit "I do NOT want
-// to use the single large town/city PNG anymore" ask — a full reversal of that earlier approach,
-// not a patch on top of it). The area south of the river is now plain open grass — the same grass
-// layer built in `buildTerrain()` below, completely untouched — with no buildings, no fountain, and
-// no colliders placed in it. Individual building PNGs (each with a filename that is the sole source
-// of truth for what it is and where it goes — never guessed from the artwork) will be added here
-// one at a time in a future pass; until then this whole band is intentionally empty.
+// **The map starts with only base ground/terrain -- no hand-placed buildings, river, bridge, or
+// grotto PNGs.** All of those (the single large town PNG, then later the individual building PNGs,
+// the real river+bridge art, and the grotto rock) were tried and then explicitly removed at the
+// maintainer's request so the in-game map editor (DEV_MODE-only, see `core/devMode.ts`) is the one
+// place everything gets placed from now on. The area south of the river is plain open grass — the
+// same grass layer built in `buildTerrain()` below — with no buildings and no colliders placed in
+// it; the vertical river arm beside the grotto (tile-stamped, part of `buildTerrain()`) stays, since
+// it's core map/ground geometry the scripted ford-crossing mission beat depends on, not a
+// hand-placed asset.
 //
-// **The north cluster (path, river, grotto, ford) keeps the eastward shift (OFFSET_X_TILES) left
-// over from when it was aligned under the removed town PNG's own painted path opening.** That
-// cluster — and every coordinate below that adds OFFSET_X_TILES/OFFSET_X — is explicitly out of
-// scope for this cleanup (the river/Massabielle/grotto system must stay untouched), so the offset
-// stays exactly as-is rather than being re-tuned for a town layout that doesn't exist yet.
+// **The north cluster's eastward shift (OFFSET_X_TILES) is unrelated to any of the above removals**
+// and is explicitly out of scope here (the river/Massabielle/grotto *position* system must stay
+// untouched) — every coordinate below that adds OFFSET_X_TILES/OFFSET_X keeps this offset exactly
+// as-is.
 const OFFSET_X_TILES = 45;
 const OFFSET_X = OFFSET_X_TILES * TILE_SIZE;
 
@@ -54,8 +63,19 @@ const ROWS = 168;
 const MAP_W = COLS * TILE_SIZE;
 const MAP_H = ROWS * TILE_SIZE;
 
+/**
+ * How far out the map editor's mouse-wheel zoom (`setupEditorCameraPan()`) can go — the zoom level
+ * at which the *shorter* logical-viewport axis exactly matches the map's own corresponding axis, so
+ * the whole map (both its width and height) fits inside the camera's view at once, with a small 10%
+ * margin so the map's own edges don't sit flush against the screen edge. Derived from the map's
+ * actual size rather than a hardcoded number, so this keeps working correctly if `COLS`/`ROWS` ever
+ * change. Multiplied by `PIXEL_SCALE` since every scene's baseline camera zoom is now that factor,
+ * not `1` (see `constants.ts`'s own doc comment on `PIXEL_SCALE`) -- without this, "fit the whole
+ * map" would actually zoom out to *half* the map filling the view instead.
+ */
+const EDITOR_MIN_ZOOM = Math.min(GAME_WIDTH / MAP_W, GAME_HEIGHT / MAP_H) * 0.9 * PIXEL_SCALE;
+
 const PATH_CENTER = 32 + OFFSET_X_TILES;
-const PATH_HALF_WIDTH = 1;
 
 // Vertical arm of the river, beside the grotto. Fully blocks the player — the only crossing is
 // the scripted ford cutscene, where the companions wade across and Bernadette stays behind.
@@ -65,10 +85,6 @@ const RIVER_V_END = 42 + OFFSET_X_TILES;
 // Horizontal arm, the town's river boundary. Only passable through the bridge at the path.
 const RIVER_H_TOP = 61;
 const RIVER_H_BOTTOM = 64;
-
-const FIELD_PATH_START_ROW = 18;
-const CAVE_FLOOR_COL_START = 7 + OFFSET_X_TILES;
-const CAVE_FLOOR_COL_END = 13 + OFFSET_X_TILES;
 
 // Kept well clear of the map edges so the screen-pinned HUD never covers it.
 const GROTTO_X = 256 + OFFSET_X;
@@ -87,13 +103,16 @@ const FIREWOOD_SPOTS = [
 const FORD_ZONE = new Phaser.Geom.Rectangle((RIVER_V_START - 4) * TILE_SIZE, GROTTO_Y - 8, 4 * TILE_SIZE, 280);
 const FAR_BANK = { sisterX: RIVER_V_END * TILE_SIZE + 24, friendX: RIVER_V_END * TILE_SIZE + 44, y: 544 };
 
-// Le Cachot's connection point to `CachotScene` — a placeholder location, not derived from any
-// building art, since the removed town PNG's own Le Cachot crop is gone and no replacement PNG has
-// been supplied yet (its filename is what will identify and place it — see the doc comment above).
-// Sits on open grass just south of the bridge so the player's own scene-start spawn and the
-// interior enter/exit plumbing (`buildCachotEntrance()` below, `CachotScene.ts`'s `fromCachot` exit)
-// keep working end-to-end in the meantime. Once the real Le Cachot exterior PNG arrives, this should
-// move to sit at that art's own door instead of staying here.
+// Temporary, per the maintainer ("de momento haz invisible a la hermana, que me distrae"): keeps
+// the sister hidden while Bernadette's walk animation is being reviewed. Her story logic (following,
+// river crossing, wandering) keeps running untouched -- only her visibility is suppressed. Set to
+// `false` to bring her back.
+const HIDE_SISTER_TEMPORARILY = true;
+
+// Le Cachot's connection point to `CachotScene` — independent of whatever building art (if any)
+// the map editor currently has placed over it, so the enter/exit plumbing
+// (`buildCachotEntrance()` below, `CachotScene.ts`'s `fromCachot` exit) never needs to change no
+// matter what's visually standing here.
 const CACHOT_DOOR_X = PATH_CENTER * TILE_SIZE;
 const CACHOT_DOOR_Y = (RIVER_H_BOTTOM + 10) * TILE_SIZE;
 
@@ -138,6 +157,13 @@ const DECOR: Array<{ key: string; col: number; row: number }> = [{ key: PROP_KEY
 
 const INTERACT_RADIUS = 26;
 
+// Clearance above an NPC's own head (not just an arbitrary offset from her feet) before the "Talk"
+// prompt's own bottom edge -- see `InteractionPrompt.ts`: its text origin is (0.5, 1), so the (x,y)
+// passed in is the label's own *bottom*. The old calls below used flat offsets (-26 for Jeanne,
+// -20 for the boy) well short of their real frame heights, so the label's bottom rendered partway
+// down their bodies instead of above their heads -- "the Talk box... partially covers them."
+const PROMPT_CLEARANCE = 6;
+
 // The shared NPC ground shadow (`SHADOW_KEY`) is sized for the ~28px-tall procedural character
 // grid (`personTemplate.ts`) every other NpcActor still uses. The sister's real-art frames are
 // SISTER_FRAME_HEIGHT (~36px, 85% of Bernadette's own 42px) tall -- scale her shadow by the same
@@ -157,6 +183,9 @@ type Phase = 'explore' | 'crossing' | 'hush' | 'apparition' | 'praying' | 'endin
 
 interface OverworldSceneData {
   fromCachot?: boolean;
+  /** Entered from `HomeScene`'s "Map Editor" button (DEV_MODE-only) rather than real gameplay --
+   * see `editorViewMode`'s own doc comment below for what this changes. */
+  editorMode?: boolean;
 }
 
 export class OverworldScene extends Phaser.Scene {
@@ -188,12 +217,53 @@ export class OverworldScene extends Phaser.Scene {
   private cachotDoorZone!: Phaser.Geom.Rectangle;
   private colliderBodies: (Phaser.Types.Physics.Arcade.ImageWithStaticBody | Phaser.GameObjects.Zone)[] = [];
 
-  // True-float camera scroll accumulator for the hand-rolled follow in `updateCameraFollow()` --
-  // see that method's own doc comment for why this can't just be `camera.startFollow()`.
-  private camScrollX = 0;
-  private camScrollY = 0;
+  // Whatever the map editor (dev-mode-only, see `core/devMode.ts`) has saved -- loaded here
+  // unconditionally (a saved layout, including a BLOCKED zone's real collision, is part of the map
+  // every player sees/is bound by, not an editor-only artifact) and additive only: none of this
+  // reads or touches the river/NPC waypoints above. The editing UI/input itself (`MapEditorPanel`,
+  // constructed below -- not kept as a field, since nothing here needs to call back into it once
+  // built; it owns its own lifetime via the scene's input listeners) is the only piece actually
+  // gated by DEV_MODE.
+  private editorAssets: EditorAssetRegistry = new Map();
+  private editorZones: EditorZoneRegistry = new Map();
+  private editorZoneColliders: EditorZoneColliderRegistry = new Map();
+
+  /**
+   * True only when this scene was entered via `HomeScene`'s "Map Editor" button (`data.editorMode`,
+   * itself only ever offered when `DEV_MODE` is on). Unlike the editor panel's own open/closed state
+   * -- which toggles off the moment the maintainer hits "Close editor" to get an unobstructed look
+   * at the map -- this stays true for the rest of the scene's lifetime once set, so free-look
+   * pan/zoom and "no player control" don't silently revert just because the side panel itself is
+   * hidden. The
+   * normal-gameplay path (reached via Le Cachot's door, `fromCachot`) never sets this, so none of
+   * the behavior gated on it changes anything about real play.
+   */
+  private editorViewMode = false;
+
+  // Free-look camera panning, map-editor-only (see `setupEditorCameraPan()`) -- right-mouse-button
+  // drag, tracked as the pointer position and camera scroll at drag-start so pan math is a plain
+  // delta regardless of how long the drag has been going. `null` whenever no such drag is active.
+  private editorPanStart: { pointerX: number; pointerY: number; scrollX: number; scrollY: number } | null = null;
 
   private phase: Phase = 'explore';
+
+  // Set every frame from `update()`'s own `uiBlocked` (dialogue/tasks/settings open), read back by
+  // the POST_UPDATE-driven follower listener below so a dialogue opening still freezes her walk
+  // animation immediately, same as before that listener moved off the inline `update()` call --
+  // see that listener's own doc comment for why it had to move at all.
+  private sisterFollowBlocked = false;
+
+  // Records the player's own real position/facing/moving history every frame -- see
+  // `Follower.ts#PositionTrail`'s own doc comment for why the sister's follow logic is now built
+  // on replaying this instead of easing toward a live target, and for why the lag is counted in
+  // frames rather than milliseconds. `SISTER_LAG_FRAMES` (16 frames ≈ 270ms at 60fps) matches the
+  // settling distance the previous lerp-based follow converged to at its old 0.06-per-60fps-frame
+  // factor (time constant τ = -1 / (60 * ln(1 - 0.06)) ≈ 0.27s), so she keeps roughly the same
+  // visual following distance on ordinary steady-refresh-rate hardware, arrived at by an entirely
+  // different (and exact, not approximated) mechanism. 60 frames of history is comfortably more
+  // than this lag will ever need.
+  private readonly playerTrail = new PositionTrail(60);
+  private static readonly SISTER_LAG_FRAMES = 16;
 
   constructor() {
     super(SCENE_KEYS.OVERWORLD);
@@ -201,6 +271,10 @@ export class OverworldScene extends Phaser.Scene {
 
   create(data: OverworldSceneData): void {
     useLetterboxScale(this);
+    // See `updateCameraFollow()`'s doc comment: with roundPixels on, Phaser floors the scroll to
+    // whole *world* pixels (PIXEL_SCALE framebuffer pixels at once), so the ground advanced in
+    // uneven jumps -- and on diagonals the two axes jumped out of step ("marea").
+    this.cameras.main.setRoundPixels(false);
     this.cameras.main.fadeIn(400, 0, 0, 0);
     this.phase = 'explore';
     this.friendMet = false;
@@ -212,6 +286,11 @@ export class OverworldScene extends Phaser.Scene {
     this.boyDialogueJustClosed = false;
     this.colliderBodies = [];
     this.firewoodSprites = [];
+    this.editorAssets = new Map();
+    this.editorZones = new Map();
+    this.editorZoneColliders = new Map();
+    this.editorPanStart = null;
+    this.editorViewMode = DEV_MODE && !!data.editorMode;
 
     this.buildTerrain();
 
@@ -222,14 +301,45 @@ export class OverworldScene extends Phaser.Scene {
     const startY = data.fromCachot ? CACHOT_DOOR_Y - 24 : CACHOT_DOOR_Y + 30;
     this.player = new Player(this, CACHOT_DOOR_X, startY, this.touch);
 
+    // Every previously hand-placed building/river/bridge/grotto PNG has been removed on purpose
+    // (see git history around this comment) -- the map now starts as clean ground/terrain only, so
+    // the map editor (DEV_MODE-only, below) is the sole way anything gets placed on it from here.
+    // The door interaction zone (buildCachotEntrance()) and the mission-critical ford river tiles
+    // (buildTerrain()) are unrelated to those removed PNGs and stay untouched.
     this.buildCachotEntrance();
     this.buildDecor();
-    this.buildGrotto();
     this.buildFirewood();
+    this.loadEditorPlacedAssets();
+    this.loadEditorZones();
+    // The editor's own UI/input is the only DEV_MODE-gated piece here -- the assets/zones it has
+    // already saved were just loaded above unconditionally (see loadEditorPlacedAssets()/
+    // loadEditorZones()'s own doc comments) and stay in effect for every player regardless of this
+    // flag; only the ability to add/move/paint more of them is gated. Only constructed (and
+    // auto-opened) in `editorViewMode` now -- reached exclusively via `HomeScene`'s "Map Editor"
+    // button, never from the normal Le Cachot gameplay entrance -- since there is no longer any
+    // in-scene toggle button to open it from the real-gameplay path.
+    if (this.editorViewMode) {
+      new MapEditorPanel(this, this.editorAssets, this.colliderBodies, this.editorZones, this.editorZoneColliders);
+    }
     this.physics.add.collider(this.player, this.colliderBodies);
 
-    this.sister = new NpcActor(this, CACHOT_DOOR_X - 30, CACHOT_DOOR_Y + 26, 'sister', 'down', SISTER_SHADOW_SCALE);
-    this.sister.setVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
+    // `breathingEnabled: true` and `targetHeight: SISTER_FRAME_HEIGHT` are both new here: her
+    // sprite sheet was swapped for a second, much-higher-resolution supply ("hazle la animacion de
+    // respirar") -- see `sisterSprite.ts`'s own doc comment and `NpcActor`'s `targetHeight` param
+    // for why the sprite needs to be told how tall to actually render at now.
+    this.sister = new NpcActor(
+      this,
+      CACHOT_DOOR_X - 30,
+      CACHOT_DOOR_Y + 26,
+      'sister',
+      'down',
+      SISTER_SHADOW_SCALE,
+      true,
+      DEPTH.ACTORS,
+      true,
+      SISTER_FRAME_HEIGHT,
+    );
+    this.setSisterVisible(MissionManager.hasReachedObjective(MISSION_01_OBJECTIVES.GATHER_FIREWOOD));
     this.sister.setDepth(depthForY(this.sister.y, DEPTH.ACTORS));
     // Permanently non-colliding: the maintainer reported physically bumping into her while she
     // trails behind Bernadette (before the river crossing, she's following close; after, she's
@@ -283,16 +393,32 @@ export class OverworldScene extends Phaser.Scene {
     // never leaves an NPC stuck against a wall it can't route around.
     this.physics.add.collider(npcs, this.colliderBodies);
 
-    this.cameras.main.setBounds(0, 0, MAP_W, MAP_H);
+    setCameraBounds(this, 0, 0, MAP_W, MAP_H);
     this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
-    // Hand-rolled follow (`updateCameraFollow()`, ticked from `update()`) instead of
-    // `camera.startFollow(this.player, true, 0.12, 0.12)` -- see that method's own doc comment for
-    // the real bug this works around (diagonal-movement camera shake). Seed the accumulator here so
-    // the very first frame doesn't lerp in from scroll (0,0).
-    this.camScrollX = this.player.x - this.cameras.main.width / 2;
-    this.camScrollY = this.player.y - this.cameras.main.height / 2;
-    this.cameras.main.scrollX = Math.floor(this.camScrollX);
-    this.cameras.main.scrollY = Math.floor(this.camScrollY);
+    // Seed the camera on the player immediately so the very first rendered frame is already
+    // centered on her, instead of starting at scroll (0, 0) for one frame. See
+    // `updateCameraFollow()`'s own doc comment for why this is a direct assignment, not a lerp,
+    // and why it is wired to `POST_UPDATE` below rather than called inline from `update()`.
+    this.updateCameraFollow();
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, () => {
+      if (!this.editorViewMode) this.updateCameraFollow();
+    });
+    // Wired to POST_UPDATE so every recorded sample is the player's fully-synced, final-for-this
+    // -frame position (reading `this.player.x`/`.y` from inside `update()` would bake a one
+    // -physics-tick-stale position into the trail every frame -- see `Follower.ts#PositionTrail`'s
+    // own doc comment). Recording runs unconditionally, regardless of `this.phase`, so the trail
+    // always has continuous history ready the moment the sister needs it (e.g. right after the
+    // river-crossing phase change) instead of replaying a stale gap.
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, () => {
+      this.playerTrail.record(this.player.x, this.player.y, this.player.getFacing(), this.player.isMoving());
+      if (this.phase === 'explore') {
+        updateFollowerFromTrail(this.sister, this.playerTrail, OverworldScene.SISTER_LAG_FRAMES, -16, 4, DEPTH.ACTORS);
+        // Position replay continues even while blocked (same as the old follower's behavior) --
+        // only the walk animation freezes, matching the `uiBlocked` block further down in
+        // `update()` which does the same for the friend/boy's own wander updates.
+        if (this.sisterFollowBlocked) this.sister.setMoving(false);
+      }
+    });
 
     this.dialogueBox = new DialogueBox(this);
     this.tasksPanel = new TasksPanel(this);
@@ -302,126 +428,81 @@ export class OverworldScene extends Phaser.Scene {
 
     this.keyE = this.input.keyboard!.addKey('E');
     this.touch.onInteract = () => this.tryInteract();
+
+    this.setupEditorCameraPan();
   }
 
   private tileToPixelCenter(col: number, row: number): { x: number; y: number } {
     return { x: col * TILE_SIZE, y: row * TILE_SIZE };
   }
 
+  /**
+   * The whole map is ONE continuous ground layer, tiled edge-to-edge, and nothing else -- no dirt
+   * path, no cave floor, no water/riverbank tiles. All of that (the organic dirt trail, the
+   * grotto's cave-floor patch, the vertical river arm's WATER/RIVERBANK tiles) was explicitly
+   * removed at the maintainer's request: "the desired starting map should be extremely simple: one
+   * continuous grass/ground layer covering the entire map, nothing else" -- everything else gets
+   * placed by hand through the map editor from here on, the same as the buildings/horizontal-river
+   * /bridge/grotto PNGs removed in an earlier pass (see this file's own header comment).
+   *
+   * The active tile is `lourdesGroundRocky.ts` (a rocky/dry-grass terrain) -- the third ground
+   * texture the maintainer has supplied, each one swapped in to compare without deleting the
+   * previous ones (`lourdesGrass.ts`, the original green grass; `lourdesGroundTan.ts`, a
+   * tan/terracotta tile tried first): "dile que le mando otro tile de terreno, que no borre los
+   * otros, pero que use este para todo el mapa de lourdes, quiero ver como queda este". If swapping
+   * which one is active again, change only the import/key/tile-size above and the
+   * `addTilesetImage()`/background-color calls below -- nothing else about this method depends on
+   * which ground texture is active.
+   *
+   * The scripted river-crossing mission beat (`FORD_ZONE`, `checkFordZone()`/
+   * `beginRiverCrossing()`) still depends on the vertical arm being physically impassable except
+   * via that cutscene -- that is gameplay/mission logic, not terrain art, and the maintainer was
+   * explicit that gameplay/mission logic must stay untouched. So the invisible blocking collider
+   * over that same rectangle stays exactly where it was; only its visible WATER/RIVERBANK tile
+   * graphics are gone. The area now just looks like the active ground tile, the same as everywhere
+   * else, until the maintainer places a river there again through the editor.
+   */
   private buildTerrain(): void {
     // The map (416x928) is narrower than the camera's logical viewport (480 wide) at zoom 1, so
     // this color shows as a thin strip past the map's left/right edges whenever the camera is
-    // horizontally centered or further — sampled as the new grass texture's own average color
-    // (was '#8fae6b', matching the old olive-green procedural grass) so that strip blends in
-    // instead of reading as a visible seam next to the new artwork.
-    this.cameras.main.setBackgroundColor('#38737b');
+    // horizontally centered or further — sampled as the active ground texture's own average color
+    // (`Image.mean()` over `lourdes_ground_rocky.png`) so that strip blends in instead of reading as
+    // a visible seam next to the artwork.
+    this.cameras.main.setBackgroundColor('#cc7b5e');
 
-    // The maintainer's own real grass artwork (see assets/terrain/lourdesGrass.ts) is its own
-    // Tilemap layer covering the whole map, laid down *underneath* the tilemap layer built below
-    // (a real Tilemap, not a TileSprite — see that file's comment for why TileSprite renders this
-    // visibly soft in WebGL mode regardless of texture filtering). Every cell in the layer built
-    // below defaults to `-1` (Phaser's "empty" tile — renders nothing, lets this show through)
-    // unless explicitly overwritten with a path/water/stone/cave tile further down, which is how
-    // grass now differs from every other terrain type: it's a base layer of its own, not a tile
-    // placed per-cell like `TILE.GRASS_A`/`GRASS_B` used to be.
-    const grassCols = Math.ceil(MAP_W / LOURDES_GRASS_TILE_SIZE);
-    const grassRows = Math.ceil(MAP_H / LOURDES_GRASS_TILE_SIZE);
+    const grassCols = Math.ceil(MAP_W / LOURDES_GROUND_ROCKY_TILE_SIZE);
+    const grassRows = Math.ceil(MAP_H / LOURDES_GROUND_ROCKY_TILE_SIZE);
     const grassData: number[][] = Array.from({ length: grassRows }, () => Array.from({ length: grassCols }, () => 0));
     const grassMap = this.make.tilemap({
       data: grassData,
-      tileWidth: LOURDES_GRASS_TILE_SIZE,
-      tileHeight: LOURDES_GRASS_TILE_SIZE,
+      tileWidth: LOURDES_GROUND_ROCKY_TILE_SIZE,
+      tileHeight: LOURDES_GROUND_ROCKY_TILE_SIZE,
     });
     const grassTileset = grassMap.addTilesetImage(
-      'lourdesGrassTile',
-      LOURDES_GRASS_KEY,
-      LOURDES_GRASS_TILE_SIZE,
-      LOURDES_GRASS_TILE_SIZE,
+      'lourdesGroundTile',
+      LOURDES_GROUND_ROCKY_KEY,
+      LOURDES_GROUND_ROCKY_TILE_SIZE,
+      LOURDES_GROUND_ROCKY_TILE_SIZE,
       0,
       0,
     )!;
     const grassLayer = grassMap.createLayer(0, grassTileset, 0, 0)!;
     grassLayer.setDepth(DEPTH.GROUND - 1);
+    // Phaser culls tiles against `camera.worldView`, which it computes assuming the camera's origin
+    // is its centre -- this game pins it to the top-left (`core/scaleMode.ts`), so worldView sits
+    // `(width - width/zoom) / 2` px off. At PIXEL_SCALE 2 the default one-tile cull padding happened
+    // to cover that; at 4 it doesn't, and most of the ground went missing. The whole map is only
+    // 3x6 of these 157px tiles, so just draw them all.
+    grassLayer.setSkipCull(true);
 
-    const data: number[][] = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => -1));
-
-    // Organic dirt trail instead of a fixed-width rectangular strip of path tiles -- "I don't like
-    // the current square path design... more natural, organic ground/path appearance." A per-row
-    // half-width that wanders between 1-3 tiles (a deterministic wave, not true randomness, same
-    // "no noise" convention `pixelart/tiles.ts`'s own SPECKLE table already uses for texture) gives
-    // the trail an uneven, worn-footpath edge; `edgeIsWorn()` then randomly (again, deterministically)
-    // thins individual tiles right at that wandering edge so it never reads as a clean rectangle at
-    // any width. Still the same `TILE.DIRT_PATH`/`TILE.STONE_PATH` textures -- no new art -- just
-    // applied with an irregular footprint instead of a straight-sided band.
-    const organicHalfWidthAt = (along: number): number => {
-      const wave = Math.sin(along * 0.31) + Math.sin(along * 0.12 + 1.6) * 0.6;
-      return wave > 0.5 ? 3 : wave > -0.4 ? 2 : 1;
-    };
-    const edgeIsWorn = (a: number, b: number): boolean => (a * 7 + b * 13) % 5 === 0;
-    const stampOrganicPathRows = (rowStart: number, rowEnd: number, center: number, tile: number): void => {
-      for (let r = rowStart; r <= rowEnd; r++) {
-        const halfWidth = organicHalfWidthAt(r);
-        for (let c = center - halfWidth; c <= center + halfWidth; c++) {
-          if (c < 0 || c >= COLS) continue;
-          const atEdge = c === center - halfWidth || c === center + halfWidth;
-          if (atEdge && edgeIsWorn(r, c)) continue;
-          data[r][c] = tile;
-        }
-      }
-    };
-
-    stampOrganicPathRows(FIELD_PATH_START_ROW, RIVER_H_TOP - 2, PATH_CENTER, TILE.DIRT_PATH);
-
-    const grottoRow = GROTTO_Y / TILE_SIZE;
-    for (let r = grottoRow - 1; r <= grottoRow + 3; r++) {
-      for (let c = CAVE_FLOOR_COL_START; c <= CAVE_FLOOR_COL_END; c++) data[r][c] = TILE.CAVE_FLOOR;
-    }
-
-    // Vertical arm, beside the grotto — spans the whole field down to where it joins the bend.
-    for (let r = 0; r < RIVER_H_BOTTOM + 2; r++) {
-      data[r][RIVER_V_START - 1] = TILE.RIVERBANK;
-      data[r][RIVER_V_END + 1] = TILE.RIVERBANK;
-      for (let c = RIVER_V_START; c <= RIVER_V_END; c++) data[r][c] = TILE.WATER;
-    }
-
-    // Horizontal arm — the river bends to form the town's northern edge.
-    for (let c = 0; c < COLS; c++) {
-      data[RIVER_H_TOP - 1][c] = TILE.RIVERBANK;
-      data[RIVER_H_BOTTOM + 1][c] = TILE.RIVERBANK;
-      for (let r = RIVER_H_TOP; r <= RIVER_H_BOTTOM; r++) data[r][c] = TILE.WATER;
-    }
-    // The bridge itself stays a plain fixed-width stone crossing (it's a built structure, not a
-    // worn footpath -- an organic edge here would just look like a crumbling bridge) at the
-    // original PATH_HALF_WIDTH, not the wider organic trail either side of it.
-    for (let r = RIVER_H_TOP - 1; r <= RIVER_H_BOTTOM + 1; r++) {
-      for (let c = PATH_CENTER - PATH_HALF_WIDTH; c <= PATH_CENTER + PATH_HALF_WIDTH; c++) data[r][c] = TILE.STONE_PATH;
-    }
-
-    // No tile-stamped path south of the bridge: that whole band is now plain open grass (the town
-    // PNG that used to occupy it has been removed entirely — see this file's header comment), with
-    // no path art to place until individual building PNGs (and whatever paths their own layout
-    // calls for) are added there. The organic dirt trail above is still used for the open field
-    // north of the river, which is untouched.
-
-    const map = this.make.tilemap({ data, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE });
-    const tileset = map.addTilesetImage('tiles', TILESET_KEY, TILE_SIZE, TILE_SIZE, 0, 0)!;
-    const layer = map.createLayer(0, tileset, 0, 0)!;
-    layer.setDepth(DEPTH.GROUND);
-
-    // The vertical arm is never crossable on foot — only the scripted ford cutscene crosses it.
+    // The vertical arm beside the grotto is never crossable on foot -- only the scripted ford
+    // cutscene crosses it (see this method's own doc comment above for why the collider stays even
+    // though the water tiles that used to mark it visually are gone).
     const vRiverX = ((RIVER_V_START + RIVER_V_END + 1) / 2) * TILE_SIZE;
     const vRiverHeight = (RIVER_H_BOTTOM + 2) * TILE_SIZE;
     this.colliderBodies.push(
       createBlocker(this, vRiverX, vRiverHeight / 2, (RIVER_V_END - RIVER_V_START + 1) * TILE_SIZE, vRiverHeight),
     );
-
-    // The horizontal arm is only crossable through the bridge gap at the path.
-    const hRiverY = ((RIVER_H_TOP + RIVER_H_BOTTOM + 1) / 2) * TILE_SIZE;
-    const hRiverHeight = (RIVER_H_BOTTOM - RIVER_H_TOP + 1) * TILE_SIZE;
-    const bridgeLeft = (PATH_CENTER - PATH_HALF_WIDTH) * TILE_SIZE;
-    const bridgeRight = (PATH_CENTER + PATH_HALF_WIDTH + 1) * TILE_SIZE;
-    this.colliderBodies.push(createBlocker(this, bridgeLeft / 2, hRiverY, bridgeLeft, hRiverHeight));
-    this.colliderBodies.push(createBlocker(this, (bridgeRight + MAP_W) / 2, hRiverY, MAP_W - bridgeRight, hRiverHeight));
   }
 
   private addStaticProp(key: string, x: number, y: number, width: number, height: number, colliderHeight?: number): void {
@@ -435,17 +516,15 @@ export class OverworldScene extends Phaser.Scene {
 
   /**
    * Placeholder Le Cachot entrance: no image, no collider — just the interaction zone (and its
-   * label) that keeps the enter/exit connection to `CachotScene.ts` working while no exterior
-   * building art has been supplied yet (see `CACHOT_DOOR_X/Y`'s own doc comment above). Once the
-   * real Le Cachot PNG is identified by filename, this should be replaced with a real per-building
-   * placement (image + footprint collider + depth anchor, one collider per solid part, matching
-   * whatever new buildings get built alongside it) rather than extended in place.
+   * label) that keeps the enter/exit connection to `CachotScene.ts` working regardless of whatever
+   * exterior building art the map editor does or doesn't currently have placed over it (see
+   * `CACHOT_DOOR_X/Y`'s own doc comment above) -- this zone is deliberately independent of any
+   * visual building asset.
    */
   private buildCachotEntrance(): void {
     const halfWidth = 24;
     this.cachotDoorZone = new Phaser.Geom.Rectangle(CACHOT_DOOR_X - halfWidth, CACHOT_DOOR_Y - 20, halfWidth * 2, 40);
-    this.add
-      .text(CACHOT_DOOR_X, CACHOT_DOOR_Y - 26, Localization.t(K.LOCATION_CACHOT), textStyle({ fontSize: '9px', color: '#3a3226' }))
+    createText(this, CACHOT_DOOR_X, CACHOT_DOOR_Y - 26, Localization.t(K.LOCATION_CACHOT), { fontSize: '9px', color: '#3a3226' })
       .setOrigin(0.5)
       .setDepth(DEPTH.OVERLAY_LOW);
   }
@@ -457,15 +536,6 @@ export class OverworldScene extends Phaser.Scene {
     });
   }
 
-  private buildGrotto(): void {
-    const image = this.add.image(GROTTO_X, GROTTO_Y, PROP_KEYS.GROTTO).setOrigin(0, 0);
-    image.setDepth(depthForY(GROTTO_Y + 64, DEPTH.ACTORS));
-    const body = this.physics.add.staticImage(GROTTO_X + 48, GROTTO_Y + 40, PROP_KEYS.GROTTO);
-    body.setVisible(false);
-    body.body.setSize(90, 50);
-    this.colliderBodies.push(body);
-  }
-
   private buildFirewood(): void {
     FIREWOOD_SPOTS.forEach(({ x, y }) => {
       const sprite = this.add.image(x, y, PROP_KEYS.FIREWOOD).setOrigin(0.5, 1);
@@ -475,54 +545,187 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * Replaces `camera.startFollow(this.player, true, 0.12, 0.12)`. That built-in combination has a
-   * real bug, traced into Phaser's own `Camera.preRender()` source: every frame it lerps
-   * `scrollX`/`scrollY` toward the player, floors the result for crisp pixel-art rendering, then
-   * **writes that floored value back into `this.scrollX`/`scrollY`** — so next frame's lerp starts
-   * from an already-truncated base, not the true continuous position, instead of only rounding for
-   * that one frame's render. The up-to-1px truncation error this leaves behind is imperceptible on
-   * a single axis (movement along just X or Y is monotonic, so the eye reads it as ordinary
-   * pixel-stepping), but moving diagonally truncates *both* axes independently every frame, and the
-   * two uncorrelated up-to-1px errors compound into a visible shake instead of a smooth diagonal
-   * pan — confirmed live: reverting to the stock `startFollow()` reproduces the shake, and it's
-   * gone again with this method in place, in both cases with movement/collision fully unchanged.
+   * Renders whatever the map editor (`editor/MapEditorPanel.ts`, DEV_MODE-only) has saved to
+   * `localStorage` -- called unconditionally, regardless of `DEV_MODE`, since a saved layout is part
+   * of the map every player should see, not an editor-only artifact. Purely additive: this reads
+   * `editor/mapEditorData.ts`'s own storage key and only ever adds new `Image`s into `editorAssets`.
+   * Buildings and decorations (trees) also get a small base-footprint collider automatically, via
+   * `createEditorAssetInstance()` -> `applyInstanceCollider()` (`editorAssetRender.ts`) -- a hand
+   * -painted BLOCKED zone is still the only way to block any *other* layer (ground/river).
+   */
+  private loadEditorPlacedAssets(): void {
+    const saved = loadEditorMapData();
+    saved.assets.forEach((data) => {
+      const instance = createEditorAssetInstance(this, data, this.colliderBodies);
+      if (instance) this.editorAssets.set(data.id, instance);
+    });
+  }
+
+  /**
+   * Loads whatever zones the map editor has saved, into `editorZones` -- called unconditionally,
+   * regardless of `DEV_MODE`, same reasoning as `loadEditorPlacedAssets()` above. This one matters
+   * even more to get right: a saved BLOCKED zone's collider is real gameplay collision (the only
+   * thing stopping a player from walking through it), not just a visual, so it must exist whether or
+   * not `MapEditorPanel` itself was ever constructed this session. WALKABLE/WALK_BEHIND zones are
+   * loaded into the registry too (so `MapEditorPanel`, if it exists, has the full saved set to work
+   * with) but get no collider -- see `MapEditorPanel.ts`'s own doc comment on why those two are
+   * editor-visualization-only.
+   */
+  private loadEditorZones(): void {
+    const saved = loadEditorMapData();
+    saved.zones.forEach((zone) => {
+      this.editorZones.set(zone.id, zone);
+      if (zone.type === 'blocked') addEditorZoneCollider(this, zone, this.editorZoneColliders, this.colliderBodies);
+    });
+  }
+
+  private setSisterVisible(visible: boolean): void {
+    this.sister.setVisible(visible && !HIDE_SISTER_TEMPORARILY);
+  }
+
+  /**
+   * Rebuilt from scratch (see git history for the previous lerp-based accumulator this replaced,
+   * and the several rounds of jitter it was fixed for and chased but never fully resolved).
    *
-   * Fix: keep our own float accumulator (`camScrollX`/`camScrollY`) that Phaser's floored value
-   * never gets written back into — lerp *that*, and only floor a throwaway copy into
-   * `camera.scrollX`/`scrollY` for this one frame's render. `camera.roundPixels` stays on globally
-   * (from `pixelArt: true`) throughout, so every sprite/tile still renders pixel-snapped exactly as
-   * before — that per-object snapping reads each object's own true float position fresh every
-   * frame (see `MultiPipeline.js`'s own `camera.roundPixels` check) and was never the buggy part.
-   * `camera.setBounds()`'s own edge clamping still applies for free: Phaser's `preRender()` always
-   * runs `clampX`/`clampY` on `this.scrollX`/`scrollY` after this method sets them, follow or not.
+   * This is a direct, un-smoothed follow: the camera is centered on the player's exact world
+   * position every single frame, with no interpolation, no accumulator, and no separate rounding
+   * step of its own:
+   *
+   *   scrollX = player.x - C          (C = cam.width / 2 / cam.zoom, constant while not in the
+   *                                     editor's free-look/zoom mode)
+   *   on-screen x = (player.x - scrollX) * zoom = (player.x - (player.x - C)) * zoom = C * zoom
+   *
+   * `player.x` cancels out of its own follow formula exactly, every frame, regardless of her
+   * speed or the current frame's `delta` -- there is no gap left to round, lerp, or drift,
+   * because the quantity actually being rendered is a constant, not a converging approximation
+   * of one. But that is only true if `player.x`/`.y` here is the SAME value the renderer is about
+   * to draw her at -- which is where the *actual* root cause of every previous round of jitter
+   * turned out to be, confirmed directly from Phaser's own source (`Body.postUpdate()` in
+   * `phaser/src/physics/arcade/Body.js`) and by measurement, not assumption:
+   *
+   * Arcade Physics does NOT write a moving body's new position into `gameObject.x`/`.y`
+   * immediately. `World.update()` (which computes it) runs on the Scene's `UPDATE` event, which
+   * fires *before* `scene.update()` -- but `World.postUpdate()`, which is what actually does
+   * `gameObject.x += dx; gameObject.y += dy` for every body, is wired to the Scene's
+   * `POST_UPDATE` event, which fires *after* `scene.update()` returns. So any code that reads
+   * `this.player.x`/`.y` from inside `update()` -- this method's own previous callers included --
+   * is reading a value that is one physics tick *stale* relative to what Arcade is about to write
+   * into the sprite moments later that same frame. Measured directly (logging `player.y` and this
+   * method's computed scroll at the `update`, `postupdate`, and `POST_UPDATE` Scene events
+   * separately during a plain constant-velocity walk): the gap this method's formula produces is
+   * NOT a constant when evaluated from inside `update()` (exactly the small, bounded,
+   * back-and-forth pattern every previous round kept reporting, previously misattributed to
+   * sub-pixel speed/zoom rounding) but IS a single bit-exact constant, every single frame with
+   * zero variation, once evaluated after Arcade's own `POST_UPDATE` sync. Fixed by moving this
+   * method's call (see `create()` above) off the inline `update()` call it used to be and onto a
+   * `Phaser.Scenes.Events.POST_UPDATE` listener instead -- same formula, same method, just read at
+   * the point in the frame where `player.x`/`.y` is actually final.
+   *
+   * `camera.roundPixels` is turned OFF for this scene's camera (see `create()`), even though
+   * `pixelArt: true` turns it on globally: Phaser's `Camera.preRender()` then `Math.floor()`s the
+   * scroll to whole WORLD pixels -- `PIXEL_SCALE` framebuffer pixels per step -- so at walking
+   * speed the ground advanced in uneven jumps (measured from the framebuffer: 3,3,5,3,3,7 px per
+   * frame walking right, and on diagonals the x and y jumps landing on different frames, which is
+   * what read as dizzying). Without the floor the scroll is exact, so she stays exactly centred and
+   * the world moves by the same amount every frame; NEAREST tiles still sample whole texels, just
+   * at the framebuffer's much finer pixel grid. `camera.setBounds()`'s own edge clamping still
+   * applies for free:
+   * Phaser's `preRender()` always runs `clampX`/`clampY` on `scrollX`/`scrollY` after this method
+   * sets them. The one tradeoff versus the old lerp is the soft "camera lag" feel on direction
+   * changes is gone -- the camera now tracks her instantly and exactly, which is what a simple,
+   * stable follow means.
    */
   private updateCameraFollow(): void {
     const cam = this.cameras.main;
-    const lerp = 0.12;
-    const targetX = this.player.x - cam.width / 2;
-    const targetY = this.player.y - cam.height / 2;
-    this.camScrollX = Phaser.Math.Linear(this.camScrollX, targetX, lerp);
-    this.camScrollY = Phaser.Math.Linear(this.camScrollY, targetY, lerp);
-    cam.scrollX = Math.floor(this.camScrollX);
-    cam.scrollY = Math.floor(this.camScrollY);
+    cam.scrollX = this.player.x - cam.width / 2 / cam.zoom;
+    cam.scrollY = this.player.y - cam.height / 2 / cam.zoom;
   }
 
-  update(time: number, delta: number): void {
-    const uiBlocked = this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
+  /**
+   * Free-look camera panning and mouse-wheel zoom for the map editor view only (`editorViewMode`,
+   * reached exclusively via `HomeScene`'s "Map Editor" button) — lets the maintainer inspect/edit
+   * any part of the map without walking Bernadette there first. Pan is right-mouse-button drag,
+   * deliberately: every existing editor interaction (placing an asset, painting a walkable/walk
+   * -behind/blocked zone, selecting/dragging a placed instance — see `MapEditorPanel.ts`) is
+   * left-click-based, so panning on the *other* button can never conflict with any of that click
+   * routing, and needs no changes to the panel itself. Wired up unconditionally here (not gated on
+   * DEV_MODE at the listener level) since `editorViewMode` is always `false` outside DEV_MODE (see
+   * its own doc comment above), making every handler below a no-op automatically.
+   *
+   * Gated on `editorViewMode` itself, not `mapEditorPanel?.isOpen()` -- the maintainer can hit
+   * "Close editor" to hide the side panel and see the full map unobstructed while keeping free-look
+   * pan/zoom and "no player control" exactly as they were; see `editorViewMode`'s own doc comment
+   * for why that distinction matters.
+   *
+   * The `POST_UPDATE`-driven `updateCameraFollow()` call (see `create()`) checks `editorViewMode`
+   * itself and no-ops for the rest of the scene's life once it's set, so this manual scroll/zoom
+   * isn't fought/overwritten every frame by the player-follow — the player is never controllable
+   * in this mode (`uiBlocked`), so there is no "current" player position to catch up to anyway.
+   */
+  private setupEditorCameraPan(): void {
+    this.input.mouse?.disableContextMenu();
+
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!this.editorViewMode || !pointer.rightButtonDown()) return;
+      this.editorPanStart = {
+        pointerX: pointer.x,
+        pointerY: pointer.y,
+        scrollX: this.cameras.main.scrollX,
+        scrollY: this.cameras.main.scrollY,
+      };
+    });
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!this.editorPanStart) return;
+      if (!this.editorViewMode || !pointer.rightButtonDown()) {
+        this.editorPanStart = null;
+        return;
+      }
+      // `pointer.x`/`.y` are raw canvas-pixel deltas, not camera/zoom-aware -- `/ zoom` converts
+      // back to world-space scroll units; see `constants.ts`'s own doc comment on `PIXEL_SCALE`.
+      const zoom = this.cameras.main.zoom;
+      const dx = (pointer.x - this.editorPanStart.pointerX) / zoom;
+      const dy = (pointer.y - this.editorPanStart.pointerY) / zoom;
+      // Phaser's own `Camera#preRender()` clamps this to `setBounds()` every frame regardless of
+      // how scroll got set (see `updateCameraFollow()`'s own doc comment above) -- panning past the
+      // map edge is automatically clamped back, no manual bounds math needed here.
+      this.cameras.main.scrollX = this.editorPanStart.scrollX - dx;
+      this.cameras.main.scrollY = this.editorPanStart.scrollY - dy;
+    });
+
+    this.input.on('pointerup', () => {
+      this.editorPanStart = null;
+    });
+
+    // Mouse-wheel zoom, centered on the camera's own current center (not the cursor) -- simplest
+    // behavior that satisfies "con la ruleta haga zoom in y out", and consistent with the plain
+    // drag-pan above rather than adding cursor-relative re-centering math. Same (pointer,
+    // currentlyOver, deltaX, deltaY, deltaZ) 5-param signature as `ApparitionJourneyScene.ts`'s own
+    // wheel handler -- see that file's doc comment for why deltaY (not deltaX) is the 4th param.
+    // Lower bound is `EDITOR_MIN_ZOOM` (fits the *entire* map in view, per the maintainer's explicit
+    // "que pueda llegar a ver todo el mapa") rather than an arbitrary fixed floor like the original
+    // 0.5 -- that earlier value only ever showed a small fraction of the 2560x2688 map at once.
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _currentlyOver: unknown, _deltaX: number, deltaY: number) => {
+      if (!this.editorViewMode) return;
+      // Both the step and the upper bound are scaled by PIXEL_SCALE, same reasoning as
+      // EDITOR_MIN_ZOOM above -- every zoom value in this scene now lives in a range centered on
+      // PIXEL_SCALE instead of 1, so a step/cap written for the old range would feel half as
+      // responsive and cap out at effectively half the old maximum zoom-in.
+      const zoomStep = (deltaY > 0 ? -0.1 : 0.1) * PIXEL_SCALE;
+      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom + zoomStep, EDITOR_MIN_ZOOM, 3 * PIXEL_SCALE);
+    });
+  }
+
+  update(_time: number, delta: number): void {
+    // The `MapEditorPanel` (see `create()`) is only ever constructed when `editorViewMode` is
+    // already true, so that first clause alone already covers every case its own `isOpen()` used
+    // to need to be checked for separately here.
+    const uiBlocked = this.editorViewMode || this.dialogueBox.isActive() || this.tasksPanel.isOpen() || this.topBar.isBlocking();
+    this.sisterFollowBlocked = uiBlocked;
     const exploring = this.phase === 'explore' && !uiBlocked;
     this.player.setLocked(!exploring);
-    this.player.update(time);
-    this.updateCameraFollow();
+    this.player.update();
 
-    // Gated to 'explore' only -- this used to run every frame regardless of phase, which meant it
-    // kept easing the sister toward the (now-locked) player position and re-setting her facing
-    // *during* the scripted river-crossing tween below, fighting that tween's own position/facing
-    // every frame and producing the wrong-direction walk animation the crossing was supposed to
-    // show. `this.leader` (Jeanne's own leader-follow logic) already had this same guard; the
-    // sister's follower update just hadn't been given it.
-    if (this.phase === 'explore') {
-      updateFollowerPosition(this.sister, this.player.x - 16, this.player.y + 4, time, DEPTH.ACTORS);
-    }
     if (this.friendMet && this.phase === 'explore' && this.leader) {
       this.leader.update(this.player, delta, DEPTH.ACTORS);
     }
@@ -576,7 +779,7 @@ export class OverworldScene extends Phaser.Scene {
     const player = this.player;
 
     if (!this.friendMet && isNear(player, this.friend, INTERACT_RADIUS)) {
-      this.interactionPrompt.showAt(this.friend.x, this.friend.y - 26, Localization.t(K.INTERACT_TALK));
+      this.interactionPrompt.showAt(this.friend.x, this.friend.y - JEANNE_FRAME_HEIGHT - PROMPT_CLEARANCE, Localization.t(K.INTERACT_TALK));
       return;
     }
 
@@ -584,7 +787,7 @@ export class OverworldScene extends Phaser.Scene {
     // Cachot door/building prompts below only because it's the more specific/closer target when both
     // happen to be in range at once; in practice the two are far enough apart that this rarely matters.
     if (isNear(player, this.boy, INTERACT_RADIUS)) {
-      this.interactionPrompt.showAt(this.boy.x, this.boy.y - 20, Localization.t(K.INTERACT_TALK));
+      this.interactionPrompt.showAt(this.boy.x, this.boy.y - BOY_FRAME_HEIGHT - PROMPT_CLEARANCE, Localization.t(K.INTERACT_TALK));
       return;
     }
 
@@ -635,7 +838,7 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.friendMet && isNear(player, this.friend, INTERACT_RADIUS)) {
       this.dialogueBox.start(mission01Dialogue.friendMeet, () => {
         this.friendMet = true;
-        this.sister.setVisible(true);
+        this.setSisterVisible(true);
         this.leader = new LeaderNpc(this.friend, JEANNE_WAYPOINTS, JEANNE_SPEED, JEANNE_MAX_DISTANCE, JEANNE_RESUME_DISTANCE);
         MissionManager.advanceObjective();
         this.tasksPanel.notifyNewObjective();
@@ -718,7 +921,6 @@ export class OverworldScene extends Phaser.Scene {
 
   private async runHushSequence(): Promise<void> {
     const narration = new Caption(this, 40, {
-      fontFamily: 'Georgia, serif',
       fontSize: '13px',
       color: '#fffaf0',
       align: 'center',
@@ -766,13 +968,13 @@ export class OverworldScene extends Phaser.Scene {
     const dateCaption = new Caption(
       this,
       GAME_HEIGHT / 2 - 12,
-      { fontFamily: 'Georgia, serif', fontSize: '16px', color: '#fffaf0', align: 'center' },
+      { fontSize: '16px', color: '#fffaf0', align: 'center' },
       DEPTH.FADE + 1,
     );
     const titleCaption = new Caption(
       this,
       GAME_HEIGHT / 2 + 14,
-      { fontFamily: 'Georgia, serif', fontSize: '13px', color: '#c9beac', align: 'center' },
+      { fontSize: '13px', color: '#c9beac', align: 'center' },
       DEPTH.FADE + 1,
     );
 

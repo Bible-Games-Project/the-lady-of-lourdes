@@ -47,7 +47,10 @@ export function createSlider(
   track.setInteractive({ useHandCursor: true });
   track.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     if (!enabled) return;
-    setFromSceneX(pointer.x);
+    // `pointer.worldX` (not raw `pointer.x`, which is canvas-pixel space, not camera/zoom-aware)
+    // to match the scene-space `x` this track/handle are positioned in -- see `constants.ts`'s own
+    // doc comment on `PIXEL_SCALE` for why raw pointer coordinates need this conversion now.
+    setFromSceneX(pointer.worldX);
   });
 
   return {

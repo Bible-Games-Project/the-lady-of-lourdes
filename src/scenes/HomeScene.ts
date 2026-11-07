@@ -11,9 +11,11 @@ import { HOME_PALETTE } from '../pixelart/homePalette';
 import { HOME_FX_KEYS } from '../pixelart/homeEffects';
 import { UI_KEYS, UI_HOME_BUTTON_SLICE } from '../pixelart/ui';
 import { createButton } from '../ui/Button';
-import { textStyle } from '../ui/text';
+import { createText, FONT_DISPLAY, FONT_BODY } from '../ui/text';
+import { hideSceneDom } from '../core/domPause';
 import { useFullBleedScale } from '../core/scaleMode';
 import { onSafeAreaChange } from '../core/safeArea';
+import { DEV_MODE } from '../core/devMode';
 
 /** Candle positions in the *original* (1672x941) artwork — see toGameXY(). */
 const CANDLE_SOURCE_POINTS: Array<{ x: number; y: number }> = [
@@ -118,11 +120,41 @@ export class HomeScene extends Phaser.Scene {
     const buttonStyle = {
       textureKey: UI_KEYS.HOME_BUTTON,
       border: UI_HOME_BUTTON_SLICE.border,
-      textColor: HOME_PALETTE.cream,
+      // No stroke (see `buildTitle()`'s doc comment for why) — this near-white fill against the
+      // button panel's own dark-stone texture gives enough contrast without one.
+      textColor: HOME_PALETTE.gearHighlight,
+      fontFamily: FONT_BODY,
       hoverTint: 0xfff8e8,
       panelAlpha: 0.34,
-      textStroke: { color: HOME_PALETTE.ink, thickness: 3 },
     };
+
+    // Developer-only entry point into the map editor (DEV_MODE-only, see `core/devMode.ts`) --
+    // moved here from a toggle button inside the Lourdes map itself per the maintainer's explicit
+    // request ("quiero que el boton de map editor este en Home (no en lourdes)"). Starts
+    // `OverworldScene` in `editorMode` (see that file's own doc comment on `editorViewMode`):
+    // the map is shown with free-look pan/zoom and no player control, the editor panel opens
+    // itself immediately, and anything saved there is the same layout every real playthrough of
+    // Lourdes loads. Small and tucked into the top-left corner, mirroring the settings gear on the
+    // opposite corner, so it stays out of the way of the painted illustration -- not localized
+    // (plain English), matching every other label inside the editor itself, since this is a
+    // developer tool, not player-facing UI.
+    let editorButton: Phaser.GameObjects.Container | null = null;
+    if (DEV_MODE) {
+      editorButton = createButton(
+        this,
+        0,
+        0,
+        70,
+        18,
+        'Map Editor',
+        () => {
+          this.scene.start(SCENE_KEYS.OVERWORLD, { editorMode: true });
+        },
+        { ...buttonStyle, fontSize: '8px' },
+        { x: 0, y: 0 },
+      );
+      editorButton.setDepth(DEPTH.UI);
+    }
 
     // Anchored by its own left/bottom *edge* (not its center) — see `ui/Button.ts`'s `origin`
     // param — so it can be positioned as `screenLeftEdge + margin` / `screenBottomEdge - margin`
@@ -184,6 +216,7 @@ export class HomeScene extends Phaser.Scene {
     const margin = 16;
     onSafeAreaChange(this, (insets) => {
       gear.setPosition(GAME_WIDTH - insets.right - margin, insets.top + margin);
+      editorButton?.setPosition(insets.left + margin, insets.top + margin);
 
       const bottomEdge = GAME_HEIGHT - insets.bottom - margin;
       playButton.setPosition(insets.left + margin, bottomEdge);
@@ -460,24 +493,33 @@ export class HomeScene extends Phaser.Scene {
   }
 
   /**
-   * Same design as before — cream fill, hard-edge pixel shadow, gold rule — but with a full
-   * dark outline added around the fill this time. A single offset shadow only helps where the
-   * shadow itself lands on something lighter; over a busy photo (bright sky at the top here)
-   * that leaves some of the letterforms with too little contrast. An all-around stroke holds up
-   * regardless of what's behind it.
+   * Fifth take on this title (see AGENTS.md and `ui/text.ts`'s own doc comment on `FONT_DISPLAY`
+   * for the earlier rounds' full history). Round four's storybook slab-serif (matched to a
+   * maintainer-supplied reference image) was itself rejected on further reflection: "lo quiero un
+   * poco más pixelart, que sea leible super bien, pero un poquitín más pixelart" -- back toward a
+   * pixel aesthetic, but legible and good-looking, not the blocky monospace pixel font from the
+   * second round that was rejected for clashing with the painted background. `FONT_DISPLAY` (now
+   * Google Fonts "Pixelify Sans", shared with `ApparitionJourneyScene.ts`'s own title -- see
+   * `ui/text.ts`) is a genuine pixel-grid font with soft/rounded terminals built for exactly this
+   * "pixel art but still legible" brief. Cream fill + a warm brown outline carries over from round
+   * four (still reads cleanly against this screen's mixed light/dark artwork), but the soft
+   * painterly drop shadow does not -- replaced with a tight zero-blur offset shadow, the classic
+   * pixel-text drop-shadow look, since a soft blur reads as painterly/illustrated rather than
+   * pixel-art. Position/size/layout stays exactly as every previous round left it.
    */
   private buildTitle(): void {
-    const style = textStyle({
-      fontSize: '20px',
+    const style = {
+      fontSize: '24px',
+      fontFamily: FONT_DISPLAY,
       color: HOME_PALETTE.cream,
-      fontStyle: 'bold',
-      stroke: HOME_PALETTE.ink,
-      strokeThickness: 4,
-    });
-    const shadowStyle = textStyle({ fontSize: '20px', color: HOME_PALETTE.ink, fontStyle: 'bold' });
+      fontStyle: 'bold' as const,
+      stroke: HOME_PALETTE.trunkDark,
+      strokeThickness: 2,
+      textShadow: '2px 2px 0 rgba(29, 23, 18, 0.55)',
+      letterSpacing: '0.5px',
+    };
 
-    this.add.text(GAME_WIDTH / 2 + 2, 28, 'The Lady of Lourdes', shadowStyle).setOrigin(0.5).setDepth(6);
-    this.add.text(GAME_WIDTH / 2, 26, 'The Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
+    createText(this, GAME_WIDTH / 2, 24, 'Our Lady of Lourdes', style).setOrigin(0.5).setDepth(6);
 
     const ruleY = 40;
     const ruleHalfWidth = 60;
@@ -490,6 +532,7 @@ export class HomeScene extends Phaser.Scene {
   }
 
   private openSettings(): void {
+    hideSceneDom(this);
     this.scene.launch(SCENE_KEYS.SETTINGS, { returnTo: SCENE_KEYS.HOME });
     this.scene.pause();
   }

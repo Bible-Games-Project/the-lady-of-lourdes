@@ -4,7 +4,7 @@ import { Localization } from '../core/i18n/Localization';
 import { K } from '../core/i18n/keys';
 import { UI_KEYS, UI_PANEL_SLICE } from '../pixelart/ui';
 import { MissionManager } from './MissionManager';
-import { textStyle, INK } from '../ui/text';
+import { createText, INK } from '../ui/text';
 
 /**
  * Compact "TASKS" button + checklist panel, replacing a persistent
@@ -14,7 +14,8 @@ import { textStyle, INK } from '../ui/text';
 export class TasksPanel {
   private scene: Phaser.Scene;
   private button: Phaser.GameObjects.Container;
-  private notice: Phaser.GameObjects.Text;
+  private buttonLabel: Phaser.GameObjects.DOMElement;
+  private notice: Phaser.GameObjects.DOMElement;
   private noticeTimer: Phaser.Time.TimerEvent | null = null;
   private panelObjects: Phaser.GameObjects.GameObject[] = [];
   private open = false;
@@ -35,16 +36,32 @@ export class TasksPanel {
       UI_PANEL_SLICE.border,
     );
     const icon = scene.add.image(-30, 0, UI_KEYS.SCROLL).setScale(0.8);
-    const label = scene.add.text(-14, 0, Localization.t(K.TASKS_BUTTON), textStyle({ fontSize: '11px', color: INK.dark, fontStyle: 'bold' })).setOrigin(0, 0.5);
 
-    this.button = scene.add.container(GAME_WIDTH / 2, GAME_HEIGHT - 16, [bg, icon, label]);
+    this.button = scene.add.container(GAME_WIDTH / 2, GAME_HEIGHT - 16, [bg, icon]);
     this.button.setSize(92, 22);
     this.button.setScrollFactor(0);
     this.button.setDepth(DEPTH.UI);
     this.button.setInteractive({ useHandCursor: true });
     this.button.on('pointerup', () => this.toggle());
 
-    this.notice = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40, '', textStyle({ fontSize: '11px', color: '#fffaf0', backgroundColor: '#3a3226cc', padding: { x: 6, y: 3 } }));
+    // Independent DOM element, not nested in `this.button` (see `ui/Button.ts`'s own doc comment on
+    // why DOM Elements don't follow a Container's transform) -- safe here since this button's
+    // position is set once above and never changes afterward.
+    this.buttonLabel = createText(scene, GAME_WIDTH / 2 - 14, GAME_HEIGHT - 16, Localization.t(K.TASKS_BUTTON), {
+      fontSize: '11px',
+      color: INK.dark,
+      fontStyle: 'bold',
+    });
+    this.buttonLabel.setOrigin(0, 0.5);
+    this.buttonLabel.setScrollFactor(0);
+    this.buttonLabel.setDepth(DEPTH.UI);
+
+    this.notice = createText(scene, GAME_WIDTH / 2, GAME_HEIGHT - 40, '', {
+      fontSize: '11px',
+      color: '#fffaf0',
+      backgroundColor: '#3a3226cc',
+      padding: { x: 6, y: 3 },
+    });
     this.notice.setOrigin(0.5);
     this.notice.setScrollFactor(0);
     this.notice.setDepth(DEPTH.UI);
@@ -99,20 +116,18 @@ export class TasksPanel {
     panel.setScrollFactor(0);
     panel.setDepth(DEPTH.DIALOGUE + 1);
 
-    const title = this.scene.add.text(cx, cy - panelH / 2 + 14, Localization.t(K.TASKS_TITLE), textStyle({ fontSize: '13px', color: INK.dark, fontStyle: 'bold' }));
+    const title = createText(this.scene, cx, cy - panelH / 2 + 14, Localization.t(K.TASKS_TITLE), { fontSize: '13px', color: INK.dark, fontStyle: 'bold' });
     title.setOrigin(0.5);
     title.setScrollFactor(0);
     title.setDepth(DEPTH.DIALOGUE + 1);
 
-    const lines: Phaser.GameObjects.Text[] = entries.map((entry, i) => {
+    const lines: Phaser.GameObjects.DOMElement[] = entries.map((entry, i) => {
       const mark = entry.completed ? '✓' : '□';
       const color = entry.completed ? '#5f7d45' : entry.current ? INK.dark : '#8a7a5a';
-      const text = this.scene.add.text(
-        cx - panelW / 2 + 16,
-        cy - panelH / 2 + 32 + i * lineH,
-        `${mark} ${entry.text}`,
-        textStyle({ fontSize: '11px', color }),
-      );
+      const text = createText(this.scene, cx - panelW / 2 + 16, cy - panelH / 2 + 32 + i * lineH, `${mark} ${entry.text}`, {
+        fontSize: '11px',
+        color,
+      });
       text.setScrollFactor(0);
       text.setDepth(DEPTH.DIALOGUE + 1);
       return text;
@@ -143,6 +158,7 @@ export class TasksPanel {
   destroy(): void {
     this.close();
     this.button.destroy();
+    this.buttonLabel.destroy();
     this.notice.destroy();
     this.noticeTimer?.remove();
   }

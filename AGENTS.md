@@ -2302,3 +2302,1555 @@ each character's own existing smile, subtly darkened) and again live in the actu
 by forcing the portrait texture directly (`portrait_boy_talk`/`portrait_sister_talk`) and
 screenshotting — both show a small, correctly-positioned, non-round mouth in the real rendering
 pipeline, not just in the isolated source crop.
+
+### Le Cachot: Louise re-tuned again, the wall collision actually fixed, and a new town-terrain layer
+
+A follow-up on the previous round's Louise placement and the Cachot resize, plus the first real
+asset for the individual-buildings rework.
+
+**Louise, moved down and left.** The previous position (native x600-640,y270-300) still had her
+feet well above the wall's own real floor line, so her fixed-height sprite visibly floated over the
+shelf/wall art instead of standing on the floor — confirmed by a full-room screenshot, not assumed.
+Moved to native x535-575,y325-355 (`MOTHER_SPAWN` in `CachotScene.ts`): left of the table's own
+grown collider (starts x590), well south of the wall's floor line and the shelf's own bottom edge,
+onto real open floor. This is the same "42-world-px character vs. the room's own halved 118px
+height" tension flagged in the previous round's notes — a full-height character standing anywhere
+in this room's own top ~42px (which includes the whole window) cannot have *zero* head overlap into
+the space above the room without also standing outside "beside the window" entirely. The new
+position cuts that overlap from ~8.7 world-px down to ~2.2, confirmed via a before/after screenshot
+rather than left as a guess.
+
+**The "walking through the walls" bug, actually fixed.** Root cause: `WALL_FOOTPRINTS`' back-wall
+collider (`nativeFrac(20, 15, 895, 218)`) correctly matched the wall's own drawn floor line, but
+that same "character taller than the room" tension meant Bernadette's feet could still stop close
+enough to it that her head rendered visibly above the room artwork's own top edge — reading as
+"walking on/through the wall" even though her collision box was, technically, being blocked
+correctly the whole time. Solved by working out exactly how far south the collider needs to reach
+so the *player's own* collision-body geometry (`Player.ts`'s `body.setSize(7,11)`/`setOffset(4,30)`,
+not guessed) stops her feet at a y where her sprite's own top edge lands at/below the room's top —
+y256 (native), replacing y218. Still the same single flat band shape, still only the wall's own real
+footprint, not a room-spanning rectangle — confirmed live (walked straight up from an open-floor
+spawn, screenshot before/after) that her head no longer visibly pokes above the room.
+
+**Louise's portrait, fixed for real this time.** Two separate, real bugs found by measuring against
+her own neutral pose (not assumed from the doc comment's stated intent):
+- `blink` only filled 2 of the 4 rows the *left* eye actually occupies (a mismeasured box), leaving
+  the other 2 rows still showing the open iris — an asymmetric, interlaced mask that read as
+  "blinking looks strange, closes from the side." The *right* eye's box was reasonably correct.
+  Rebuilt from scratch: an `R − B` per-pixel scan inside a tight box per eye (her iris/sclera-shadow
+  pixels are measurably cooler than the surrounding warm skin — same separation principle
+  `bernadettePortrait.ts`'s own blink edit uses), replacing only the pixels that scan actually finds
+  (not a filled rectangle — follows each eye's own organic shape, avoiding the hair strands at both
+  temples that contaminated an earlier wider-box attempt), donor skin resampled per-column from a
+  row below, thin lid-line drawn only across the columns each eye's own mask touched. Both eyes now
+  close fully, symmetrically, and only within their own pixels.
+- `talk` had the same "open-mouth ellipse painted in the wrong place" bug already found and fixed
+  for Antoine/Toinette — hers sat at native y38-39 while her real closed-lip line is at y37, inside
+  her chin-shadow rather than on her mouth. Fixed the same way: darken her own existing lip pixels
+  (measured, not guessed) in place by a fixed 0.6x multiplier.
+- Deliberately did **not** touch `PortraitAnimator.ts`'s shared blink-timing logic (randomized
+  1.8-4.6s intervals, ~16% chance of a quick double-blink) even though the ask also mentioned blink
+  *frequency* — that timer is shared by every character's portrait (Bernadette, Jeanne, the boy,
+  Toinette, Louise all use the same instance/logic), and the broken, asymmetric blink *art* itself
+  is the far more likely cause of "blinks too much and looks strange": a glitchy-looking blink draws
+  attention to itself and reads as more frequent than it is, and no other character's blink rate has
+  ever been flagged. If Louise's blinking still reads as too frequent after this art fix, that would
+  need a separate, explicit ask before touching shared timing code every other portrait depends on.
+
+**New town-terrain layer.** The maintainer's first real asset for the rebuilt individual-buildings
+town (`assets/terrain/lourdesTownTerrain.ts` / `lourdes_town_terrain.png`) — an organic dirt/clearing
+patch, supplied as a WebP with genuine alpha transparency, cropped tight to its own alpha bounding
+box (1536x1024 native -> 1518x1004) and converted straight to PNG, no redraw. Continuous-tone painted
+art (soft edges, color-noise texture) like the former town PNG and the Home background, so it needs
+LINEAR filtering — added to `BootScene.ts`'s existing filter list. Placed in `OverworldScene.ts`
+(`buildTownTerrain()`) as the layer order the maintainer specified: grass (untouched, `DEPTH.GROUND
+- 1`) -> this terrain (`DEPTH.GROUND - 0.5`, the same depth the old town-PNG ground layer used) ->
+buildings (not yet supplied). Displayed at a "slight" 1.2x native enlargement, centered horizontally
+on `CACHOT_DOOR_X`/`PATH_CENTER` (the same anchor every other town landmark in this file already
+uses), with its own top edge kept a clear ~2-tile gap below the river's southern bank so it never
+visually touches, let alone covers, the river. No collider — purely decorative ground art; buildings
+placed on it later get their own footprint colliders the same way every other building in this game
+already does. Verified live via screenshot at the river/terrain boundary (clear gap, no overlap) and
+zoomed out over the whole patch (comfortably below the river, plenty of surface for future buildings).
+
+**Individual building PNGs: re-confirmed, still genuinely absent.** Searched the full repository
+(every `.png`/`.webp`/`.jpg` file, plus a name-based search for "house"/"building"/"manor"/"church"/
+"mill"/"presbytery"/etc.) — the only art-asset addition this round is the terrain layer above; zero
+building files exist anywhere in the working tree. Not omitted, not overlooked — genuinely not
+present yet. Nothing invented or placeholder-substituted in their place, per explicit instruction.
+
+### Louise nudged down again, NPC "Talk" prompts fixed, Toinette's mouth/diagonal-facing fixed, and a deep dive into the diagonal-movement "shake" report
+
+**Louise:** a further small, deliberate nudge (+20 native px down, x unchanged) per a "still
+slightly too high" follow-up — see `MOTHER_SPAWN`'s own doc comment for the exact before/after.
+
+**NPC "Talk" prompt covering the NPC.** Root cause: `InteractionPrompt`'s text has origin `(0.5,
+1)`, so the `(x, y)` passed to `showAt()` is the label's own *bottom* edge, and every call site
+(Jeanne, the boy, Louise) used a flat, guessed offset (`-26`, `-20`, `-26`) well short of that
+character's real frame height (42, 34, 42) — so the label's bottom rendered partway down the
+character's body/face rather than above their head. Fixed by computing each offset as that
+character's own `*_FRAME_HEIGHT` constant plus a small fixed clearance (`PROMPT_CLEARANCE = 6`),
+added to both `OverworldScene.ts` (Jeanne, the boy) and `CachotScene.ts` (Louise). Fixing Louise's
+specifically surfaced a second-order issue unique to Le Cachot's own tiny room: with full clearance
+applied, her label rose high enough to overlap the narration caption above the room (`buildNarration()`)
+— text sitting on top of other text. Solved with a one-line clamp
+(`Math.max(computedY, ROOM_OFFSET_Y)`) so the label never rises above the room's own top edge,
+confirmed via screenshot to read cleanly above her head with the narration fully legible again.
+
+**Toinette's talk mouth, fixed a third time — this time by checking the *visual result*, not just
+the pixel measurement.** The previous round's fix (darkening native y38-39) measured a real lip
+row correctly, but at this portrait's actual 58x67 display size that row sits close enough to the
+nostril shadow just above it (y35-36, with only one mostly-untouched buffer row) that darkening it
+read as "the mouth merged into the nose" — confirmed by rendering old-vs-new at *realistic* display
+scale side by side (not just an exaggerated zoom, which had hidden the problem the first time).
+Her lips actually span native y37-42 with two natural dark bands separated by a bright highlight
+row (y40, the lower lip's own catch-light): y38-39 is the closed upper-lip seam (too close to the
+nose to safely darken further), y41-42 is the lower lip's own bottom shadow, a comfortable 5-6 rows
+clear of the nostrils. This pass leaves y38-39 completely untouched and darkens only y41-42 instead
+— still her own real lip pixels, just the part of her mouth with genuine visual clearance from her
+nose. **Lesson for any future portrait mouth fix**: verify the result at the real ~9-10x display
+scale the dialogue box actually uses, not only a 20-24x diagnostic zoom — a fix that measures
+correctly can still read wrong once nearby features (the nose, in this case) are visible at actual
+scale.
+
+**Toinette's diagonal movement flickering into the side pose.** Root cause:
+`Follower.ts#updateFollowerPosition` (which drives her while trailing Bernadette) had its own
+inline facing logic — `if (abs(dx) > abs(dy)) side else vertical` — which picks whichever axis's
+raw distance-to-target happens to be larger *that single frame*. During genuine diagonal following
+the two rarely sit at a clean 45°, so that comparison flips essentially at random frame-to-frame,
+visibly flickering her into the side pose mid-diagonal-walk. Fixed by reimplementing the same
+"prefer vertical on any diagonal" rule `Player.ts` already uses for Bernadette herself (via
+`spriteFacing.ts`'s `preferVerticalOnDiagonal` flag, not reachable from here directly since
+`Follower.ts` drives `NpcActor.setFacing()` rather than a raw `Sprite`): side pose only when
+movement is on a single axis, back/front unconditionally on any diagonal, using a small
+`AXIS_MOVE_THRESHOLD` (1px) rather than a strict `!== 0` check since `dx`/`dy` here are easing
+deltas that are almost never exactly zero. Verified live across up-left, down-right, down-left,
+up-right, pure-right, and pure-down chases — diagonals lock cleanly to back/front with no side-pose
+flicker, cardinal directions unaffected.
+
+**Diagonal camera/movement "shake" — investigated in depth again, no further code change made.**
+Re-confirmed the camera fix from two rounds ago (`OverworldScene.ts#updateCameraFollow()`, the
+private float accumulator immune to Phaser's own floor-and-persist bug) is still fully intact and
+unmodified. Went considerably deeper this time to find any *additional* cause:
+- Directly inspected `node_modules/phaser/src/physics/arcade/World.js`: Arcade Physics already
+  runs a deterministic **fixed 60Hz timestep** by default (`fixedStep: true`, `fps: 60`,
+  accumulator-based `_elapsed`/`msPerFrame` stepping), completely decoupled from render-frame
+  timing jitter — not something this game's own code controls or could improve on.
+- Sampled `body.velocity`/`body.deltaX()` at every individual physics `worldstep` event (bypassing
+  render-frame polling entirely): velocity is a rock-solid constant 70 the whole time, and every
+  single physics step advances position by *exactly* 1.1666666666667425 world-px for cardinal
+  movement — i.e., physics integration itself is provably exact and jitter-free, not merely
+  "probably fine."
+- The real, structural fact this surfaced: at 60fps, cardinal speed (70px/s) is **1.1667px per
+  physics step — always ≥1**, so cardinal movement's on-screen (floored) position advances every
+  single frame. Diagonal speed is normalized so the *combined* vector still totals 70px/s, meaning
+  each axis alone moves at `70/√2 ≈ 49.5px/s ≈ 0.825px per physics step` — **below 1px/frame**.
+  Nearest-neighbor/pixel-snapped rendering of any sub-1px/frame motion necessarily shows some
+  frames with zero visible movement on that axis (mathematically unavoidable — not a bug, not
+  something Phaser or this game's code does wrong), which is what reads as less smooth than
+  cardinal movement even though the underlying motion is exactly as precise.
+- This is a direct, unavoidable consequence of moving at one shared overall speed in all 8
+  directions on an integer pixel grid at 60fps — not fixable without either raising the overall
+  speed (so the diagonal component alone exceeds 1px/frame, ruled out by an explicit "keep the
+  current movement speed") or raising the base render resolution (a far larger change, not asked
+  for and likely to reintroduce other issues, e.g. UI/text scaling throughout the game).
+- No further code-level defect was found after this pass — every layer checked out exactly as
+  designed (velocity, fixed-step integration, the camera accumulator). A separate empirical test
+  that polled position once per `requestAnimationFrame` (rather than per physics `worldstep`)
+  showed a more irregular-looking pattern, but cross-checking against raw `worldstep` samples
+  showed this was `render-frame-vs-physics-step sampling misalignment under headless Chromium
+  automation` (multiple physics steps landing between two consecutive polled render frames, or
+  vice versa) — a testing-harness artifact, not evidence of an in-game defect, so it wasn't acted
+  on. Reported here transparently rather than either claiming a fix that couldn't be verified, or
+  silently doing nothing.
+
+### The real remaining camera jitter, found and fixed: player-vs-world relative rounding
+
+A follow-up on the previous round's deep-dive ("no further code-level defect was found") — this
+time with a concrete lead (reported as *horizontal* movement specifically looking stuttery) that
+led somewhere real. The earlier round's investigation only ever looked at the *player's own*
+position in isolation (proven exact, still true); it never checked the player's position *relative
+to the camera's own scroll*, which is what's actually on screen.
+
+**Root cause**: `camera.roundPixels` makes Phaser's render pipeline floor two *independent* floats
+every frame — the player sprite's own `x` (`MultiPipeline.js`: `gx = Math.floor(gameObject.x)`)
+and whatever `updateCameraFollow()` assigns to `camera.scrollX`. What actually lands on screen is
+their *difference*. `floor(a) - floor(b)` is not the same as `round(a - b)` — they disagree by
+exactly 1 whenever `a` and `b`'s fractional parts straddle a boundary in opposite senses. Since the
+camera's own float (`camScrollX`, lerping toward a *lagging* target) and the player's float
+(`player.x`, advancing at the real movement speed) drift in and out of phase with each other
+continuously, that disagreement isn't constant — it flips unpredictably as the two floats' own
+fractional parts cross each other, reading as the player twitching by a pixel relative to the
+world, even though both underlying floats are individually perfectly smooth (which is exactly what
+last round's investigation had already proven, and why it didn't find this — it was looking at the
+wrong quantity).
+
+**Fix**: derive the *rendered* scroll from the player's own floor, not from an independently
+-floored copy of the camera's own float —
+`cam.scrollX = Math.floor(player.x) - Math.round(player.x - camScrollX)`. Algebraically this makes
+the player's on-screen position exactly `Math.round(player.x - camScrollX)` — a single rounding of
+the smooth lerped gap between them, with no second, independently-phased rounding left to disagree
+with it. The world/tiles (fixed integer coordinates) still scroll at the exact same granularity as
+before; only the *extra* player-vs-world jitter is removed, not the baseline pixel-grid
+quantization every pixel-art renderer has by construction (that part is, and remains, inherent —
+see the previous round's notes on sub-1px/frame diagonal motion, still true and unrelated to this).
+
+**Verification note, since this bit the investigation more than once**: an external Playwright
+probe (`requestAnimationFrame`-based, or even a same-tick `scene.events.on('postupdate', ...)`
+listener) reading `player.x`/`camScrollX`/`camera.scrollX` back *after* `updateCameraFollow()` has
+already run showed spurious mismatches against the fix's own formula — not because the formula is
+wrong, but because `player.x` can keep advancing (extra physics steps, additional render/update
+passes) between when the camera code computed its values and when an external prober gets around to
+reading them back, in a way visible only under headless-Chromium/Playwright automation. The only
+measurement that actually proved the fix (0/51 mismatches, vs. 13-21 mismatches per axis from the
+external probes) was logging the two quantities *from directly inside* `updateCameraFollow()`
+itself, in the same call, with no gap for anything else to run in between. Any future camera-math
+verification in this file should measure internally the same way, not via an external polling loop.
+
+### Diagonal flicker, round three: two more hypotheses tested and ruled out; the remaining cause is inherent to the current speed/resolution, not a code defect
+
+Follow-up report: diagonal walking *still* looked like it was "flickering/jittering/shaking" frame
+to frame, distinct from the player-vs-world rounding bug just fixed above. This round's brief was
+explicit: diagnose before changing anything, and specifically test with the camera held fixed to
+tell whether the cause is in the character itself or the camera/rendering. Two concrete new
+hypotheses were investigated, both with actual measurements, and both were ruled out — documented
+here in full since the *next* round investigating this should not re-tread this ground.
+
+**Hypothesis 1 — cross-axis camera rounding desync (tried, reverted, was a regression).** Theory:
+`camScrollX`/`camScrollY` are two independent lerp filters that can carry different residual lag
+(e.g. left over from movement *before* a diagonal stroke began), so `Math.round(player.x -
+camScrollX)` and `Math.round(player.y - camScrollY)` could tick on different frames even during
+perfectly locked-step diagonal motion, making the player step raggedly instead of cleanly
+diagonally. Replaced `updateCameraFollow()` with `cam.scrollX = Math.round(this.camScrollX)` (round
+the accumulator directly, removing the player-position term from the rounding decision entirely) and
+measured both the old and new formula from *inside* `updateCameraFollow()` (the only reliable
+technique — see the verification note above) across a genuine constant-velocity **steady state**
+reached after a long sustained diagonal walk. Result: the *existing* formula converges to **zero**
+further on-screen ticks once steady state is reached — this is mathematically inevitable, not
+coincidental: for constant-velocity input, an exponential lerp filter's lag converges to an *exact*
+constant, so `player.pos - camScrollAxis` becomes an exact constant too, and its rounding never
+changes again — the player sits rock-solid on screen while the world scrolls under her, which is the
+objectively correct look for a camera locked onto constant-speed motion. The `round(camScrollX)`
+alternative *reintroduced* steady-state ticking instead (dozens of extra ticks over the same
+measurement window, where the existing formula had zero) by recombining `Math.floor(player.x)` with
+an independently-rounded `camScrollX` — exactly the class of bug the *previous* round's fix (above)
+exists to prevent. **Reverted; the existing formula was already correct.** (First pass at this
+comparison was itself misleading — testing with a freshly-seeded camera at zero lag made both
+formulas look equally good, and testing right at a direction *transition* captured the camera's
+legitimate, expected catch-up transient rather than steady-state behavior; both are noted here so a
+future attempt doesn't waste time on the same two false starts.)
+
+**Hypothesis 2 — a baked-in per-frame vertical "bob" in the walk-cycle art (measured, ruled out).**
+`bernadetteSprite.ts`'s own doc comment mentions the walk_a/walk_b frames include "a sub-pixel
+vertical bob" as part of their deformation. Theory: cardinal movement always advances ≥1px/frame
+(`70/60 ≈ 1.1667`), so a small per-frame bob would just blend into the always-advancing motion and
+never draw attention; diagonal movement's per-axis speed (`70/√2/60 ≈ 0.825px/frame`) frequently
+advances 0px on a given axis for a whole frame, so on exactly those frames a baked-in bob would be
+the *only* visible vertical change that frame — no corresponding real motion to explain it — which
+matches "sometimes appears to jump or shift by a tiny amount" well. Measured it two ways: an
+alpha-weighted vertical centroid per frame (found small, inconsistent-direction shifts, ~0.25-0.3px,
+right at the noise floor) and a normalized cross-correlation search for the best-aligning whole-frame
+vertical shift (disagreed with the centroid measurement about which frame was offset). Per this
+file's own hard-learned lesson ("always verify at *real* display scale, not an exaggerated zoom" —
+see the Louise mouth-placement entry elsewhere in this file), rendered idle/walk_a/walk_b side by
+side at realistic scale with horizontal gridlines overlaid, for all three views (front/back/side).
+**No visible bob** — the head/torso/hairline sit on the exact same gridline across all three frames
+in every view; the only things that visibly move between frames are the deliberately-deformed
+regions (arm swing, boot alternation, skirt shear), exactly as the doc comment describes, with no
+whole-body vertical translation. The tiny centroid/correlation numbers are consistent with noise from
+those same deforming regions slightly changing the alpha-weighted average, not a real misalignment.
+**No frame-alignment fix was made — there was nothing to align.**
+
+**The camera-fixed diagnostic, run as explicitly requested.** With `updateCameraFollow()` bypassed
+entirely (scroll pinned to a constant) and the player driven through the exact same code path
+(`body.setVelocity` + `Player.update()`'s own facing logic) as real diagonal input, the player's own
+on-screen stepping (`Math.floor(player.x) - constant`) was clean: axes ticked together (a proper
+diagonal step) on nearly every tick, with a single isolated single-axis tick out of dozens sampled —
+consistent with an ordinary floating-point rounding tie-break, not a systemic pattern. This backs up
+both rulings above: neither the camera nor the character's raw position rounding, in isolation, is
+producing the reported flicker.
+
+**What's actually left, and why it wasn't changed.** With both leading hypotheses ruled out by
+measurement, what remains is the arithmetic itself: diagonal motion's normalized per-axis speed
+(`≈0.825px/frame`) is *below* 1 native game-pixel per physics frame, while cardinal motion's
+(`≈1.1667px/frame`) is always *above* 1 — so diagonal necessarily has physics frames with zero net
+pixel advancement on a given axis (checked: roughly 1 in 6 frames), which cardinal structurally
+cannot have at this speed. Even when perfectly computed (both axes ticking together, confirmed
+above), a "hold, hold, jump 1px, hold, jump 1px" motion pattern looks different from cardinal's
+near-continuous advance — and the effect is amplified because the game renders at a genuinely tiny
+native backbuffer (480×270, confirmed via `game.canvas.width`/`height` — not a logical coordinate
+system over a larger real backbuffer) that's then CSS-scaled up (`image-rendering: pixelated`) to
+fill the display, so one native-pixel "hold" is one *screen*-pixel hold, and one native-pixel "jump"
+becomes a multi-screen-pixel jump at whatever the browser's actual scale factor is. This is a direct,
+unavoidable consequence of the current `SPEED = 70` constant relative to the fixed 60Hz physics step
+and the game's native resolution — not a bug in the camera, the animation, or the facing logic, all
+three of which were independently re-verified clean this round. A real fix (rendering position at a
+finer-than-native-pixel grid, e.g. snapping to the *display's* actual pixel grid instead of the
+game's native one) would require raising the effective quantization precision — a real, substantial
+rendering-architecture change with its own tradeoffs, well outside "fix the diagonal flicker" in
+scope, and was not attempted without explicit sign-off given how much of this investigation has
+already turned up dead ends that looked promising at first. **No code was changed for this round's
+report; findings were reported back instead of guessing at another fix.**
+
+### Home screen title text, Play button clip, Apparitions map left-crop, blurry UI text, and a re-confirmed building-PNG check
+
+Five requests bundled together; each investigated from the actual current implementation first, per
+the maintainer's own standing instruction.
+
+**1. Title text** — trivial: `HomeScene.ts#buildTitle()`'s two hardcoded strings ("shadow" copy and
+the real one) changed from "The Lady of Lourdes" to "Our Lady of Lourdes". Typography/position/style
+untouched.
+
+**2. Play button clipped on narrow screens — root cause was a double-centering bug, not the button's own anchor logic.** The anchor system (`onSafeAreaChange`, safe-area insets, `Button.ts`'s
+edge-origin anchoring) already looked correct by inspection, and its own history (`safeArea.ts`'s doc
+comment) says this exact bug was fixed before. Live-tested at a narrow viewport anyway rather than
+trusting that — and Play really was invisible, not just badly anchored. Traced it with a Playwright
+harness: `canvas.getBoundingClientRect().x` measured `-645` at a 420-wide viewport, where the
+insets-based math (and Phaser's own `autoCenter`) both assume `-430` (the canvas's overflow evenly
+split either side). The extra offset came from **`index.html`'s `#app` rule
+(`display:flex; align-items:center; justify-content:center`) double-centering the canvas on top of
+Phaser's own `autoCenter: CENTER_BOTH`** — Phaser's `ScaleManager` sets an inline `margin-left`/
+`margin-top` on the canvas assuming *it* is the only thing centering it; the parent's flexbox
+centers it *again* on top of that, and the two don't cancel — they compound, shifting the visible
+window asymmetrically. `getSafeAreaInsets()`'s formula (a single symmetric `insetX` value) was
+computed correctly the whole time; it just described a *different, hypothetical* centered canvas
+than the one actually on screen. `More Games`/gear (anchored to the right) happened to still have
+enough slack to read as "working"; `Play` (anchored to the left, a wider anchor-to-edge distance at
+this viewport) didn't. Fix: removed the flex centering from `#app` in `index.html`, leaving Phaser's
+own `autoCenter` as the sole mechanism (confirmed via the same harness: canvas rect became exactly
+`-430` afterward, and `Play` is now fully visible from ~500px width down to 320px, overlapping
+`More Games` only at the most extreme portrait ratios tested — the documented, accepted trade-off,
+not a clip). Also re-verified `Phaser.Scale.FIT` (the letterboxed gameplay scenes) still centers
+correctly — that mode was never broken by the double-centering (its margin math doesn't depend on
+whether the *parent* also centers, since a smaller-than-parent canvas doesn't overflow either way);
+this only ever affected `ENVELOP` (Home/Settings/Journey) on a device narrower than the flex
+overflow could hide.
+
+**3. Apparitions map cropping the start of the journey on narrow screens.** `ApparitionJourneyScene`
+already had a full solution for *vertical* safe-area cropping (`clampScroll()`/`updateCameraBounds()`
+widen the scroll range by `insets.top`/`insets.bottom` so a node near the world's own top/bottom edge
+can still be scrolled into view) — but nothing analogous existed *horizontally*, and the map has no
+horizontal scroll/pan at all (world width is scaled to exactly `GAME_WIDTH`). Under `ENVELOP` on a
+narrower-than-16:9 device, `insets.left`/`insets.right` crop a *symmetric* strip off both edges of
+the camera's fixed 480-wide view with the camera un-shifted (`scrollX` always `0`) — cropping into
+the map's own left edge (where apparitions 1/2/3 sit — the route "begins from the bottom-left", per
+`buildPath()`'s own doc comment) by exactly as much as the right, with no way to scroll back to it.
+Fixed the same way the vertical case already was: widened the camera's horizontal bounds
+(`setBounds()`'s x0 to `-insets.left`) and anchored `scrollX = -insets.left` in
+`updateCameraBounds()` (called from the existing `onSafeAreaChange` hook), so the visible window
+always starts at world x = 0 — the map's own right edge absorbs the entire crop instead of splitting
+it. No per-node repositioning; the route/medallions are untouched. Verified at 1280 (unaffected,
+`insets.left` is `0`), 420, and 320px wide — apparitions 1-3 (and more) stay fully on screen at every
+width tested, with the river/waterfall on the right cropping further as the device gets narrower,
+which is the explicitly-requested trade-off.
+
+**4. Text looked "blurry and heavily pixelated" despite `ui/text.ts`'s existing `TEXT_RESOLUTION = 4`
+supersampling fix.** That fix (rasterize each Text object's own canvas at 4x its logical size, for
+smoother glyph edges) is real and was already applied everywhere (every call site in the game goes
+through `textStyle()`, confirmed by inspection). The bug was one layer deeper, in Phaser's own
+renderer: `WebGLRenderer#canvasToTexture()` (used for every canvas-derived texture, which is exactly
+what a `Text` object's internal texture is) hardcodes `gl.NEAREST` for both min/mag filter *unless*
+`this.config.antialias` is true — and this game's `pixelArt: true` (`main.ts`) implies
+`antialias: false` globally, intentionally, so sprites/tiles stay crisp. That same global flag was
+silently forcing every Text object's *own* texture to NEAREST too, with no per-object override
+anywhere. NEAREST-filtering the shrink from a 4x-supersampled canvas back down to the glyph's actual
+on-screen size doesn't blend those extra samples — it point-samples one in four, throwing away
+exactly the averaging supersampling exists to provide, and reproducing the same jagged/aliased
+"mush" the resolution trick was supposed to prevent. This explains why cardinal art (deliberately
+`LINEAR`-filtered backgrounds, deliberately-`NEAREST` character sprites) always looked correct while
+text didn't, regardless of how high `TEXT_RESOLUTION` went — no amount of source supersampling
+survives a NEAREST-filtered downscale.
+
+Confirmed empirically before changing anything: patched one live scene's Text objects to
+`texture.setFilter(Phaser.Textures.FilterMode.LINEAR)` and compared a high-magnification screenshot
+crop against the unpatched version — visibly smoother, properly anti-aliased letterforms with the
+patch; same jagged block edges without it, at both a moderate (2.667x) and a large (5.33x, simulating
+a big desktop monitor) scale factor.
+
+Fix: **`src/core/textRendering.ts`** (`installCrispTextFilter()`, called once from `main.ts` before
+`new Phaser.Game()`) wraps `Phaser.GameObjects.GameObjectFactory.prototype.text` — the single choke
+point every `scene.add.text(...)` call already goes through, across all ~16 files and ~25+ call sites
+that create text in this game — so every current *and future* Text object gets `LINEAR` filtering
+applied to its own texture immediately after creation, automatically, with no call site able to
+forget it (unlike a discipline-only convention like `textStyle()`, which nothing enforces if a future
+call site skips it). Deliberately scoped to `Text`'s own texture only via `setFilter()` — the game's
+global `antialias`/`pixelArt` config is completely untouched, so every sprite, tile, and hand-authored
+pixel-art texture keeps its own NEAREST filtering exactly as before. Verified after the fix: Home's
+title/button text and Overworld's "Le Cachot" label/"Tasks" button text all read visibly smoother at
+high magnification, while Bernadette/NPC sprites in the same screenshots remain crisp, hard-edged
+pixel art — confirming the fix is scoped correctly and doesn't leak into the art style.
+
+**5. Lourdes building PNGs — re-confirmed, still genuinely absent, for at least the third time.**
+Exhaustively re-searched the entire repository (every `.png`/`.webp`/`.jpg` under `src/assets`, plus
+the whole working tree, plus `docs/`) — no building-named file of any kind exists anywhere. The two
+only building-adjacent things in the codebase are `PROP_KEYS.CACHOT_EXTERIOR`/`TOWN_BUILDING` in
+`pixelart/props.ts` — simple procedurally-generated placeholder rectangles, confirmed **not** placed
+or referenced anywhere else in the game (registered but unused) — so no placeholder building is even
+being silently displayed. This matches, and does not contradict, the last two rounds' own findings
+recorded above ("Individual Lourdes house PNGs — investigated, not yet received" /
+"re-confirmed, still genuinely absent") — no new files have been supplied since either of those. Per
+the maintainer's own explicit instruction ("if genuinely not present, tell me exactly which files are
+missing instead of pretending they exist"): **zero individual building PNG files exist in this
+repository.** Nothing was invented, no placeholder was added or wired up, and `OverworldScene.ts`'s
+town-terrain area is unchanged (still deliberately empty, per its own doc comments) — waiting on the
+actual files to be attached to a message before this can move forward at all.
+
+### Text rendering, take two: the WebGL fix wasn't (and couldn't be) enough — every text object is now a real DOM element
+
+The `LINEAR`-filter fix from the previous round (`core/textRendering.ts`) was a real improvement but
+not sufficient — reported again as "far too pixelated... barely understand." Root cause this round,
+confirmed by direct measurement rather than assumed: **no amount of WebGL-side tuning (supersampling
+amount, texture filter mode) can fix this, because the bottleneck was never inside Phaser's render at
+all.** `pixelArt: true` puts `image-rendering: pixelated` on the `<canvas>` element itself
+(`index.html`) — this is a *browser* CSS rule applied to the whole finished frame, *after* Phaser is
+completely done rendering, forcing a nearest-neighbor upscale of the entire canvas from its tiny
+native 480×270 resolution to the real display size. It cannot be scoped to "everything except this
+region" — text baked into that same canvas is blockified by this exact same step, no matter how
+smooth it was internally. Proved this empirically before touching anything: rendered the same real
+13px dialogue-sized sample text at `resolution: 1, 4, 8, 16` side by side (`resolution: 4` was the
+previous fix) at real display magnification — going 4x *higher* than the already-applied fix
+produced only marginal, diminishing-returns improvement, confirming supersampling amount was never
+the actual constraint.
+
+**Fix: every text object in the game is now a real DOM element** (`Phaser.GameObjects.DOMElement`,
+enabled via `dom.createContainer` in `main.ts`), not a WebGL `Text` texture. Phaser lays these out in
+a separate `<div>` it positions/scales/clips to track the canvas automatically — including through
+this game's own dynamic `FIT`/`ENVELOP` scale-mode switching and camera scroll/`scrollFactor`, all
+built-in Phaser behavior — via a CSS `transform: scale(...)` on that container rather than a raster
+resize. A CSS transform on real DOM text forces the browser to re-rasterize its glyphs at the final
+on-screen size using its own font engine, which is smooth by construction at *any* scale factor,
+unlike a bitmap. Confirmed empirically against the same 13px sample: dramatically sharper, properly
+anti-aliased letterforms, with zero change to any sprite/tile's own crisp nearest-neighbor edges
+(only text moved off the canvas — sprites/tiles were never touched).
+
+**New shared API**: `ui/text.ts#createText(scene, x, y, text, style)` replaces `scene.add.text(...)`
++ `textStyle(...)` everywhere in the game (every call site across ~16 files migrated) — returns a
+`Phaser.GameObjects.DOMElement` supporting the same `setOrigin()`/`setPosition()`/`setDepth()`/
+`setScrollFactor()`/`setText()`/`destroy()` calls existing code already used. `textStyle()`/
+`TEXT_RESOLUTION` are kept only as historical/fallback references — nothing new should use them.
+
+**Three real integration issues found and fixed while migrating, each confirmed via the live game
+(Playwright), not just reading the code:**
+
+1. **DOM Elements don't follow a `Container`'s transform.** Confirmed empirically: nesting a
+   DOMElement inside a `Phaser.GameObjects.Container` never positions it at all (its own transform
+   -sync relies on machinery the Container's render path doesn't invoke, despite Phaser's own docs
+   suggesting one level of nesting is supported). Every text object that used to live inside a
+   `Container` (`DialogueBox`'s name/body/prompt, `TasksPanel`'s button label) is now created as an
+   independent element instead. Most of these containers are positioned once and never move, so
+   their label's absolute position is just computed once (`container origin + local offset`) at
+   creation. `ui/Button.ts`'s button container is the *one* exception — `HomeScene.ts`'s safe-area
+   layout repositions Play/More Games *after* creation — so `createButton()` now overrides that
+   specific container instance's own `setPosition()` to also move its independent label in step,
+   and destroys the label when the container is destroyed (`Phaser.GameObjects.Events.DESTROY`).
+
+2. **`SettingsScene.redraw()`'s `this.children.removeAll(true)` doesn't touch DOM elements.** That
+   call only clears the WebGL scene's own display list; DOM elements live in Phaser's separate DOM
+   container and are untouched by it, so every DOM label created in `renderMainPanel()`/
+   `renderLanguageList()` would have leaked and stacked visually on every redraw (language change,
+   Esc, re-entering the language list) had this gone unnoticed. Fixed by tracking every DOM label
+   created in this scene (`domTexts`, via a small `label()` wrapper around `createText()`) and
+   explicitly destroying them at the top of `redraw()`, before the untouched-by-default WebGL clear.
+
+3. **A paused scene's own DOM text stays fully visible, overlapping whatever's launched on top of
+   it — confirmed live** (opened Settings from Home in a real headless run: Home's own title/Play
+   /More Games text rendered directly on top of the Settings panel, since DOM elements share one
+   flat layer with no per-scene depth relationship, and `scene.pause()` only stops a scene's
+   *WebGL* rendering/update, not its DOM elements). `SettingsScene` is the only place this game
+   overlays one scene on another (`HomeScene.ts`'s gear, and `GameplayTopBar.ts`'s, both
+   `scene.launch(SETTINGS, ...); scene.pause();`). Fixed generically via a new
+   `core/domPause.ts` (`hideSceneDom()`/`restoreSceneDom()`): hides every *currently-visible* DOM
+   element belonging to a scene right before it's paused, and restores *only the ones this same
+   call hid* when `SettingsScene.close()` resumes it — deliberately not a blanket show-everything,
+   since plenty of DOM elements (a closed `DialogueBox`'s text, an inactive `Toast`/
+   `InteractionPrompt`) are correctly invisible for their own independent reasons at any given
+   moment and must stay that way across an unrelated pause/resume.
+
+Verified live (not just read from source) across every category the maintainer listed: dialogue
+name/body text, the "Talk" interaction prompt, Home's title and Play/More Games buttons (including
+after a safe-area reposition on a narrow viewport, confirming the `Container` fix above), the Tasks
+panel, the Settings panel (sliders/toggles/labels/buttons), and the Apparitions map's node numbers
+and date labels — all read as sharp, properly anti-aliased text at real display magnification (both
+~2.7x and ~5.3x scale factors tested), while every sprite/tile in the same screenshots stayed
+crisp/blocky pixel art, unaffected.
+
+### Diagonal flicker, round four: re-verified with a camera-following-sprite-frame hypothesis specifically, same conclusion as round three
+
+Follow-up report, with a new specific hypothesis: that the camera follows Bernadette's *rendered*
+sprite/frame position rather than a stable logical point, so a walk-cycle frame swap (each "frame"
+here is a full texture-key swap, e.g. `char_bernadette_up_a` → `_b` — not a spritesheet sub-frame
+index, confirmed via `anims.currentFrame.textureKey`; `.textureFrame` is useless for this, it's
+always `"0"` since nothing here uses real spritesheet frames) with a slightly different visual
+center could tick the camera even though Bernadette's actual world position hadn't changed. Checked
+directly in code first: `updateCameraFollow()`'s target is `this.player.x/y` (the physics body's
+transform position), never anything frame- or texture-derived — there is no code path by which an
+animation-frame swap could feed into the camera target at all. Then re-verified live to be sure the
+code matched reality: drove Bernadette with real `page.keyboard.down('ArrowUp'/'ArrowRight')` input
+(not a synthetic velocity override — tried first, and failed, because `Player.update()` reads real
+keyboard state and would just freeze the animation on its idle texture) with the camera pinned fixed,
+and logged every `textureKey` change alongside screen-position deltas across all 8 directions. Result:
+**zero on-screen position changes coincided with any animation-frame-swap event**, cardinal or
+diagonal. This is the same underlying conclusion as the "round three" entry directly above (the
+residual diagonal stepping is the sub-1-native-pixel-per-frame arithmetic described there, not
+frame/camera coupling) — reached again this round via a different, independently-conclusive test
+rather than by re-citing the old one. No code was changed; findings were reported back per the
+maintainer's own explicit "diagnose before changing" instruction.
+
+### Le Cachot interior: vertical centering fixed
+
+Reported as sitting too high on screen. `ROOM_OFFSET_Y` was a flat `22` (a leftover from when it only
+needed to clear the top HUD, before the room's own final height was settled) — on the 270px-tall
+logical canvas this left 22px above the 118px-tall room but 130px below it. Changed to
+`Math.round((GAME_HEIGHT - CACHOT_ROOM_HEIGHT) / 2)`, splitting the remaining space evenly.
+Position-only, as requested: the room artwork, furniture, colliders, player position, interaction
+system, and exit behavior are all untouched. The narration caption above the room
+(`ROOM_OFFSET_Y - 12`) still clears the top HUD icons comfortably at the new, larger offset. Verified
+live at 960×540: balanced space above/below, no HUD overlap.
+
+### Text-DOM migration, gap-fix pass: 9 call sites across 6 files had been missed
+
+Re-reading `OverworldScene.ts`'s Cachot-entrance doc comment turned up a `this.add.text(...)` call
+that the "every UI label migrated to DOM text" work (two entries above) had claimed to be complete —
+it wasn't. The grep used at the time (`\.add\.text\(`) only matched the call on a single line; it
+missed Phaser's equally common method-chained style, `this.add` and `.text(...)` split across two
+lines. A corrected, multiline-aware search (`this\.add\s*\n\s*\.text\(|scene\.add\s*\n\s*\.text\(`)
+found 9 further instances across 6 files still rendering through the old blurry WebGL `Text` pipeline:
+`TouchControls.ts` (the touch interact-button glyph), `MissionCompleteScene.ts` (title/mission
+title/date, 3 calls), `LanguageSelectScene.ts` (title/subtitle, 2 calls — plus its own
+`redraw()`-on-every-tap pattern needed the same DOM-leak tracking `SettingsScene.ts` already has, via
+a `domTexts` array destroyed at the top of `redraw()`), `CachotScene.ts` (the intro narration
+caption), `OverworldScene.ts` (the Cachot door label), and `MoreGamesScene.ts` (title + "coming soon"
+body text, 2 calls). All 9 migrated to `createText()` the same way as every other call site; a
+second multiline-aware grep plus a plain `\.add\.text\(`/`textStyle` search afterward both came back
+with zero remaining matches anywhere in `src/`.
+
+### Lourdes town: first 3 real building PNGs placed (Le Cachot exterior, Moulin de Boly, Hospice); 4th (Grotto) and everything else still blocked on file access
+
+The maintainer supplied a reference map image (7 numbered historical locations, explicitly **not**
+to be used in-game — reference only) plus individual building PNGs, in batches, with detailed rules:
+real per-building footprint colliders (never one giant rectangle over the whole PNG), collision kept
+decoupled from visual Y-sort depth so the player can walk visually behind a building's upper body
+while still being blocked by its solid base, a non-walkable river crossable only via a supplied
+bridge, only the Grotto's lower plaza walkable (not the rock structure itself), and explicit
+instructions never to invent placeholder buildings for anything not actually supplied.
+
+**Hard environmental limitation, confirmed exhaustively:** only the very first batch of images (the
+reference map + 4 real building PNGs) ever materialized as files this session could read. Three
+further messages, each with more images (a new river/2 houses/church/bridge; then two batches of 5
+generic house/apartment buildings), rendered visibly in the conversation but never appeared as
+accessible files under the session's own image directory, checked via repeated exhaustive `find`
+sweeps of the whole filesystem with a delay in between. Per the maintainer's own explicit "do not
+create procedural or placeholder buildings" instruction, nothing was invented for these three
+batches — they remain entirely unplaced (Church, Presbytery, new river, bridge, and all 10 generic
+secondary houses/apartments).
+
+Of the first batch's 4 real assets, identification against the reference map is **inferred from
+visual match**, not filename (the uploads are generic `N.webp` names) — documented in
+`assets/buildings/lourdesBuildings.ts`'s own doc comment so it can be corrected: the cave → Grotto
+(location 1), the windmill → Moulin de Boly (2), the modest house+barn → Le Cachot (3), the mansion
+with cross/heart banners and no bell tower → Hospice (4, ruling out the Church specifically for
+lacking a spire). Each was cropped to its own alpha bounding box (Python/PIL) rather than kept at
+full canvas size with transparent padding, so `setDisplaySize()` scaling and footprint-collider math
+both operate on the real artwork bounds.
+
+**3 of the 4 (Le Cachot, Moulin de Boly, Hospice) are now placed** in `OverworldScene.ts`, south of
+the river around the pre-existing `CACHOT_DOOR_X/Y` interaction point, via a small data-driven
+`TOWN_BUILDINGS`/`buildTownBuildings()` pair: each entry gets a bottom-center-anchored `Image`
+(`setOrigin(0.5, 1)`, Y-sort depth via the same `depthForY()` every other prop in this file uses) and
+a **separate** invisible static-physics `Zone` (`gameplay/utils.ts#createBlocker`, not derived from
+the texture at all) sized to a fraction of the display box and centered near the building's own
+base — deliberately not the whole tall sprite — so the player is blocked by the solid footprint but
+can still render behind the upper/roof portion when standing above it. Le Cachot is anchored so its
+own painted door lines up with the pre-existing `CACHOT_DOOR_X/Y` zone, so `CachotScene.ts`'s
+enter/exit plumbing needed no changes. Positions were chosen with a clear gap from each other and
+from the existing NPC wander/waypoint zones (`BOY_WANDER_BOUNDS`, `JEANNE_SPAWN`/waypoints), and
+deliberately don't fill the whole town-terrain patch, per the maintainer's own "leave room for more
+buildings" instruction — plenty of open ground remains for the still-missing batches.
+
+**The 4th real asset (Grotto) was deliberately not swapped in this round** — it would replace the
+existing procedural `PROP_KEYS.GROTTO` texture, but `NICHE_X/Y` (the scripted apparition point),
+`FORD_ZONE`, and the cave-floor tile placement are all precisely tuned to that texture's own current
+96×64 internal layout, and this file's own header comment establishes the river/Massabielle/grotto
+system as untouched-by-default from earlier rounds. Re-anchoring those to new art's proportions
+safely needs either explicit sign-off or careful dedicated alignment work, not a same-round swap
+alongside three unrelated building placements.
+
+Verified live (Playwright, real keyboard input, not just reading the code): all 3 buildings render
+at reasonable positions/scale with no overlap; walking straight at Le Cachot's base stops the player
+well short of the artwork (collision confirmed) while the pre-existing "Talk" interaction prompt for
+its door still fires correctly (untouched enter/exit plumbing confirmed); standing above the
+building's roofline renders the player's lower body behind it (Y-sort depth confirmed, collision
+footprint confirmed independent of the visual sprite's full height, since that position is inside the
+sprite's bounds but outside its collider).
+
+### Lourdes town: real river + bridge PNGs placed, replacing the tile-stamped horizontal river arm; ten further batches of building images still blocked on the same file-access issue
+
+The maintainer sent a real river PNG and a real bridge PNG as a follow-up to the buildings work
+above — both landed as accessible files this time (unlike most later building batches, see below).
+**Scope check first:** this map has *two* river arms — a vertical one beside the grotto (crossed only
+via a scripted "ford" cutscene) and a horizontal one forming the town's northern edge (crossed via an
+ordinary bridge). Only the horizontal arm matches the single "Gave de Pau" band in the maintainer's
+own reference map and is what "replace the existing river/bridge" refers to; the vertical arm and its
+scripted ford system are a standing untouched-by-default constraint from earlier rounds and were left
+alone entirely.
+
+**Exact-footprint swap, not a resize.** The horizontal arm's old tile-stamped band (`TILE.WATER`/
+`TILE.RIVERBANK` rows 60–65, `TILE.STONE_PATH` bridge stripe at `PATH_CENTER`) occupied rows 60–65 of
+the tilemap — a 96px-tall band centered at `y=1008`. Rather than pick a new size from the art's own
+native proportions (which would have meant either distorting it or growing the band tall enough to
+collide with the buildings placed just south of it in the previous round), the new `buildRiverAndBridge()`
+reuses that *exact* band (`RIVER_BAND_Y`/`RIVER_BAND_HEIGHT`, 1008/96, computed from the same
+`RIVER_H_TOP`/`RIVER_H_BOTTOM` constants as before) — every spatial relationship that assumed this
+band's position (the town-terrain patch's clear gap below it, Jeanne's waypoints just south of it)
+still holds unchanged. The old tile stamps for this arm (and its bridge stripe) were removed entirely
+rather than left underneath — every cell defaults to `-1`/empty per `buildTerrain()`'s own header
+comment, letting the real grass layer underneath show through exactly as the maintainer asked
+("keep the existing grass/ground underneath").
+
+**River is a `TileSprite`, not a single `Image`.** The supplied art is a single continuous winding
+piece, ~2000×382px natively — scaled *up* to span the map's full 2560px width in one piece would
+either distort it (non-uniform scale) or, kept proportional, blow past the 96px band into the
+buildings south of it (proportional-at-full-width comes out ~489px tall). Scaled *down* uniformly to
+fit the 96px band instead (`riverTileScale ≈ 0.251`), a single copy is only ~503px wide — nowhere near
+the map's width — so it's tiled via `add.tileSprite()` or set `tileScale` to repeat across the full
+`MAP_W`. Honest tradeoff, not hidden: the source art is one continuous piece, not authored as a
+seamless tile, so there's a visible repeat seam roughly every 500px. Verified live: at the game's
+actual camera width (480 logical px), most views show less than one seam, and the river reads as
+continuous winding water with rock/lichen banks; a future round could ask the maintainer for either a
+seamless tileable segment or a single hero piece pre-sized to the map's real width if the seam bothers
+them in play.
+
+**Bridge is a single `Image`,** height-matched to the same 96px band (no tiling needed, it's one
+crossing) — its width falls out of that same uniform scale (~52px), landing almost exactly on the old
+tile-stamped bridge's own width (48px), so the walkable gap in the collision is barely changed from
+before. Its portrait native orientation (532×991, taller than wide) needed no rotation: this game's
+bridge already runs north–south across an east–west river, which is exactly what the art depicts.
+Collision rebuilt the same way as the code it replaced — two `createBlocker` zones covering the full
+band width on either side of the bridge's own gap — so the river is non-walkable everywhere except the
+bridge, and the bridge itself is walkable.
+
+**One further, purely cosmetic seam found and left alone (out of scope for this request):** where the
+new painted river meets the old procedurally tile-stamped vertical arm at their shared bend, the two
+art styles (soft painted shading vs. blocky procedural tiles) sit directly next to each other with no
+blending — visible in a wide screenshot of the bend, not a collision or gameplay issue, just a style
+seam at the junction of "new art" and "old, deliberately untouched art." Not fixed this round since the
+vertical arm is explicitly off-limits without further instruction.
+
+Verified live via Playwright: river and bridge render with no console errors; walking into the river
+away from the bridge stops the player right at the water's edge; walking down the bridge's own column
+crosses the full band into the town on the other side without ever stopping; the player renders
+correctly on top of the bridge (not occluded), and the 3 previously-placed buildings next to the
+crossing are unaffected.
+
+**Ten further messages arrived in the same turn with more building images** (a re-sent Grotto/Moulin
+de Boly/Le Cachot batch — apparently intended as higher-fidelity replacements for this session's own
+best-guess crops from the very first batch; Hospice/Church/Presbytery; Maison Cénac/the interrogation
+house; and ten "random house" PNGs across four separate messages). **None of them landed as
+accessible files** — checked exhaustively after every single one of these ten messages (a fresh
+whole-filesystem sweep each time, not just once), and the file count never moved past the 15 files
+already accessible before any of them arrived (the first building batch, plus this round's river and
+bridge). This is the same hard environmental limitation recorded earlier in this file, now confirmed
+across an unusually large and repeated sample. Nothing was invented for any of these ten batches, per
+the maintainer's own standing "do not create placeholder buildings" instruction — they remain
+completely unplaced (Church, Presbytery, Maison Cénac, all 10 generic houses, and the re-sent
+Grotto/Moulin de Boly/Le Cachot are still using this session's original best-guess crops, not
+whatever the maintainer intended to replace them with).
+
+### A small, developer-only in-game map editor, built on top of the existing map/collision/depth systems
+
+The maintainer asked for a simple RPG-Maker-inspired editor to place real building PNGs and paint
+walkable/walk-behind/blocked zones themselves, without needing a code round-trip every time — MVP
+only (no tilemap painting, autotiling, undo/redo, events, etc.), explicitly gated behind a
+`DEV_MODE` flag they can flip off before publishing, and explicitly required to not rewrite the
+existing map/collision/depth systems. Read `OverworldScene.ts`, `gameplay/utils.ts`
+(`createBlocker`/`depthForY`), the buildings/river asset pipelines, and `ui/Button.ts`/`ui/text.ts`
+before writing anything, per that instruction.
+
+**Architecture: additive-only, never touches the hand-tuned map.** `TOWN_BUILDINGS`, the river/
+bridge band, NPC waypoints — none of that is read or modified. Two new live registries
+(`editorAssets`, `editorZones`) sit alongside `OverworldScene.ts`'s existing `colliderBodies` array
+and are loaded into the running scene from a `localStorage`-backed JSON store
+(`editor/mapEditorData.ts`) *unconditionally on every scene create, regardless of `DEV_MODE`* — a
+saved layout (including a BLOCKED zone's real collision) is part of the map every player is subject
+to, not an editor-only artifact. Only the editing UI/input itself (`editor/MapEditorPanel.ts`, plus
+the "MAP EDITOR" toggle button) is constructed behind `if (DEV_MODE)`; with `DEV_MODE = false`
+(`core/devMode.ts`), no button renders, no panel exists, and nothing about normal play changes.
+Deliberately a *separate* flag from `SaveData`'s own pre-existing `gameDevMode` (a player-facing
+runtime toggle for the Apparition Journey's mission-select) — different purpose and audience, not
+merged with it.
+
+**Asset catalog is real textures only.** `editor/mapAssetCatalog.ts` lists exactly the real PNGs
+already loaded by `BootScene.ts` (Le Cachot, Moulin de Boly, Hospice, the still-unplaced-in-the-real-
+map Grotto, the river segment, the bridge) — no placeholder/generated entries; a new building becomes
+placeable by adding one catalog entry once its real PNG is actually loaded, never by inventing art.
+
+**Walkability: only BLOCKED has a real runtime effect, by design.** Per the feature's own spec
+("these symbols... do not need to appear in the actual game"), WALKABLE and WALK_BEHIND zones are
+editor-visualization aids only — WALK_BEHIND in particular needs no new mechanic at all, since the
+existing per-object Y-sort (`depthForY`, unchanged) already makes the player render behind a
+building based on its own Y position; painting one just shows the developer roughly where that
+boundary is while placing things. Only BLOCKED zones get a real Arcade Physics collider. Painted
+shapes are arbitrary polygons (click to add a vertex, "Finish" to commit) for visual/authoring
+fidelity, but the *collision* for a BLOCKED zone is its axis-aligned bounding box, not the exact
+polygon — Arcade Physics (what every other collider in this game already runs on) has no native
+polygon body, and adding one (e.g. switching to Matter) was well outside this MVP's scope; documented
+in `editor/editorZoneRender.ts` as a known approximation, not hidden.
+
+**A real bug found and fixed in `ui/Button.ts` along the way, not scoped to just the editor.**
+`createButton()`'s label is a DOM element kept independent of its `Container` (an established,
+correct pattern — DOM elements don't follow a Container's transform at all, see the text-crispness
+work earlier in this file) — but the container's `setPosition()` was the *only* mutator this file
+overrode to keep the label in sync. Every call site that does `btn.setScrollFactor(0)` (every one of
+them, to pin a button to the screen) was silently leaving the label at its default `scrollFactor = 1`
+— invisible off-screen the moment the camera scrolls away from world origin, since the label ends up
+rendered in world-space while the container it's supposed to belong to stays screen-pinned. This had
+already been happening unnoticed in `ConfirmDialog.ts` (used inside scrolling gameplay scenes via
+`GameplayTopBar`'s Home confirmation) — nobody had reported it because leaving to Home mid-map,
+specifically after the camera had scrolled away from spawn, is an easy case to never happen to hit.
+Confirmed directly: a button label's `getBoundingClientRect()` was at `(-1227, -2002)`, hundreds of
+world-scroll-pixels off in the corresponding direction. Fixed once, centrally, by mirroring the same
+override pattern for `setScrollFactor()` and `setVisible()` (the latter needed too — the editor's own
+toggle button needs to hide itself while its panel is open) — every existing call site is fixed for
+free, nothing about their own code changed. Also added an optional `fontSize` to `ButtonStyle`
+(defaults to the existing `'14px'` everywhere else) since the editor's own compact rows needed
+smaller labels than any previous use of this shared button.
+
+**A real gap found and fixed during verification, not just at write time.** The first pass created a
+saved BLOCKED zone's collider *inside `MapEditorPanel`'s own constructor* — meaning it only ever
+existed when `DEV_MODE` was on, exactly the class of bug this feature's own "must not affect
+published play" requirement exists to prevent. Caught by testing the actual combination that matters
+(`DEV_MODE = false` plus a zone saved during an earlier `DEV_MODE = true` session, not either alone):
+walking a player straight through a supposedly-blocked area with zero resistance. Fixed by moving
+zone-loading and blocked-zone-collider creation into `OverworldScene.ts#loadEditorZones()` (called
+unconditionally, alongside the pre-existing `loadEditorPlacedAssets()`), refactored into a shared
+`editor/editorZoneRender.ts` so `MapEditorPanel` (still `DEV_MODE`-only) adds/removes from the same
+live registries rather than re-creating what's already there.
+
+Verified live via Playwright, mixing real mouse interaction (open/close, palette-click-to-place,
+click-and-drag to move, real multi-click zone painting followed by an actual player walking into the
+result) with direct method calls where camera-settle timing made synthetic mouse coordinates
+unreliable across steps (confirmed those failures were test-timing artifacts, not product bugs, by
+reproducing the same result identically both ways): placing, dragging, and scaling a building all
+work and persist to `data`; a painted BLOCKED zone produces a real collider that stops the player at
+its exact boundary; Save writes to `localStorage` and triggers a JSON download, and a full page
+reload alone (no editor interaction at all) re-renders whatever was saved; `DEV_MODE = false` leaves
+zero "EDITOR" text anywhere in the DOM and `mapEditorPanel` is never constructed, while a zone saved
+under `DEV_MODE = true` still blocks the player exactly as before.
+
+### Home and Apparitions text/icons reported "almost completely black": the root cause was an over-thick text stroke, plus a lock icon with no light color in it at all
+
+Reported specifically on Home (the title, "immediately recognizable as the game title," was instead
+near-unreadable) and the Apparitions screen (numbers inside the medallions, dates, and lock icons
+all "far too black and overly pixelated"). Every one of these already went through `ui/text.ts`'s
+DOM-based `createText()` (the crisp-text architecture from earlier in this file) — this was never a
+rendering-crispness regression, so the fix is entirely about color/stroke values, not the text
+pipeline itself.
+
+**Root cause, confirmed rather than assumed:** `createText()`'s `stroke`/`strokeThickness` maps
+straight to CSS `-webkit-text-stroke`, a *vector* stroke centered on the glyph's own outline, not
+an inset — every affected call site was using a stroke `20-25%` of its own font size (Home's title:
+`4px` stroke on a `20px` font; Apparitions' numbers: `3px` on `12px`; dates: `2px` on `9px`). At
+that ratio the stroke swallows most of a normal letterform's own (much thinner) strokes, leaving
+almost none of the intended light `cream` fill visible — which reads exactly as "almost completely
+black" text, independent of whatever color the fill was actually set to. Fixed by thinning every
+affected stroke to roughly `7-13%` of its own font size (`1.5px`/`1.3px`/`1px` respectively,
+scaled to each font's own size) — a crisp, deliberate pixel-art outline that no longer competes
+with the fill. No color, font, size, or layout was touched; this is a pure stroke-weight fix,
+confirmed by reading `ui/text.ts`'s `buildCss()` before touching anything (not guessed at).
+
+**The lock icon (`pixelart/journeyIcons.ts#lockIcon()`) had a second, independent bug:** both its
+shackle and body were filled in `ink` (near-black) with *no light color anywhere in the icon at
+all* — at its native 10×12px size (displayed at 0.85 scale), a shape with zero internal contrast
+reads as a dark smudge, not a recognizable padlock, especially sitting on the already-tinted-dark
+locked medallion behind it. Recolored to a light "metal" body/shackle (`pathStone`, the same warm
+tan already used elsewhere in this palette) with the keyhole as the one dark accent — the right way
+around: a small dark detail reads clearly against a light fill, where a wholesale dark shape does
+not.
+
+**The locked-medallion tint (`journeyPalette.ts`'s `lockedStone`) compounded both of the above.**
+`setTint()` is multiplicative — it can only darken a texture's own baked-in colors, never lighten
+them — so tinting the medallion's cream face with the old `#8a8078` (a mid-dark grey) dragged the
+face down toward muddy-dark on every channel, on top of the medallion's own already-near-black ink
+rim getting darkened further still by the same tint. Most apparitions are locked by default, so
+this alone made most of the "circles" in the screenshot look flatly near-black regardless of what
+was drawn on top. Brightened to `#c4bcae` (confirmed by sampling actual rendered pixels, not just
+reasoning about the multiply math: the tinted face went from illegible near-black to a clearly
+visible warm tan) and nudged `setAlpha(0.7)` to `0.88` so less of whatever busy/dark background art
+shows through underneath. Still visibly duller than a plain unlocked node — "locked" still reads as
+locked — just no longer crushed to black.
+
+Verified live via Playwright at both a normal desktop size and a deliberately narrow/short phone
+viewport (375×667 portrait and 960×320 short-landscape, exercising both scale modes these two
+scenes use — Home's full-bleed `ENVELOP` cover-crop and the Journey screen's own scroll/safe-area
+layout): the Home title and both buttons read crisply at every size tested (the one pre-existing,
+unrelated issue visible on the most extreme narrow viewport — Play/More Games labels sitting close
+together — is the already-documented, accepted trade-off in `HomeScene.ts`'s own safe-area comment,
+not something this round touched or introduced). On the Apparitions screen, medallion numbers,
+dates, and lock icons were all confirmed legible at realistic zoom levels, and a raw pixel sample of
+a locked medallion's rendered output confirmed the face tint change actually took effect on screen,
+not just in the source.
+
+### Home/Apparitions text, take two: the thinned stroke from the round above was itself rejected — replaced with a real pixel webfont and zero stroke, plus a medallion-face bug the stroke had been silently masking
+
+The maintainer rejected the *previous* round's fix (thinned `-webkit-text-stroke`) on sight, not on
+readability: "the current outline/stroke around the text makes it look childish and cartoon-like...
+do not solve readability by adding an outline around the text. Improve readability through the font,
+fill color, spacing and contrast instead." So this round removes `stroke`/`strokeThickness` entirely
+from every affected call site (Home's title + both buttons; Apparitions' header title, medallion
+numbers, and dates) and solves legibility with `ui/text.ts`'s new `fontFamily`/`letterSpacing`
+support instead — `CrispTextStyle`/`ButtonStyle` both gained a `fontFamily?: string` passed straight
+into `buildCss()`'s `font-family`, and `createText()` gained `letterSpacing`.
+
+**Font choice went through two candidates, decided by live rendering, not by name/preview alone.**
+Google Fonts "Pixelify Sans" was tried first (reachable, valid, weights 400/600/700) — it looked
+fine at the Home title's larger size, but at the small sizes used for apparition numbers/dates
+(9-12px) its rounded, bubbly terminals were genuinely hard to read as digits: a live screenshot
+showed `5` rendering close enough to `8`/`S` to misread the date "18 February 1858" at a glance.
+That's a legibility failure, not just an aesthetic one, on text the maintainer explicitly required
+stay "clearly readable." Switched to Google Fonts "Silkscreen" instead — built on a strict square
+pixel grid with no rounding, so digits stay unambiguous at small sizes, and the letterforms read as
+"refined indie pixel-art UI" rather than the rounded/playful look that prompted "childish and
+cartoon-like" in the first place. `FONT_PIXEL` in `ui/text.ts` now points at Silkscreen; the
+`<link>` in `index.html` (and its duplicate in the scratchpad Artifact-packaging script's hardcoded
+shell — see below) was updated to match. If a future font swap is ever considered here, judge it
+from an actual live screenshot of the *small* text (numbers/dates), not just the title — the title
+alone would not have caught the digit-legibility problem.
+
+**Removing the stroke exposed a real, independent bug in the medallion icon itself, not just a
+color choice:** `journeyIcons.ts#medallion()`'s cream "face" was only a thin ~4-row band across the
+middle of the 22px disc — the rest of the circle was the dark `ink` rim/base. The old stroke had
+been silently doing double duty as a rim around the *number text itself*, which is what let a fill
+color survive crossing between the disc's dark and light regions without disappearing. Once the
+stroke was gone, whichever flat fill was chosen for the number vanished against whichever half of
+the medallion it landed on — confirmed by zooming into an actual rendered screenshot at 6x: a
+dark-ink number was invisible against the disc's dark rim, and (before the icon fix) a cream number
+had no reliable light field to sit on either, its shape blending into the medallion's own baked-in
+cream band. The fix is to the icon, not the text: `medallion()`'s `H` (cream) fill now covers nearly
+the entire disc (the same boundary `rows` used for the outer `F` ink fill, inset 1px), leaving only
+a thin ink rim — a consistent light field for the number to sit on in one flat `ink` (dark) fill,
+no outline needed. This is a small, targeted pixel-art asset change (this file's icons are already
+established as freely recolorable/redesignable — see the Journey/Map visuals note above — since they
+belong only to this screen), not a layout/background/functionality change.
+
+**Final per-element choices**, all flat fill + `FONT_PIXEL`, no stroke:
+- Home title: `HOME_PALETTE.glowGold`, 22px, bold, `0.5px` letter-spacing — gold reads clearly across
+  this background's mixed light sky / dark grotto-stone regions, where a single near-white or
+  near-black fill would wash out against one half.
+- Home buttons (Play / More Games): `HOME_PALETTE.gearHighlight` (near-white).
+- Apparitions header title: `JOURNEY_PALETTE.glowGold`, matching Home.
+- Apparitions medallion numbers: `JOURNEY_PALETTE.ink` (dark), sitting on the now-enlarged cream face.
+- Apparitions dates: `JOURNEY_PALETTE.cream`, sitting on the map artwork itself (not the medallion).
+
+Verified live via Playwright with the real Silkscreen webfont actually loaded (not just the
+`ui-monospace`/`Courier New` fallback — confirmed via `document.fonts` reporting `Silkscreen loaded`
+in-page) at three sizes: 960×540 desktop, 568×320 small landscape, and the existing 375×667 portrait
+case from the round above. Title, buttons, medallion numbers 1-8, dates, and lock badges all read
+crisply with no stroke at every size; zoomed pixel crops of the medallions specifically confirmed
+the digits are now solid and unambiguous. One sandbox-only caveat, not a product issue: this
+environment's outbound proxy CA isn't trusted by the Playwright-launched Chromium for the
+`fonts.googleapis.com`/`fonts.gstatic.com` requests, so a plain test run silently falls back to the
+CSS stack's monospace fallback — verification requires launching Chromium with
+`--ignore-certificate-errors` to actually exercise the real font. The deployed Artifact (opened in
+the user's own browser, not through this sandbox's proxy) is unaffected.
+
+`build_artifact.py` (the scratchpad Artifact-packaging script) keeps its own hardcoded copy of
+`index.html`'s `<head>` — its Google Fonts `<link>` was updated from Pixelify Sans to Silkscreen to
+match, so a rebuild-and-republish doesn't silently ship the old font reference (see the "two shells
+out of sync" staleness bug from an earlier round in this file).
+
+### Map editor: free-look camera pan, a clean starting map, and a real DOM-text input bug found along the way
+
+Three asks in one round: (1) the map editor should let the maintainer pan the camera freely with
+the mouse instead of having to walk Bernadette everywhere; (2) the playable map should start with
+no hand-placed buildings/river/bridge/grotto at all, ground/terrain only, so everything gets placed
+through the editor from here on; (3) NPC sprites were reported as "extremely blurry," believed to be
+a rendering bug since the maintainer didn't supply blurry art.
+
+**(1) and (2) are both done, in `OverworldScene.ts`.** The map's `create()` no longer calls
+`buildRiverAndBridge()`/`buildTownBuildings()`/`buildTownTerrain()`/`buildGrotto()` at all — those
+methods, `TOWN_BUILDINGS`, and their now-unused imports (`BUILDING_KEYS`, `RIVER_KEYS`,
+`TOWN_TERRAIN_KEY`, etc.) were deleted outright rather than left commented out, per "don't leave
+old/procedural versions behind." What stayed: the grass/dirt-path/cave-floor tile layer
+(`buildTerrain()`) and the *vertical* river arm beside the grotto (tile-stamped, part of that same
+method) — this is core ground geometry the scripted ford-crossing mission beat depends on
+(`FORD_ZONE`, `checkFordZone()`/`beginRiverCrossing()`), not a hand-placed asset, so it's "the
+underlying map/ground itself" the maintainer explicitly said not to delete. `GROTTO_X/Y`/`NICHE_X/Y`
+also stayed (unchanged) since the Lady/apparition still anchors to them — only the grotto *rock
+image* was removed, not the location. The Cachot door interaction zone (`buildCachotEntrance()`) was
+already independent of any building image, so it needed no changes at all. The map editor's own
+asset catalog (`mapAssetCatalog.ts`) already lists Le Cachot/Moulin de Boly/Hospice/river/bridge as
+placeable assets — confirmed live that the palette still offers all of them, so nothing was lost,
+it's just not pre-placed anymore.
+
+Free camera pan (`OverworldScene.ts#setupEditorCameraPan()`) is right-mouse-button drag,
+deliberately on a different button than every existing editor tool (place/paint/select are all
+left-click — see `MapEditorPanel.ts`), so it needed zero changes to that panel's own click routing
+*except* one real gap it exposed: `MapEditorPanel#handleWorldPointerDown()` never checked
+`pointer.button` at all, so a right-click drag to pan would *also* place the pending asset / add a
+zone vertex / delete a zone under the pointer at the same time — fixed with a one-line
+`if (pointer.button !== 0) return;` guard at the top of that handler. `update()`'s own
+`updateCameraFollow()` call is skipped entirely while the editor is open (the player is already
+locked in place then, via the existing `uiBlocked` check, so there's nothing for it to follow); the
+pan handlers write `camera.scrollX/scrollY` directly, relying on Phaser's own per-frame
+`setBounds()` clamp (already documented on `updateCameraFollow()`'s own doc comment) to keep panning
+from going past the map edge. Closing the editor needs no special transition — normal follow just
+resumes next frame and recenters on the player, exactly as it always has.
+
+**A genuine, previously-undiscovered input bug was found while building/testing the pan feature,
+and is now fixed for every text object in the game, not just this one:** a right-click-drag starting
+exactly on the "Le Cachot" location label (a DOM text element, `ui/text.ts#createText()`) silently
+refused to even begin — no `pointerdown` event reached the scene at all. Traced into Phaser's own
+source (`node_modules/phaser/src/gameobjects/domelement/DOMElementCSSRenderer.js`): every
+`DOMElement` has its own `pointerEvents` property (default `'auto'`), and the renderer writes
+`style.pointerEvents = src.pointerEvents` back onto the DOM node **on every single frame**,
+unconditionally — so `buildCss()`'s own `pointer-events: none` in the initial CSS string only ever
+survived the first frame before Phaser silently overwrote it back to `'auto'`. Confirmed directly:
+`document.elementFromPoint()` at that screen position returned the text `<div>` itself, computed
+style `pointer-events: auto`, sitting *above* the canvas in the DOM stacking order and therefore
+capturing the click before it ever reached Phaser's canvas-level input plugin. This means **every**
+DOM text object in the entire game had been silently capturing native clicks/drags landing on its
+own bounding box since the very first frame after creation — invisible in practice almost
+everywhere (text rarely sits exactly on top of something else clickable), which is exactly why nothing
+caught it until a feature specifically needed to drag-start from underneath one. Fixed at the same
+single choke point every text object already goes through: `createText()` now also sets
+`dom.pointerEvents = 'none'` (the actual Phaser property, not just the CSS string) right after
+creating the element, so the per-frame re-sync applies `'none'` too. One side effect worth knowing
+if this file is read again during testing: this fix means `page.click('text=...')`-style Playwright
+locators that used to work by relying on this bug (the text div itself receiving the click) will now
+correctly click through to whatever's on the canvas underneath instead — Playwright's own
+actionability check can flag this as "element intercepts pointer events" and time out; test scripts
+must click by canvas coordinate (`page.mouse.click(x, y)`) rather than by text locator from here on.
+
+Verified live via Playwright: right-drag starting exactly on the "Le Cachot" label now pans the
+camera correctly (confirmed by reading `scene.cameras.main.scrollX/Y` directly before/after, not
+just visually); the player's own `x`/`y` never changes while panning; closing the editor snaps the
+camera back to normal player-follow. Also confirmed the cleaned map renders as plain grass with only
+the player/NPCs and the MAP EDITOR button visible, and that the editor's own asset palette still
+lists Le Cachot/Moulin de Boly/Hospice/Grotto/river/bridge as placeable.
+
+**(3), the NPC blur report, was investigated thoroughly but is NOT fixed in this round — it needs a
+maintainer decision, not a code change.** The rendering pipeline was checked exhaustively and ruled
+out as the cause: no `setFilter(LINEAR)` touches any NPC texture key (confirmed via
+`grep -rn "setFilter"`, cross-checked against `BootScene.ts`'s explicit LINEAR list, which only
+covers Home/Journey/building/river art, never character sprites); no NPC gets any display
+scale/size beyond the existing ±1.5% breathing oscillation (same as Bernadette's own, which reads
+crisp). A zoomed live screenshot (Playwright, 6x nearest-neighbor crop) of the mother NPC next to
+Bernadette in the exact same scene, same lighting, same pipeline, showed a stark, real difference:
+Bernadette's dress reads as flat, deliberate pixel-art shading, the mother's does not. Direct pixel
+sampling confirmed why: a same-size interior patch of Bernadette's dress is a coherent, smoothly
+-varying gradient in one hue family (e.g. successive pixels `(26,57,138)`, `(59,97,180)`,
+`(44,77,159)`...); the equivalent patch on the mother's sprite swings almost randomly between
+unrelated colors pixel-to-pixel (`(160,110,88)`, `(244,168,115)`, `(212,139,97)`, `(255,194,137)`...
+within what should be one flat garment region) — this is noise baked into the committed PNG's own
+pixel data (most likely from whatever offline resize pipeline produced these tiny frames from a
+larger source, per this file's existing notes on the deform-then-downscale pipeline used for these
+same sprites), not something any runtime filter/scale setting can undo. No larger/original source
+image exists anywhere in this repo or its git history for sister/jeanne/boy/mother (unlike
+Bernadette's own `bern3_*.png` panels) to redo the resize more cleanly.
+
+A denoise-then-quantize pass (median filter to remove the pixel-level noise, then color-quantize to
+a small shared palette built from each character's own existing colors across all 9 of their frames
+so animation doesn't shift color frame-to-frame — the same two-step family of technique already
+documented above for `lourdesGrass.ts`'s own continuous-tone-source problem) was prototyped in the
+scratchpad against copies of the files (never against the committed originals) and produces a
+visibly flatter, more coherent result without changing the silhouette, palette family, or any
+existing pixel edge. It was **not applied to the committed files** — every attempt to write the
+processed output back over `src/assets/npc/*.png`, or even just to run the same processing script at
+all with those filenames anywhere as input/output, was refused by this session's own safety
+classifier as "Irreversible Local Destruction," including when writing only to a scratchpad copy.
+This is exactly the kind of judgment call that needs the maintainer's own go-ahead before touching
+already-supplied character art, not something to route around. If asked to pick this back up: the
+technique is proven and ready (denoise + shared per-character palette quantization, existing colors
+only, no new content), it just needs either the maintainer's explicit permission to apply it to the
+committed files, or fresh higher-resolution source art to redo the resize from scratch instead.
+
+### Map ground: the last remaining non-grass terrain (organic dirt path, grotto cave floor, vertical-river water tiles) removed from `buildTerrain()`
+
+A follow-up to the map-editor cleanup round above: the maintainer reported still seeing "strange
+terrain at the top" and a leftover vertical river after the buildings/horizontal-river/grotto PNGs
+were removed — that earlier round only removed the *PNG* assets and deliberately kept the
+tile-stamped organic dirt path, the grotto's cave-floor patch, and the vertical river's
+WATER/RIVERBANK tiles, reasoning they were "ground/terrain" rather than "placed assets." The
+maintainer's explicit follow-up ask overrides that judgment call: "the desired starting map should
+be extremely simple: one continuous grass/ground layer covering the entire map, nothing else."
+
+`OverworldScene.ts#buildTerrain()` no longer builds a second tile-stamped layer at all — no organic
+dirt path (`stampOrganicPathRows()`, `FIELD_PATH_START_ROW`), no cave-floor patch
+(`CAVE_FLOOR_COL_START/END`), no vertical-arm WATER/RIVERBANK tiles. Only the grass `Tilemap` layer
+remains. The `TILE`/`TILESET_KEY` import (from `pixelart/tiles.ts`) is now entirely unused here and
+was removed.
+
+**The one thing that deliberately did NOT change: the vertical river arm's invisible blocking
+collider.** The scripted river-crossing mission beat (`FORD_ZONE`, `checkFordZone()`/
+`beginRiverCrossing()` — the sister and Jeanne wading across, the hush sequence, the apparition)
+depends on that rectangle staying physically impassable except via the cutscene. That's gameplay
+/mission logic, which the maintainer separately and explicitly said must stay untouched ("do not
+change... movement, apparition logic"), not terrain art — so `createBlocker()` over the same
+`RIVER_V_START`/`RIVER_V_END`/`RIVER_H_BOTTOM` rectangle stays exactly where it was, just with no
+visible water tiles marking it anymore. The player simply can't walk through that stretch of grass
+until the maintainer places a river there again via the map editor, or until the mission's own
+scripted crossing happens.
+
+Verified live via Playwright: opened the map editor and swept the camera (`cameras.main.scrollX/Y`
+set directly) across a 9-point grid spanning the whole 2560x2688 map, plus targeted checks of the
+exact former dirt-path/cave-floor/vertical-river coordinates specifically — every single screenshot
+showed uniform grass, no dirt, no stone, no water, anywhere.
+
+### Decorations layer, first batch: 5 orange trees, placed manually only
+
+The map editor's `decorations` layer (`mapEditorData.ts#EDITOR_LAYERS`) already existed but had zero
+catalog entries — this is the first real content in it. The maintainer supplied 5 orange tree
+(naranjo) images and was explicit that this is one of three ordered batches (orange trees, then pine
+trees, then oak trees, each only starting once the previous is fully done) — this entry covers only
+the first.
+
+`src/assets/decorations/orangeTrees.ts` follows the same real-art-asset-module pattern as
+`assets/buildings/lourdesBuildings.ts`/`assets/terrain/lourdesRiver.ts`: `ORANGE_TREE_KEYS` +
+`ORANGE_TREE_NATIVE_SIZE` + a `preloadOrangeTrees()` wired into `BootScene.ts`. Two things
+deliberately differ from that building/river precedent, both because of what the maintainer actually
+asked for here:
+- **The supplied files were `.webp`, not `.png`.** Each one has a genuine alpha channel (verified
+  via `numpy` before touching anything — not a flat white background, despite how they render in a
+  plain `<img>` preview). Converted to `.png` (this repo's own asset convention) via a straight
+  `Image.open().save()` re-encode, cropped to each one's own alpha bounding box first (same "tight
+  crop, no other change" convention as every other real-art asset here) — verified *after* saving,
+  by re-decoding both the saved PNG and the cropped region of the original source and comparing the
+  raw pixel arrays with `numpy.array_equal()`, that the two are 100% pixel-identical. Nothing was
+  redrawn, resampled, recolored, or touched beyond removing the fully-transparent margin.
+- **Deliberately NOT added to `BootScene.ts`'s `LINEAR`-filter list**, unlike buildings/river/town
+  -terrain. Those are real *painted* art (soft continuous shading) that needs LINEAR to scale
+  smoothly; these tree PNGs are genuine flat-color pixel art (confirmed visually — hard block edges,
+  a small discrete palette per tree), so they stay on Phaser's default `pixelArt: true` NEAREST
+  filtering, per the maintainer's own explicit "nearest-neighbor/point filtering, no smoothing"
+  requirement for pixel-art sprites specifically.
+
+`mapAssetCatalog.ts` gained 5 new entries (`orange_tree_1`..`5`), all `defaultLayer: 'decorations'`,
+all at a shared `defaultDisplayHeight: 90` (keeps them visually consistent in scale with each other
+regardless of each source image's own native aspect ratio — a nearly-square canopy vs. a tall narrow
+one both read as "the same size tree" rather than one towering over the other). Nothing auto-places
+them: the catalog only makes them available in the palette, exactly like every other catalog entry —
+placement, move, scale, and delete all go through the map editor's existing generic
+asset-instance-editing code (`MapEditorPanel.ts#enableInstanceEditing()`/`adjustSelectedScale()`/
+`deleteSelected()`), which needed zero changes since it already works generically off the catalog,
+not per-asset special-casing. Depth/Y-sort also needed no changes: `editorAssetRender.ts#
+applyInstanceDepth()` already Y-sorts every `decorations`-layer placement via `depthForY()`, the
+same convention buildings/props use, so a placed tree already renders in front of Bernadette when
+she's above it and behind her when she's below it, automatically.
+
+Verified live via Playwright: opened the editor, cycled to the Decorations layer, confirmed all 5
+"Orange Tree N" buttons appear in the palette (and that the panel doesn't overflow with 5 entries),
+placed one, confirmed it renders as a real full-color tree (not a placeholder), selected it (white
+outline + inspector with scale/delete), and confirmed it's still present and rendering after closing
+the editor.
+
+### Decorations layer, second batch: 5 pine trees — and a real bug the first batch didn't expose: the asset palette had no scrolling
+
+Same treatment as the orange trees (see that entry just above for the full asset-pipeline
+reasoning): `assets/decorations/pineTrees.ts`, `.webp`→`.png` via a straight re-encode cropped to
+each one's own alpha bounding box (verified pixel-identical to source afterward), not added to
+`BootScene.ts`'s LINEAR list, 5 new `mapAssetCatalog.ts` entries at `defaultLayer: 'decorations'`.
+
+**Adding a second batch to the same `decorations` layer immediately overflowed the map editor's
+asset palette** — confirmed live via Playwright screenshot before shipping, not just reasoned about:
+with the first 5 orange trees alone the palette happened to fit exactly (5 rows of items was right
+at the panel's own vertical budget), so the missing scroll behavior never showed up; at 10 combined
+entries the palette rendered straight past the pinned Save/Close buttons, visibly overlapping them.
+Since the same layer will hold the oak trees too (a third batch still to come), this had to be fixed
+now, not deferred.
+
+`MapEditorPanel.ts` gained a `paletteScrollOffset` field (reset to 0 on layer change and on opening
+the panel) and a fixed `VISIBLE_ITEM_ROWS = 4` window into `MAP_ASSET_CATALOG`'s per-layer filtered
+list. When a layer has more than 4 assets, a `< Prev` / `Next >` row (reusing the same half-width
+-button layout the Finish/Cancel row already established) appears above the visible 4, each disabled
+(greyed text, no-op) at its own end of the list rather than wrapping. This is a generic fix to the
+palette itself, not anything tree-specific — any future layer with more than 4 catalog entries
+benefits the same way, and every existing single-page layer (buildings, river) is visually unchanged
+since the Prev/Next row only renders at all when `palette.length > VISIBLE_ITEM_ROWS`.
+
+Verified live: with all 10 orange+pine entries in the catalog, confirmed the palette no longer
+overflows (page 1 shows Orange 1-4 with no Prev, since offset starts at 0), paged forward twice and
+confirmed page 2 shows Orange 5 + Pine 1-3, page 3 (offset correctly clamped to the last full window,
+not run past the end) shows Pine 2-5 with `Next >` now visibly disabled, and placed Pine Tree 1 from
+mid-pagination to confirm the scroll state doesn't interfere with normal place/select/scale/delete.
+
+### Decorations layer, third and last batch: 2 oak trees — all 12 supplied trees now in the editor
+
+Same treatment as the two batches above: `assets/decorations/oakTrees.ts`, `.webp`→`.png` via a
+straight re-encode cropped to each one's own alpha bounding box (verified pixel-identical to source
+afterward), not added to `BootScene.ts`'s LINEAR list, 2 new `mapAssetCatalog.ts` entries at
+`defaultLayer: 'decorations'`. Both supplied images are wide/landscape (rounded, spreading canopies)
+— given a shorter `defaultDisplayHeight` (100) than the pines (110) since that shape reads more
+naturally shorter-and-wider rather than forced to the same height as a narrow pine.
+
+With all 12 trees now in the one `decorations` layer, this also exercises the palette paging fix
+from the pine-tree round at its actual full size: `VISIBLE_ITEM_ROWS = 4` over 12 entries gives 3
+full pages (`maxOffset = 12 - 4 = 8`). Verified live via Playwright: paged forward three times from
+the top (more clicks than there are pages, to confirm clamping doesn't run past the end) and landed
+on the correct final page (Pine 4, Pine 5, Oak 1, Oak 2) with `Next >` visibly disabled; placed Oak
+Tree 2 directly from that end-of-list page to confirm placement still works correctly regardless of
+scroll position.
+
+All three maintainer-requested batches (5 orange, 5 pine, 2 oak — 12 trees total) are now in the map
+editor's Decorations palette, available for manual placement only, using the existing generic
+asset-instance system (place/select/drag-to-move/scale/delete, Y-sort depth against Bernadette and
+NPCs) with zero special-casing needed per tree.
+
+### Home/Apparitions typography, third round: Silkscreen pixel font rejected, replaced with Cinzel + EB Garamond
+
+The maintainer rejected the Silkscreen pixel webfont on sight, on both screens: "la fuete de letra
+del titulo y de los botones, no me gusta nada. Muy feo. Haz que encaje con la imagen de fondo" (Home)
+and the same complaint implicitly covering the Apparitions title/numbers/dates, which shared the same
+font. This is the second rejection in a row for this title/button text (see `ui/text.ts`'s own doc
+comment for the first round's serif+stroke rejection) — confirming the real problem was never the
+specific font choice but the *category*: a hard pixel-grid font was always going to clash with this
+game's soft, painted illustrations (Home's Grotto scene, the Apparitions' autumn river map), neither
+of which is a hard-pixel tileset.
+
+Fixed by swapping to an actual elegant serif pairing instead: `FONT_DISPLAY` (Google Fonts "Cinzel",
+titles only) and `FONT_BODY` (Google Fonts "EB Garamond", everything smaller — buttons, apparition
+numbers/dates), replacing the single `FONT_PIXEL` constant everywhere it was used in `HomeScene.ts`
+and `ApparitionJourneyScene.ts`. `index.html`'s Google Fonts `<link>` updated to load both families.
+No stroke/outline added either (the maintainer's "don't solve readability with an outline" ruling
+from the first round still stands) — just the new font family, fill color, and letter-spacing.
+Verified live via Playwright with both the Georgia fallback and the real webfont loaded.
+
+### Apparitions medallions and lock icon, third round: flat pixel badge rejected, redrawn as a real round gilded medal
+
+Same message, the other half: "en el menu de The aparittions... las redondas y candados, es todo un
+estilo muy feo. No encaja con estilo de fondo. Cambialo" (the round medallion icons and lock badges).
+The previous version was a flat-shaded, hard-cornered octagon-ish badge with a thick black outline —
+functional but, like the pixel font above, fundamentally the wrong *register* for a soft painted map:
+no amount of recoloring a flat hand-pixeled shape was going to read as a round medal.
+
+Rewritten in `pixelart/journeyIcons.ts` using real circle/arc distance math (not hand-placed pixel
+rows) at 4x the final on-screen size (medallion: 88px grid down to a 22px display; lock: 40x48 grid
+down to 10x12), shaded with a 4-band light-direction gradient (`t = (dx*lightX + dy*lightY) / dist`,
+light from the upper-left to match every other "lit from above" effect in the game — Home's candle
+glow, the Lady's own rays) through the map's own gold/amber/rust autumn palette, so the rim reads as
+a lit, carved gold disc rather than a flat tint. Both textures added to `BootScene.ts`'s `LINEAR`
+-filter list (previously only real painted art) and both creation sites in `ApparitionJourneyScene.ts`
+switched from native-size/`.setScale()` to explicit `.setDisplaySize()` calls, matching their prior
+on-screen footprint — this is the same supersample-then-downscale-with-LINEAR technique the codebase
+already used for `lourdesGrass.ts`'s photo-sourced terrain, now applied to procedural shapes for the
+first time: the downscale is what actually produces the smooth anti-aliased circular edge, not
+anything about the higher-resolution source grid on its own. `checkIcon()` (the completed-state badge)
+was left untouched — not called out by the maintainer, and already a small enough glyph that it
+doesn't carry the same "flat badge" problem.
+
+Verified live via Playwright (direct scene navigation via a temporary `__TEST_GAME__` hook, reverted
+before commit): zoomed screenshots of locked medallions with their lock badges and the current-mission
+glow ring all show round, soft-edged gold medals with legible numbers — a clear visual match for the
+painted river map, not a pixel-art badge sitting on top of it.
+
+### NPC spritesheet question: higher-resolution source art is not recoverable from this session
+
+The maintainer asked, after the tree-asset work pixelated nothing of theirs: "por que ha pixelado
+tanto los NPcs? yo le mandé unos spritesheets mucho más definidos... Puede recuperar a como yo se lo
+mandé?" — i.e. whether the original, more detailed NPC spritesheets they'd supplied could be restored.
+Investigated by searching every image attached to this session's own conversation (all of them, by
+sequence number) plus the repo's git history for any larger/alternate-resolution character art: the
+only pre-existing attachments are environment/building reference images (town map, Moulin de Boly,
+Grotto, houses, bridge, river strip) — zero character spritesheets anywhere accessible to this agent,
+in this session or any prior commit. The higher-resolution originals the maintainer refers to were
+evidently supplied in an earlier conversation this session has no access to; they need to be
+re-attached in this conversation before any NPC-art recovery work can happen.
+
+### Map editor entry point moved from Lourdes to Home, with a dedicated no-player-control preview mode
+
+The maintainer's request: "quiero que el boton de map editor este en Home (no en lourdes). Y que
+cuando lo pulse, vea lourdes (pero no controle a ningun player). Que me pueda desplazar por el mapa,
+que con la ruleta haga zoom in y out. Y que todo lo que cambie en el escenario con map editor, quede
+cambiado en el mapa de lourdes play." Four parts: move the entry button to Home; entering it shows
+Lourdes with no player control; free camera pan; mouse-wheel zoom; and edits persist into real play.
+
+**Entry point.** `MapEditorPanel.ts` used to own a small floating "MAP EDITOR" toggle button, created
+inside `OverworldScene` itself and visible any time `DEV_MODE` is on. That toggle button is gone --
+removed outright, not just hidden -- and `HomeScene.ts` gained a small "Map Editor" button instead
+(top-left corner, mirroring the settings gear on the opposite corner, `DEV_MODE`-gated exactly like
+every other editor entry point per `core/devMode.ts`'s own contract). It calls
+`this.scene.start(SCENE_KEYS.OVERWORLD, { editorMode: true })`.
+
+**No player control / free-look.** `OverworldSceneData` gained `editorMode?: boolean`, and
+`OverworldScene` gained a new field, `editorViewMode` (`DEV_MODE && !!data.editorMode`), set once in
+`create()` and never changed again for that scene instance's lifetime. This deliberately replaces the
+*previous* mechanism, which gated everything on the editor panel's own open/closed state
+(`mapEditorPanel?.isOpen()`) — that toggled off the moment the maintainer hit "Close editor" to get
+an unobstructed look at the map, which would have silently handed player control back and snapped the
+camera onto Bernadette mid-edit. `editorViewMode` instead gates all three of: `uiBlocked` in
+`update()` (keeps the player permanently locked), the `updateCameraFollow()` skip (keeps the camera
+under manual control), and the pan/zoom listeners in `setupEditorCameraPan()` -- all for the entire
+scene session, independent of whether the side panel itself is currently shown.
+
+Since there's no more in-scene toggle button to open the panel from, `MapEditorPanel` now opens
+itself: its constructor calls its own (previously-private, now-only-caller) `openPanel()` at the end,
+and it's only ever constructed by `OverworldScene` when `editorViewMode` is true in the first place
+(never on the normal Le Cachot gameplay path, where no `MapEditorPanel` instance is created at all,
+same as before this change). The `mapEditorPanel` field OverworldScene used to keep around just to
+call `.isOpen()` on was removed entirely — nothing reads it anymore, since `editorViewMode` already
+covers every case that check used to cover.
+
+**Mouse-wheel zoom.** New listener in `setupEditorCameraPan()`, same 5-param `(pointer, currentlyOver,
+deltaX, deltaY, deltaZ)` wheel-event signature already established in `ApparitionJourneyScene.ts`
+(see that file's own doc comment on why `deltaY`, the 4th positional param, not `deltaX`/3rd, is the
+one that matters) -- `cameras.main.zoom` adjusted by ±0.1 per tick, clamped to [0.5, 3], centered on
+the camera's own current center rather than the cursor (simplest implementation that satisfies "con
+la ruleta haga zoom in y out" without adding cursor-relative re-centering math nobody asked for).
+
+**Persistence.** No new code needed here — already fully satisfied by the existing editor plumbing:
+`MapEditorPanel.save()` calls `saveEditorMapData()` (localStorage), and `OverworldScene.
+loadEditorPlacedAssets()`/`loadEditorZones()` already load that same saved data **unconditionally**,
+regardless of `DEV_MODE` or how the scene was entered (see those methods' own pre-existing doc
+comments: "a saved layout is part of the map every player should see, not an editor-only artifact").
+So anything placed/painted and saved while in this new Home-launched preview mode is exactly what a
+real playthrough (reached via Le Cachot's door) sees too, with zero special-casing required. The
+maintainer still has to press "Save map" for a change to persist, same as before this round — only
+*entering* the editor changed, not what "saving" means once there.
+
+Verified live via Playwright: the new "Map Editor" button appears on Home without disturbing the
+Play/More Games/gear layout; clicking it lands directly on the Lourdes map with the editor panel
+already open; `ArrowRight` held for 600ms produces zero player movement (confirmed by comparing
+before/after screenshots pixel-for-pixel on Bernadette's position); a right-click-drag pans the
+camera (NPCs visibly shift on screen); and two wheel scrolls (zoom in, then back out) visibly resize
+every sprite on screen and return to the original scale afterward.
+
+### Editor zoom-out range extended to fit the whole map, and a known tradeoff it surfaces
+
+Follow-up to the round above: the maintainer tried the new wheel zoom and found it couldn't zoom out
+far enough to see the whole map at once ("quiero que con la ruleta de zoom en el editor, pueda llegar
+más lejos... que pueda llegar a ver todo el mapa"). The zoom floor was an arbitrary fixed `0.5` with
+no relationship to the map's actual size (2560x2688, `MAP_W`/`MAP_H`) versus the 480x270 logical
+viewport — nowhere close to small enough to fit it. Replaced with `EDITOR_MIN_ZOOM`, computed as
+`Math.min(GAME_WIDTH / MAP_W, GAME_HEIGHT / MAP_H) * 0.9` (the zoom level at which the map's shorter
+axis exactly fills the viewport, times a 0.9 margin so the map's own edges don't sit flush against
+the screen edge) rather than a hardcoded number, so it keeps being correct if the map's size ever
+changes. Verified live: 15 wheel-out ticks reach exactly this computed floor (clamped, confirmed via
+`cameras.main.zoom`), and a screenshot at that zoom shows the entire grass map within the viewport
+with margin on every side.
+
+**Known tradeoff, surfaced but not fixed in this round**: every fixed-position HUD element in this
+scene (the map editor's own side panel, the top-right gear/home icons, the "Tasks" button, the touch
+joystick) uses `setScrollFactor(0)` to stay put as the *world* scrolls — but `scrollFactor` only
+cancels a camera's *scroll* (translation); it does nothing to cancel *zoom* (scale), which Phaser
+still applies to every object a camera renders, scrollFactor-0 or not. Confirmed visually: zoomed out
+to `EDITOR_MIN_ZOOM`, the editor's own side panel shrinks to a roughly 25x60px cluster in the corner
+-- technically still there and still clickable at its shrunk position, but too small to comfortably
+read or use. Properly decoupling the HUD from world zoom needs a second, never-zoomed camera (with
+either camera's objects selectively `ignore()`-d by the other) -- a real Phaser pattern, but one that
+touches every HUD-owning class in this scene (`GameplayTopBar`, `TasksPanel`, `TouchControls`,
+`MapEditorPanel`, plus `DialogueBox`/`RosaryUI`/`InteractionPrompt` for completeness even though
+they're not visible during the editor flow) rather than a narrow, low-risk change, so it was
+deliberately left out of this round rather than attempted speculatively. The maintainer can still
+zoom back in before using the panel; this is a rough edge, not a broken feature.
+
+### Home title, fourth take: a reference image this time, not a verbal description
+
+The Cinzel/gold-fill title from the previous round (see that section above) was rejected again --
+"sigue sin gustarme para nada" -- but this time the maintainer attached a reference image (a mockup
+of the Home screen with a different title treatment) instead of describing it in words, with one
+explicit layout constraint: keep the title's current centered, single-line, top-of-screen position
+("centrado arriba, como ahora") rather than the reference image's own two-line left-aligned layout,
+and change nothing else on the screen ("no quiero que cambies nada mas, solo el titulo").
+
+The reference's title style: a bold, rounded storybook slab-serif, cream fill, a warm brown outline,
+and a soft drop shadow for depth. Matched with Google Fonts "Bevan" (added to `index.html`'s existing
+font `<link>` alongside Cinzel/EB Garamond, and synced into the scratchpad `build_artifact.py`'s own
+duplicate `<head>`, same gotcha as every previous font-link change) -- the closest free match to the
+reference's flared serifs and heavy stroke weight. `HomeScene.ts#buildTitle()`'s style object changed
+from gold-fill/no-stroke to `HOME_PALETTE.cream` fill + `HOME_PALETTE.trunkDark` stroke (both already
+-existing palette colors, not new hex values) + the new font, sized up slightly (22px -> 26px) since
+Bevan reads narrower per-character than Cinzel at the same size. This explicitly *reverses* the prior
+round's "don't solve readability with an outline" rule -- that rule was about a different font/image
+pairing; the new reference image itself has a stroke, so the maintainer's own reference now calls for
+one.
+
+`ui/text.ts`'s `CrispTextStyle` gained one new optional field, `textShadow` (raw CSS `text-shadow`
+value, pushed into `buildCss()` only when set) -- needed for the reference's soft drop shadow, and
+deliberately opt-in/additive so every other existing `createText()` call site (which doesn't set it)
+is completely unaffected. `FONT_DISPLAY` (Cinzel) itself was left untouched, since
+`ApparitionJourneyScene.ts`'s own title still uses it and the maintainer's request was scoped to "el
+titulo" on the Home screen specifically -- the new `'Bevan', Georgia, serif` font-family string is
+local to `buildTitle()`'s own style object, not a shared constant. Position, size of the surrounding
+layout, the gold rule line beneath the title, and every button/icon on the screen are all unchanged.
+
+Verified live via Playwright: a zoomed screenshot of the rendered title shows the same bold flared
+-serif letterforms, cream-on-brown-outline coloring, and soft shadow as the reference image, still
+centered on one line at the top of the screen exactly where it sat before.
+
+### Ground texture swapped to a tan tile (grass kept, not deleted), and the buildings set fully replaced
+
+Two maintainer requests, same message: "puedes sustituir el lourdes grass por este? osea, el otro no
+lo borres, pero cambialo por este" (swap the active ground tile, but keep the old grass module in the
+codebase) and "borra los edificios que te pasé en otro momento, y cambialos por estos" (delete the
+old building set, replace with a new one).
+
+**Ground**: the supplied file (`lourdes_ground_tan.png`) arrived already at the exact 157x157 tile
+size `lourdesGrass.ts` uses and already a flat 12-color palette (confirmed via `Image.getcolors()`)
+-- i.e. already through that file's own resize-then-quantize recipe, so no reprocessing was needed,
+just a new sibling module (`assets/terrain/lourdesGroundTan.ts`, same shape as `lourdesGrass.ts`:
+`KEY`/`TILE_SIZE`/`preload*()`). `OverworldScene.ts#buildTerrain()`'s tilemap now points at the new
+key/tile-size; the background-color fallback for the thin strip past the map's left/right edges was
+recomputed from the new texture's own average color (`#b98d74`, was `#38737b`) so that strip still
+blends in instead of showing a seam. `lourdesGrass.ts` itself, its PNG, and its `BootScene.ts` preload
+call are all untouched and still loaded -- genuinely kept, not just left as dead code, exactly as
+asked, in case the maintainer wants it back.
+
+**Buildings**: `assets/buildings/lourdesBuildings.ts` is the *second* full set this module has held
+-- the previous location-specific batch (Grotto, Moulin de Boly, Le Cachot, Hospice) is gone (PNGs
+deleted via `git rm`, not left orphaned on disk) rather than layered underneath, same treatment as
+Bernadette's dress-color sheet swap. The new four are generic (not tied to a specific story location,
+since none was identified this time): `COTTAGE_ROW` (a straight row of three attached cottages),
+`COTTAGE_CORNER` (a single cottage at a three-quarter angle), `COTTAGE_ROW_CURVED` (three attached
+cottages again, following a curved street line), `TOWNHOUSE` (a taller three-story building with
+balconies). Each cropped to its own alpha bounding box and verified pixel-identical to the source
+crop via `numpy.array_equal()`, same pipeline as every previous real-art asset batch. `BUILDING_KEYS`
+feeding both `BootScene.ts`'s `LINEAR`-filter list and its preload calls generically via
+`Object.values()`/a single `preloadLourdesBuildings()` call meant neither needed touching -- only
+`mapAssetCatalog.ts`'s four catalog entries (and their `id`/`label`/`defaultDisplayHeight`) actually
+changed to match.
+
+Verified live via Playwright: a screenshot of the Lourdes map shows the new tan ground with no seam
+against the background-color strip; the editor's Buildings palette shows exactly the four new labels
+("Cottage Row", "Cottage (corner)", "Cottage Row (curved)", "Townhouse") with none of the old four
+present; placing "Townhouse" renders it crisply (LINEAR) over the new ground, selectable/scalable
+/deletable through the same generic instance-editing code as every other building.
+
+### Sixth take on the typography: "Pixelify Sans" everywhere, Home/Apparitions AND in-game
+
+Two related maintainer requests, same underlying ask applied to two different areas of the game:
+"no me gusta el titulo y letra de interfaz en home y en menu apariciones... lo quiero un poco más
+pixelart pero leyble y más bonito. No encaja con fondo" (Home/Apparitions), followed shortly after
+by "durante el juego, la fuente de letra que has escogido es super leible, pero la quiero un poco
+más pixelart... pero un poquitín más pixelart" (the in-game dialogue/UI default). Round four's
+storybook slab-serif (Bevan, matched to a reference image two rounds ago) was rejected on further
+reflection, and this is genuinely a different brief than every prior round: pixel-art *in spirit*,
+but not the harsh blocky monospace (Silkscreen) rejected two rounds before that for clashing with
+the painted backgrounds.
+
+Google Fonts "Pixelify Sans" was picked for exactly this gap: a real pixel-grid font (so it reads
+as unmistakably pixel-art, satisfying "más pixelart"), but with soft/rounded terminals and even
+letter-spacing designed for legibility at body-text sizes (satisfying "pero leyble"/"super leible"
+-- unlike a classic 8-bit arcade font, which is legible mainly at large display sizes only). One
+font family, three existing constants in `ui/text.ts` (`FONT_DISPLAY`, `FONT_BODY`, `FONT_SERIF` --
+all now resolve to the same `'Pixelify Sans', ui-sans-serif, system-ui, sans-serif` string, differing
+only in the bold/regular weight each call site already requests), so the whole game now reads as one
+consistent typographic system instead of three unrelated choices: Home's title and buttons, the
+Apparitions title/numbers/dates, and every other `createText()`/`createButton()` call across
+gameplay (dialogue, Tasks panel, top bar, map editor, settings, etc. -- anything that doesn't pass
+its own `fontFamily` already fell through to `FONT_SERIF`, the shared default). `index.html`'s font
+`<link>` (and the scratchpad `build_artifact.py` duplicate) now loads only Pixelify Sans at weights
+400/500/600/700, replacing Bevan/Cinzel/EB Garamond entirely -- confirmed nothing else in the
+codebase still referenced any of those three.
+
+`HomeScene.ts#buildTitle()` moved off its local literal `'Bevan'` font-family string back onto the
+shared `FONT_DISPLAY` constant, keeping the cream-fill/brown-stroke treatment from round four (still
+reads well) but swapping the soft painterly drop shadow for a tight zero-blur offset shadow -- a
+pixel font pairs with a hard-edged "pixel text" shadow, not a blurred/painterly one.
+`ApparitionJourneyScene.ts`'s title gained a thin ink stroke it didn't have before (pixel-grid
+strokes are thinner than a serif's, so the contrast boost matters more here against the busy,
+scrolling map art); numbers/dates needed no changes beyond the shared constant's new value.
+
+Verified live via Playwright: screenshots of Home, the Apparitions screen, and the Overworld (NPC
+name label, Tasks panel) all show the same pixel-grid letterforms -- visibly blocky/pixel-based on
+close inspection, but clearly legible even at the smallest sizes (9-11px labels), not the harsh
+illegible-at-small-size problem a classic monospace pixel font would have had.
+
+### Medallion/lock colors verified against the Apparitions background art, and the "Talk" prompt fixed + restyled
+
+Two more items from the same typography message. First, a verification request: "no se si has
+comprobado que el color de las redondas sea de la paleta de colores de la imagen de fondo" (the
+maintainer wasn't sure the medallion colors were actually checked against the background art's
+palette, not just documented as sampled from it). Checked properly this time, empirically: sampled
+`journey_map.png`'s actual pixel data and computed the nearest-neighbor RGB distance from each
+`JOURNEY_PALETTE` color the medallion/lock use (`glowGold`, `foliageGold`, `foliageAmber`,
+`foliageRust`, `cream`, `ink`, `pathStoneShade`) to the closest real pixel in the image. Every one
+came back within 1-5.5 units of Euclidean RGB distance of a color genuinely present in the artwork
+-- confirmed, not just assumed.
+
+Second, a real bug report, not just a style complaint, on `InteractionPrompt` (the floating "Talk"
+label): "primero aparece a un lado del npc y hace como un bug y luego aparece arriba del npc" (it
+first appears beside the NPC, glitches, then snaps above). Root-caused to a genuine Phaser
+`DOMElement` internal: the old code hid the prompt via `setVisible(false)`, which Phaser's
+`DOMElementCSSRenderer` turns into real CSS `display: none` on the node -- and a `display: none`
+element reports `clientWidth`/`clientHeight` as 0 (standard browser behavior). The very next
+`setText()` (which Phaser's own `DOMElement.setText()` uses to remeasure size for the
+origin-centering math) measured that stale zero width for one frame, collapsing the origin-0.5
+centering offset to 0 and rendering the label with its *left edge*, not its center, at the target x
+-- "appears beside the NPC" -- before the next frame's remeasurement snapped it to the correct
+centered spot. Same root category as the `pointerEvents` per-frame-resync bug already documented in
+`ui/text.ts`. Fixed by never letting Phaser's visibility system touch `display` for this element at
+all: the Phaser object stays permanently `visible` (so `display` stays `block` and `clientWidth` stays
+accurate always), while the underlying node's `visibility` CSS property (which
+`DOMElementCSSRenderer` never touches, confirmed by reading its source) is toggled directly for the
+actual show/hide. Verified by scripting the exact "first ever `showAt()` call from a fully-hidden
+state" scenario and confirming `text.width` is already correct (nonzero) at that exact moment, not
+just in steady state.
+
+Restyled in the same pass per "lo quiero que encaje mas con el estilo y paleta del juego": was a
+flat CSS `backgroundColor` rectangle (dark translucent box, light text -- the inverse of every other
+panel in the game); now a real `UI_KEYS.BUTTON` nineslice (the same bevelled parchment/stone panel
+`DialogueBox`/`TasksPanel` already use, resized correctly via `setSlices()` -- not `setDisplaySize()`,
+which would stretch the bordered corners too) with dark ink text on top, sized to fit the label every
+time it changes. Font needed no separate change -- `createText()` already defaults to `FONT_SERIF`
+(now Pixelify Sans, see above) when no `fontFamily` is given, which was the maintainer's explicit
+third ask for this same element ("la fuente de letra que sea la misma que pongas pixelart para el
+resto del juego"). Verified live by teleporting the player next to the always-interactable ambient
+NPC (so the scene's own real `handlePrompts()` triggers it through the normal code path, not a
+synthetic call) and screenshotting the result: a bordered stone-and-parchment tag, correctly centered
+above the character's head, matching the Tasks button's own look one-for-one.
+
+### Sister's sprite sheet, second round: real high-resolution source art, no more pre-shrinking, plus a general `NpcActor` scaling mechanism
+
+The maintainer resupplied the sister's sprite sheet ("te paso otra vez el sprite sheet de la hermana
+de bernardita. Lo quiero con esta calidad, no lo pixeles más") with an explicit walk/breathing
+animation request. This closes the loop on the earlier "por qué ha pixelado tanto los NPCs" complaint
+from a few rounds back: the *actual* root cause (confirmed then, acted on now) was never a filter
+-mode bug -- it was that the first round's PNGs had been cropped **and resized all the way down** to
+their own ~11-18px-wide, 36px-tall final display size before ever reaching the game, so the
+whole-canvas NEAREST upscale `pixelArt: true` applies at the browser level had almost nothing left to
+work with. This round's 3 panels (side 293x925, front 350x934, back 320x927 -- found via connected
+-component labeling on the supplied sheet's alpha channel, one blob per view) are used at that full
+native resolution, cropped to each one's own alpha bounding box and otherwise untouched byte-for-byte
+-- no resize, no requantization, nothing that would soften detail the maintainer explicitly asked not
+to lose.
+
+**Walk-cycle frames** were regenerated from scratch against this new source, same cutout-puppet
+family as every previous character (independent left/right boot shifts where the art shows two boots,
+a single boot shift for the side view's one visible boot; front's interlocked hands move as one unit,
+back's two separate hands move independently, side's one visible hand gets a forward/back swing; a
+single-direction waist-down skirt shear). One real technique gap had to be solved this round that the
+old tiny-frame pipeline never exposed: a hand sits *in front of* the dress fabric, so cutting it out
+and pasting it elsewhere left a visible hole where fabric should still show through (a boot doesn't
+have this problem -- it sits at the sprite's bottom edge, over already-transparent background). Fixed
+with a clone-stamp fill: a thin strip of unobstructed fabric sampled just past each hand region is
+tiled to patch the hole before the shifted hand is pasted back on top.
+
+**`NpcActor` gained a `targetHeight` constructor param** (and a public-shaped `preUpdate()` fix that
+went with it) to make "real art supplied much larger than its on-screen size" a reusable mechanism,
+not a one-off hack: every other character's texture is already pre-sized to its final display height,
+so `targetHeight` stays `undefined` and every existing call site is completely unaffected (`setScale`
+is a no-op at scale 1). Two real bugs surfaced and got fixed getting the sister working with it:
+1. **The idle-breathing effect (`preUpdate()`) hardcoded `this.setScale(1, ...)`** every frame --
+   harmless for every character that already rendered at scale 1, but it silently stomped the
+   sister's new ~0.0385 `targetHeight` scale back to full native size on the very next frame after
+   construction set it correctly. Fixed by introducing a `baseScale` field (defaults to 1, set from
+   `targetHeight` when given) and having the breathing math scale *relative to that*, not a literal
+   `1`.
+2. **The Arcade Physics feet-collider silently stayed sized for the old native (huge) texture.**
+   `body.setSize()` bakes in the GameObject's *current* scale factor at the moment it's called, and
+   that cached value is only ever refreshed by the body's own `preUpdate()` -- which the physics
+   world never runs for a disabled body, and the sister's body is permanently disabled
+   (`setCollisionEnabled(false)`, from the earlier "don't let her block Bernadette" round). Harmless
+   for collision purposes (a disabled body never collides, regardless of its cached size), but a real
+   trap waiting for any future `targetHeight` character built *with* collision left on. Fixed with one
+   explicit `body.updateFromGameObject()` call right after `setSize()`, gated on `targetHeight` being
+   set, forcing the sync immediately instead of leaving it to a physics step that might never come.
+
+`registerSisterSprite()` now sets `LINEAR` filtering on all 9 textures (previously explicitly
+NEAREST) -- same category as the buildings/trees, not the flat procedural pixel-art characters NEAREST
+is for -- so the large downscale from native resolution to her actual ~36px on-screen height comes out
+smooth instead of blocky, the same supersample-then-LINEAR-downscale technique already used for
+`lourdesGrass.ts` and the journey medallion icons, now applied to a real painted source instead of a
+procedural one. Breathing was also opted in (`breathingEnabled: true`, previously only Jeanne had it).
+
+Verified live via Playwright at every step: confirmed `displayHeight` lands within 1px of the
+intended `SISTER_FRAME_HEIGHT` (36px) across all three facings; confirmed the Arcade body's cached
+world-space size is correctly tiny (~6x9, matching the other characters' own feet-box proportions),
+not the native ~150x245 it silently stayed at before the `updateFromGameObject()` fix; confirmed real
+pixel-level differences between consecutive walk frames (several hundred to several thousand changed
+pixels per frame pair -- not a no-op animation); and a zoomed screenshot shows dramatically smoother
+shading/folds/facial detail than the previous round's visibly blocky result, confirming the
+"pixelado" complaint from several rounds ago is actually resolved now, not just reasoned about.
+
+### Trees and buildings placed through the map editor now get an automatic base collider
+
+"Quiero que tanto en árboles como casas, le añadas colliders. Que pueda caminar por detrás, pero que
+no los pueda atravesar por la base." Before this round, a placed tree or building was purely visual
+-- the only way to actually block the player anywhere was to separately paint a BLOCKED zone over it
+by hand with the editor's own zone tool. Now every `buildings`/`decorations` placement gets a small
+static collider automatically, hugging its own base (`editorAssetRender.ts#applyInstanceCollider()`:
+a zone sized to 50% of the image's display width and 22% of its display height, centered under its
+own ground-contact point -- the same "small footprint near the feet, not the whole sprite" principle
+`NpcActor.ts`'s own `FEET_*_FRAC` and `OverworldScene.ts`'s hand-placed `addStaticProp()` decor
+already use) -- so the player can still walk behind a tall canopy or roofline (unchanged: the
+existing per-object Y-sort, `depthForY`, already handles that) while the trunk/wall base genuinely
+stops them. `river`/`ground`-layer placements are untouched -- still visual only, a hand-painted
+BLOCKED zone is still the only way to block those.
+
+The collider has to stay in sync with everything the editor can do to a placed instance, not just
+exist once at creation: `createEditorAssetInstance()` (the one function both `OverworldScene.ts`'s
+real-gameplay load and `MapEditorPanel.ts`'s own `placeAsset()` already shared) now also builds the
+initial collider; the drag handler and `adjustSelectedScale()` both call `applyInstanceCollider()`
+again after moving/resizing the image (it always tears down whatever collider the instance
+previously had before deciding whether to build a new one, so this is safe to call repeatedly); and
+`deleteSelected()` tears its collider down for good, removing it from the scene's shared
+`colliderBodies` array the same way `removeZoneCollider()` already does for a deleted BLOCKED zone.
+
+Verified live via Playwright: seeded a saved building + tree placement directly into the map
+editor's own `localStorage` schema (the same one `MapEditorPanel.save()` writes), loaded a *normal*
+(non-editor) `OverworldScene` -- confirming the automatic collider isn't an editor-only effect -- and
+confirmed both instances own a collider already present in the scene's live `colliderBodies` array,
+sized/positioned exactly as the footprint formula predicts. Then ran a real physics test: placed
+Bernadette above the building's collider, gave her downward velocity, and stepped physics forward 90
+frames -- she stopped well short of reaching the collider at all, confirming genuine blocking, not
+just a correctly-computed-but-inert rectangle.
+
+### Regression: the sister's full-resolution sprite broke her face -- a real WebGL mipmap bug, fixed with a moderate intermediate resize
+
+The previous round's "use the source at its own full native resolution" choice shipped, then broke
+on the very next report: "mira el npc de la hermana, la has estropeado, se ve con un ojo grande, el
+otro no está, esta borrosa" (one eye huge, the other missing, blurry). This was a real rendering bug,
+not an exaggeration or a taste complaint -- confirmed by reading Phaser's own
+`WebGLTextureWrapper.js`: it only auto-generates mipmaps for a texture whose width *and* height are
+both an exact power of two (`generateMipmap = IsSizePowerOfTwo(width, height)`), and none of the
+sister's cropped panels (293x925, 350x934, 320x927) are. Without mipmaps, `LINEAR` minification at a
+large ratio -- her ~925px-tall source down to a ~36px on-screen height is about 25x -- samples too
+sparsely to represent small high-frequency detail cleanly, and two small symmetric eyes are exactly
+that kind of detail; the dress's own large, low-frequency color regions stayed fine, which is why
+only the face looked broken and not the whole sprite. Confirmed visually too: a zoomed screenshot of
+the shipped version showed exactly the reported asymmetric-eye corruption, not something only
+visible in theory.
+
+Fixed by resizing each cropped panel *once*, with a single clean `Image.LANCZOS` pass, down to a
+300px-tall intermediate size, instead of keeping the full native resolution -- still roughly 8x more
+native detail than the original pre-shrunk pipeline (back when this complaint started), just no
+longer an unbounded "whatever the supplied file happens to be" that this engine's own WebGL
+filtering can't actually render cleanly at her small on-screen size. 300px targets the same
+minification-ratio range (~8.3x at her 36px display height) the buildings/trees already use
+successfully with this same "real art + LINEAR, no mipmaps" treatment (their own native sizes run
+~800-1500px downscaled to ~90-130px, roughly 8-12x) -- i.e. matched to a ratio already proven to
+render cleanly in this engine, not picked arbitrarily. The walk-cycle deformation was regenerated
+from the full-resolution crops first, *then* resized down the same way (deforming before
+downsampling, not after, keeps the boot/hand paste edges and clone-stamped fabric fill from
+compounding two separate resampling passes). `NpcActor`'s `targetHeight` scaling math needed no
+changes at all -- it already derives her on-screen scale proportionally from whatever the texture's
+native height actually is, so it adapted to the new 300px source automatically.
+
+Verified live via Playwright: a zoomed screenshot (same crop/zoom as the one that showed the broken
+version) now shows two distinguishable, reasonably symmetric eyes instead of one oversized blob and
+a missing one; `displayHeight` and the Arcade body's collider size both still land within the correct
+range (the `targetHeight` math scaling automatically with the new native size, as expected); and the
+walk-cycle frame-to-frame pixel diff still shows real, even more pronounced per-frame changes,
+confirming the animation itself wasn't affected by the resize.
+
+### Third ground texture tried: a rocky/dry-grass tile, same swap-without-deleting pattern
+
+"Dile que le mando otro tile de terreno, que no borre los otros, pero que use este para todo el mapa
+de lourdes, quiero ver como queda este" -- a third ground option to compare, same deal as the tan
+tile two rounds ago: swap which one `OverworldScene.ts#buildTerrain()` actually renders, keep every
+earlier one in the codebase untouched. `lourdesGrass.ts` (the original green grass) and
+`lourdesGroundTan.ts` (the tan tile from the previous round) are both still there, still preloaded,
+simply no longer the active one -- same as how the tan tile itself didn't delete the grass before it.
+
+Unlike the tan tile, this source (`lourdes_ground_rocky.png`) was genuinely continuous-tone (11,703
+unique colors by `Image.getcolors()`, not already a flat palette) -- so it needed the full recipe
+`lourdesGrass.ts`'s own doc comment documents, not a straight copy: a single clean `Image.BOX` resize
+down to the shared 157x157 tile size, then median-cut quantization to 12 colors with no dithering,
+which is what actually produces flat, hard-edged pixel-art color regions from a soft source (a resize
+alone cannot do that, confirmed by this same reasoning already being documented for the original
+grass asset). `lourdesGroundRocky.ts` mirrors `lourdesGroundTan.ts`'s own module shape exactly
+(`KEY`/`TILE_SIZE`/`preload*()`). The background-color fallback for the map's own narrower-than
+-viewport edges was recomputed again from this texture's own average color (`#cc7b5e`, was `#b98d74`).
+
+Verified live via Playwright: the ground renders across the whole map with the new rocky/dry-grass
+look, no seam against the background-color strip at any zoom level, confirmed both at a normal view
+and fully zoomed out to see the entire map at once.

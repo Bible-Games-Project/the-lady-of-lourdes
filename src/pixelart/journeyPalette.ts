@@ -32,5 +32,11 @@ export const JOURNEY_PALETTE = {
   glowGold: '#f0c05a',
   glowGoldSoft: 'rgba(240,192,90,0.5)',
 
-  lockedStone: '#8a8078',
+  // Lighter than the original `#8a8078` -- `setTint()` is multiplicative (it can only darken a
+  // texture's own baked-in colors, never lighten them), so tinting the medallion's cream face
+  // with a mid-dark grey like the old value dragged it down toward near-black, on top of the
+  // medallion's own already-dark ink rim getting darkened further still. This value keeps the
+  // "muted/locked" read (still visibly duller than the plain cream of an unlocked node) without
+  // crushing the whole circle to near-black.
+  lockedStone: '#c4bcae',
 } as const;

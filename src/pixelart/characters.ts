@@ -126,6 +126,13 @@ export function walkAnimKeyFor(id: CharacterId, facing: FacingKey): string {
   return `walk_${id}_${facing}`;
 }
 
+/** Optional standing-still animation (e.g. breathing). Only characters that register one under
+ * this key get it -- `spriteFacing.ts#updateFacingAnimation()` falls back to the static idle
+ * texture for everyone else. */
+export function idleAnimKeyFor(id: CharacterId, facing: FacingKey): string {
+  return `idle_${id}_${facing}`;
+}
+
 function shadowGrid() {
   const grid = makeGrid(14, 6, '.');
   fillRect(grid, 2, 1, 11, 4, 'D');
