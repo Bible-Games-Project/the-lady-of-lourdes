@@ -11,6 +11,7 @@ import { createButton, type ButtonStyle } from '../ui/Button';
 import { createToggle } from '../ui/Toggle';
 import { createSlider } from '../ui/Slider';
 import { createText } from '../ui/text';
+import { clearScene } from '../ui/clearScene';
 import { restoreSceneDom } from '../core/domPause';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useFullBleedScale, useLetterboxScale } from '../core/scaleMode';
@@ -42,10 +43,6 @@ export class SettingsScene extends Phaser.Scene {
   private showingLanguageList = false;
   private confirmDialog!: ConfirmDialog;
   private keyEsc!: Phaser.Input.Keyboard.Key;
-  // `redraw()` wipes the scene via `this.children.removeAll(true)`, but DOM-based text (see
-  // `ui/text.ts`) lives in Phaser's separate DOM container, not `this.children` -- these are never
-  // touched by that call and must be torn down manually or they'd leak/stack on every redraw.
-  private domTexts: Phaser.GameObjects.DOMElement[] = [];
 
   constructor() {
     super(SCENE_KEYS.SETTINGS);
@@ -85,9 +82,7 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   private redraw(): void {
-    this.children.removeAll(true);
-    this.domTexts.forEach((t) => t.destroy());
-    this.domTexts = [];
+    clearScene(this);
     const overlayColor = Phaser.Display.Color.HexStringToColor(HOME_PALETTE.ink).color;
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, overlayColor, 0.6);
 
@@ -98,13 +93,8 @@ export class SettingsScene extends Phaser.Scene {
     }
   }
 
-  /** `createText()` result, tracked in `domTexts` so `redraw()` can tear it down -- see that
-   * field's own doc comment. Every DOM label in this scene must go through this, not `createText`
-   * directly. */
   private label(x: number, y: number, content: string, style: Parameters<typeof createText>[4]): Phaser.GameObjects.DOMElement {
-    const text = createText(this, x, y, content, style);
-    this.domTexts.push(text);
-    return text;
+    return createText(this, x, y, content, style);
   }
 
   private panel(cx: number, cy: number, w: number, h: number): void {

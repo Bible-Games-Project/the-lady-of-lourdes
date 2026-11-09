@@ -6,15 +6,12 @@ import { SaveData } from '../core/SaveData';
 import { SUPPORTED_LANGUAGES, type LanguageCode } from '../core/i18n/languages';
 import { createButton } from '../ui/Button';
 import { createText } from '../ui/text';
+import { clearScene } from '../ui/clearScene';
 import { useLetterboxScale } from '../core/scaleMode';
 
 /** Shown once, before the very first playthrough, so the player can confirm/change the detected language. */
 export class LanguageSelectScene extends Phaser.Scene {
   private selected: LanguageCode = 'en';
-  // `redraw()` wipes the scene via `this.children.removeAll(true)`, which doesn't touch DOM-based
-  // text (see `ui/text.ts`) -- tracked here and explicitly destroyed so it doesn't leak/stack every
-  // time a language is tapped (same issue and fix as `SettingsScene.ts`'s own `domTexts`).
-  private domTexts: Phaser.GameObjects.DOMElement[] = [];
 
   constructor() {
     super(SCENE_KEYS.LANGUAGE_SELECT);
@@ -27,15 +24,11 @@ export class LanguageSelectScene extends Phaser.Scene {
   }
 
   private redraw(): void {
-    this.children.removeAll(true);
-    this.domTexts.forEach((t) => t.destroy());
-    this.domTexts = [];
+    clearScene(this);
     this.cameras.main.setBackgroundColor('#2c2521');
 
-    this.domTexts.push(
-      createText(this, GAME_WIDTH / 2, 26, Localization.t(K.LANGUAGE_SELECT_TITLE), { fontSize: '18px', color: '#fffaf0' }).setOrigin(0.5),
-      createText(this, GAME_WIDTH / 2, 46, Localization.t(K.LANGUAGE_SELECT_SUBTITLE), { fontSize: '12px', color: '#c9beac' }).setOrigin(0.5),
-    );
+    createText(this, GAME_WIDTH / 2, 26, Localization.t(K.LANGUAGE_SELECT_TITLE), { fontSize: '18px', color: '#fffaf0' }).setOrigin(0.5);
+    createText(this, GAME_WIDTH / 2, 46, Localization.t(K.LANGUAGE_SELECT_SUBTITLE), { fontSize: '12px', color: '#c9beac' }).setOrigin(0.5);
 
     const cols = 3;
     const rows = Math.ceil(SUPPORTED_LANGUAGES.length / cols);

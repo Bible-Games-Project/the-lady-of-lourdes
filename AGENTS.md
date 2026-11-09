@@ -2750,9 +2750,13 @@ anti-aliased letterforms, with zero change to any sprite/tile's own crisp neares
    call only clears the WebGL scene's own display list; DOM elements live in Phaser's separate DOM
    container and are untouched by it, so every DOM label created in `renderMainPanel()`/
    `renderLanguageList()` would have leaked and stacked visually on every redraw (language change,
-   Esc, re-entering the language list) had this gone unnoticed. Fixed by tracking every DOM label
-   created in this scene (`domTexts`, via a small `label()` wrapper around `createText()`) and
-   explicitly destroying them at the top of `redraw()`, before the untouched-by-default WebGL clear.
+   Esc, re-entering the language list) had this gone unnoticed. The first fix tracked the scene's
+   own `createText()` labels (`domTexts`) and destroyed them by hand, but missed every *button's*
+   label, which `createButton()` makes separately. The real cause: the `true` in
+   `removeAll(true)` is Phaser's `skipCallback`, not "destroy" — it takes objects off the display
+   list without destroying them, so a DOM node stays on the page. On the first-run language screen
+   this left all 13 button labels showing over the Home screen. Both scenes now start `redraw()`
+   with `ui/clearScene.ts`, which destroys every object on the display list (DOM labels included).
 
 3. **A paused scene's own DOM text stays fully visible, overlapping whatever's launched on top of
    it — confirmed live** (opened Settings from Home in a real headless run: Home's own title/Play
@@ -2819,8 +2823,8 @@ lines. A corrected, multiline-aware search (`this\.add\s*\n\s*\.text\(|scene\.ad
 found 9 further instances across 6 files still rendering through the old blurry WebGL `Text` pipeline:
 `TouchControls.ts` (the touch interact-button glyph), `MissionCompleteScene.ts` (title/mission
 title/date, 3 calls), `LanguageSelectScene.ts` (title/subtitle, 2 calls — plus its own
-`redraw()`-on-every-tap pattern needed the same DOM-leak tracking `SettingsScene.ts` already has, via
-a `domTexts` array destroyed at the top of `redraw()`), `CachotScene.ts` (the intro narration
+`redraw()`-on-every-tap pattern needed the same DOM-leak fix as `SettingsScene.ts`, now
+`ui/clearScene.ts` at the top of `redraw()`), `CachotScene.ts` (the intro narration
 caption), `OverworldScene.ts` (the Cachot door label), and `MoreGamesScene.ts` (title + "coming soon"
 body text, 2 calls). All 9 migrated to `createText()` the same way as every other call site; a
 second multiline-aware grep plus a plain `\.add\.text\(`/`textStyle` search afterward both came back
