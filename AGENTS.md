@@ -1265,9 +1265,11 @@ production scenes away from it until a replacement is explicitly approved).
 
 Attempt 1 was a soft illustrated/chibi style built directly from three
 reference images the maintainer supplied (Bernadette, her face, the Lady of
-Lourdes), plumbed through a real-image pipeline (`Phaser.Scene#load.image()`
-+ Vite `assetsInlineLimit` so binary assets inline as base64 — see
-`vite.config.ts` and `src/vite-env.d.ts`, both still present and reusable).
+Lourdes), plumbed through a real-image pipeline (`Phaser.Scene#load.image()` with
+the URL Vite gives an imported `.png` — see `src/vite-env.d.ts`, still
+present and reusable). Images are emitted as separate files, not inlined as
+base64: inlined, the bundle passed Cloudflare Pages' 25 MiB limit per file
+and the preview stopped deploying (see `vite.config.ts`).
 **Rejected** — the maintainer wants pixel art, not illustration. That
 pipeline's specific content (`VisualTestScene.ts`,
 `src/assets/characters/*.png`, `src/assets/realArt.ts`) was deleted; don't
