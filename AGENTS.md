@@ -3860,3 +3860,12 @@ grass asset). `lourdesGroundRocky.ts` mirrors `lourdesGroundTan.ts`'s own module
 Verified live via Playwright: the ground renders across the whole map with the new rocky/dry-grass
 look, no seam against the background-color strip at any zoom level, confirmed both at a normal view
 and fully zoomed out to see the entire map at once.
+
+### Donation landing page (`public/donate/`)
+
+- `public/donate/` is a standalone static donation page for Bible Games
+  Project, unrelated to the game. The maintainer asked for it to live here
+  temporarily so it can be previewed at `/donate/`; it is meant to move to its
+  own project/custom domain later. Vite copies `public/` verbatim into `dist/`
+  — keep the page plain HTML/CSS with relative paths, and don't wire it into
+  the game's code or build.
