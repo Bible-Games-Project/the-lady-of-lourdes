@@ -1,0 +1,18 @@
+{
+  "_readme": "Which products belong to Bible Games Project on each platform. These IDs are public (they appear in the store URLs). Secrets never go in this file: see README.md.",
+  "paypal": {
+    "since": "2024-01-01",
+    "incomingEventCodes": ["T0002", "T0006", "T0011", "T0013"]
+  },
+  "googlePlay": {
+    "packages": ["com.JoanSabe.TheLostSheep", "com.biblegamesproject.didacticjesusgame"]
+  },
+  "appStore": {
+    "since": "2024-12-01",
+    "appIds": ["6740145333"]
+  },
+  "steam": {
+    "appIds": ["2298350", "2138140", "4244150"],
+    "developerShare": 0.7
+  }
+}

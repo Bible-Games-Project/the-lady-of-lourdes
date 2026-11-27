@@ -1,16 +1,39 @@
 {
-  "_readme": "Community statistics shown on the page. See STATS.md for how each figure is calculated. Use null for anything not yet verified: the page then shows it as pending. Never put estimated numbers here.",
+  "_readme": "Written once a day by tools/donate-stats (see public/donate/STATS.md). Per platform: the figures it contributes and when they were last verified. null = not verified yet, so the page leaves it out. Never put estimated numbers here.",
   "updatedAt": null,
   "currency": "EUR",
-  "stats": {
-    "playersReached": {
-      "sources": { "googlePlay": null, "appStore": null, "steam": null }
+  "platforms": {
+    "paypal": {
+      "name": "PayPal",
+      "status": "not-configured",
+      "verifiedAt": null,
+      "supporters": null,
+      "contributions": null
     },
-    "supporters": {
-      "sources": { "paypalDonors": null, "storePurchases": null }
+    "googlePlay": {
+      "name": "Google Play",
+      "status": "not-configured",
+      "verifiedAt": null,
+      "players": null,
+      "purchases": null,
+      "contributions": null
     },
-    "totalContributions": {
-      "sources": { "paypal": null, "googlePlay": null, "appStore": null, "steam": null }
+    "appStore": {
+      "name": "App Store",
+      "status": "not-configured",
+      "verifiedAt": null,
+      "players": null,
+      "purchases": null,
+      "contributions": null
+    },
+    "steam": {
+      "name": "Steam",
+      "status": "not-configured",
+      "verifiedAt": null,
+      "players": null,
+      "playersAsOf": null,
+      "purchases": null,
+      "contributions": null
     }
   }
 }

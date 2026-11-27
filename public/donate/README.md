@@ -9,11 +9,12 @@ To move it to its own site or custom domain, copy this whole folder and serve
 
 ## Editing the content
 
-- `data/games.js` — the games shown in "Our games" and in the hero. Add a game by copying
-  an entry. Use only real artwork from each game (in `assets/games/`). A game without an
-  image shows a clearly marked "Artwork coming soon" placeholder.
-- `data/stats.json` — the three community figures. `null` = not verified yet (shown as
-  "—"). See `STATS.md` for how every figure is calculated and for the planned daily refresh.
+- `data/games.js` — the games shown in "Our games". Add a game by copying an entry. Use
+  only real artwork from each game (in `assets/games/`). A game without an image shows a
+  clean title cover (no placeholder wording on the page).
+- `data/stats.json` — the three community figures, per platform. `null` = not verified yet
+  (left out; "—" if nothing is verified). Written daily by `tools/donate-stats/`; see
+  `STATS.md` for how every figure is calculated.
 - `config.js` — donation amounts, monthly tiers and PayPal settings.
 
 ## How donating works

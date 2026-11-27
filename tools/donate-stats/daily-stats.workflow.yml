@@ -1,0 +1,61 @@
+# Daily refresh of the supporter page statistics.
+#
+# NOT ACTIVE YET. To switch it on, copy this file to .github/workflows/donate-stats.yml in the
+# repository that hosts the supporter page, and add the repository secrets listed below
+# (Settings > Secrets and variables > Actions). Platforms without secrets are skipped.
+name: Supporter page statistics
+
+on:
+  schedule:
+    - cron: '30 5 * * *' # every day at 05:30 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # commit the refreshed stats.json
+  actions: write  # start the preview deploy afterwards
+
+concurrency:
+  group: donate-stats
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Fetch figures from the platforms
+        # A failing platform keeps its last verified figures, so always continue to the commit.
+        continue-on-error: true
+        run: bun tools/donate-stats/update.mjs
+        env:
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_PLAY_REPORTS_BUCKET: ${{ secrets.GOOGLE_PLAY_REPORTS_BUCKET }}
+          APP_STORE_ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+          APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
+          APP_STORE_PRIVATE_KEY: ${{ secrets.APP_STORE_PRIVATE_KEY }}
+          APP_STORE_VENDOR_NUMBER: ${{ secrets.APP_STORE_VENDOR_NUMBER }}
+          STEAM_FINANCIAL_API_KEY: ${{ secrets.STEAM_FINANCIAL_API_KEY }}
+
+      - name: Commit the new figures
+        id: commit
+        run: |
+          git add public/donate/data/stats.json tools/donate-stats/state.json
+          if git diff --cached --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git -c user.name="BGP statistics" -c user.email="actions@users.noreply.github.com" \
+            commit -m "Refresh supporter page statistics"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # Pushes made with the workflow token don't start other workflows, so start the deploy.
+      - name: Deploy the page
+        if: steps.commit.outputs.changed == 'true'
+        run: gh workflow run preview-deploy.yml --ref "${GITHUB_REF_NAME}"
+        env:
+          GH_TOKEN: ${{ github.token }}

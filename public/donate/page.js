@@ -1,7 +1,7 @@
 /*
- * Page content that comes from data files: the hero game showcase, the "Our games" cards,
- * the community statistics, and the donation options in the support section. Also runs the
- * scroll fade-in. Donation checkout itself lives in donate.js.
+ * Page content that comes from data files: the "Our games" cards, the community statistics
+ * and the donation options in the support section. Also runs the scroll fade-in. Donation
+ * checkout itself lives in donate.js.
  */
 (function () {
   'use strict';
@@ -24,43 +24,26 @@
     return 'status--soon';
   }
 
-  /* Real artwork if the game has it, otherwise a clearly marked placeholder. */
-  function gameMedia(game, options) {
+  var ORNAMENT = '<svg class="game-media__ornament" aria-hidden="true" viewBox="0 0 32 32"><path d="M16 3v26M8 11h16"/><circle cx="16" cy="11" r="6.5" opacity=".5"/></svg>';
+
+  /* Real artwork if the game has it, otherwise a clean title cover (decorative). */
+  function gameMedia(game) {
     var media = el('div', 'game-media');
     if (game.image) {
       var img = el('img');
       img.src = game.image;
-      img.alt = options && options.decorative ? '' : (game.imageAlt || game.title);
-      img.loading = options && options.eager ? 'eager' : 'lazy';
+      img.alt = game.imageAlt || game.title;
+      img.loading = 'lazy';
       img.decoding = 'async';
       media.appendChild(img);
     } else {
       media.classList.add('game-media--placeholder');
+      media.setAttribute('aria-hidden', 'true');
+      media.insertAdjacentHTML('beforeend', ORNAMENT);
       media.appendChild(el('span', 'game-media__title', game.title));
-      media.appendChild(el('span', 'game-media__note', 'Artwork coming soon'));
+      media.appendChild(el('span', 'game-media__rule'));
     }
     return media;
-  }
-
-  /* ---------- Hero showcase: up to three games, those with real artwork first ---------- */
-
-  var showcase = document.querySelector('[data-hero-games]');
-  if (showcase && games.length) {
-    var picks = games.filter(function (g) { return g.image; })
-      .concat(games.filter(function (g) { return !g.image; }))
-      .slice(0, 3);
-    // Put the strongest card (first pick) in the middle, on top.
-    var order = picks.length === 3 ? [picks[1], picks[0], picks[2]] : picks;
-    order.forEach(function (game, i) {
-      var card = el('div', 'showcase__card showcase__card--' + (order.length === 3 ? ['left', 'front', 'right'][i] : 'front'));
-      card.appendChild(gameMedia(game, { decorative: true, eager: true }));
-      var cap = el('div', 'showcase__caption');
-      cap.appendChild(el('span', 'showcase__title', game.title));
-      if (game.status) cap.appendChild(el('span', 'showcase__status', game.status));
-      card.appendChild(cap);
-      showcase.appendChild(card);
-    });
-    showcase.setAttribute('aria-label', 'Games by Bible Games Project: ' + picks.map(function (g) { return g.title; }).join(', '));
   }
 
   /* ---------- Our games ---------- */
@@ -76,16 +59,20 @@
 
       var body = el('div', 'game__body');
       body.appendChild(el('h3', 'game__title', game.title));
-      body.appendChild(el('p', 'game__desc' + (game.description ? '' : ' game__desc--pending'),
-        game.description || 'More about this game soon.'));
-      if (game.link) {
-        var a = el('a', 'game__link');
-        a.href = game.link;
-        a.rel = 'noopener';
-        a.target = '_blank';
-        a.textContent = game.linkLabel ? 'Get it on ' + game.linkLabel : 'Visit the game';
-        a.insertAdjacentHTML('beforeend', '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>');
-        body.appendChild(a);
+      if (game.description) body.appendChild(el('p', 'game__desc', game.description));
+      var links = (game.links || []).filter(function (l) { return l && l.url; });
+      if (links.length) {
+        var linkRow = el('div', 'game__links');
+        links.forEach(function (l) {
+          var a = el('a', 'game__link', l.label);
+          a.href = l.url;
+          a.rel = 'noopener';
+          a.target = '_blank';
+          a.setAttribute('aria-label', game.title + ' on ' + l.label + ' (opens in a new tab)');
+          a.insertAdjacentHTML('beforeend', '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>');
+          linkRow.appendChild(a);
+        });
+        body.appendChild(linkRow);
       }
       card.appendChild(body);
       grid.appendChild(card);
@@ -138,10 +125,20 @@
 
   /* ---------- Community statistics ---------- */
 
-  var SOURCE_NAMES = {
-    googlePlay: 'Google Play', appStore: 'App Store', steam: 'Steam',
-    paypal: 'PayPal', paypalDonors: 'PayPal donors', storePurchases: 'store purchases',
+  /*
+   * data/stats.json holds, per platform, the figures it contributes to each statistic and the
+   * date they were last verified. A figure that is null is not included. See STATS.md.
+   */
+  var STATS = {
+    playersReached: { fields: ['players'] },
+    supporters: { fields: ['supporters', 'purchases'] },
+    totalContributions: { fields: ['contributions'], money: true },
   };
+  var STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000; // a daily refresh that failed twice
+  var dateFmt = function (d) { return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); };
+
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function toDate(v) { var d = v ? new Date(v) : null; return d && !isNaN(d) ? d : null; }
 
   function loadStats() {
     if (!window.fetch) return;
@@ -152,39 +149,57 @@
   }
 
   function renderStats(data) {
-    var stats = (data && data.stats) || {};
-    var currency = data.currency || 'EUR';
+    var platforms = (data && data.platforms) || {};
+    var currency = (data && data.currency) || 'EUR';
+    var now = Date.now();
     var anyShown = false;
+    var stale = {};
 
-    Object.keys(stats).forEach(function (key) {
+    Object.keys(STATS).forEach(function (key) {
+      var def = STATS[key];
       var card = document.querySelector('[data-stat="' + key + '"]');
       if (!card) return;
-      var sources = stats[key].sources || {};
-      var included = Object.keys(sources).filter(function (s) {
-        return typeof sources[s] === 'number' && isFinite(sources[s]);
+      var total = 0;
+      var included = [];
+      Object.keys(platforms).forEach(function (id) {
+        var p = platforms[id] || {};
+        var used = false;
+        def.fields.forEach(function (field) {
+          if (!isNum(p[field])) return;
+          total += p[field];
+          used = true;
+          var asOf = toDate(p[field + 'AsOf']) || toDate(p.verifiedAt);
+          if (!asOf || now - asOf.getTime() > STALE_AFTER_MS) {
+            var name = p.name || id;
+            if (!stale[name] || (asOf && asOf < stale[name])) stale[name] = asOf || true;
+          }
+        });
+        if (used) included.push(p.name || id);
       });
       if (!included.length) return;
 
-      var total = included.reduce(function (sum, s) { return sum + sources[s]; }, 0);
-      var isMoney = key === 'totalContributions';
-      var format = isMoney
+      var format = def.money
         ? function (n) { return new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency, maximumFractionDigits: 0 }).format(n); }
         : function (n) { return new Intl.NumberFormat('en-IE').format(n); };
-
-      var valueEl = card.querySelector('[data-value]');
       card.classList.add('has-value');
-      countUp(valueEl, Math.round(total), format);
-      card.querySelector('[data-sources]').textContent =
-        'Includes ' + included.map(function (s) { return SOURCE_NAMES[s] || s; }).join(' · ');
+      countUp(card.querySelector('[data-value]'), Math.floor(total), format);
+      card.querySelector('[data-sources]').textContent = 'Includes ' + included.join(' · ');
       anyShown = true;
     });
 
+    if (!anyShown) return;
     var updated = document.querySelector('[data-stats-updated]');
-    if (anyShown && data.updatedAt) {
-      var d = new Date(data.updatedAt);
-      if (!isNaN(d)) {
-        updated.textContent = 'Last updated ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-      }
+    var updatedAt = toDate(data.updatedAt);
+    if (updated && updatedAt) updated.textContent = 'Last updated ' + dateFmt(updatedAt);
+
+    var staleBox = document.querySelector('[data-stats-stale]');
+    var names = Object.keys(stale);
+    if (staleBox && names.length) {
+      staleBox.textContent = names.map(function (name) {
+        return stale[name] === true
+          ? name + ' figures may be out of date.'
+          : name + ' figures were last verified on ' + dateFmt(stale[name]) + ' and may be out of date.';
+      }).join(' ');
     }
   }
 

@@ -1,76 +1,88 @@
 # Community statistics — how they are calculated
 
-The three figures in the "Our community" section come from `data/stats.json`.
-The page adds up the sources that have a number and lists them under each figure
-("Includes Google Play · App Store"). A source set to `null` is left out. If no
-source of a figure has a number, the page shows "—" in grey. Nothing is ever
-estimated, rounded up or filled in.
+The three figures in the "Our community" section come from `data/stats.json`, which the daily
+job in [`tools/donate-stats/`](../../tools/donate-stats/README.md) writes from each platform's
+official reports. Each platform has its own figures and the date they were last verified. The
+page adds up the platforms that have a number, lists them under each figure ("Includes PayPal ·
+Steam"), and shows "—" while no platform has one. Nothing is estimated or rounded up (money is
+rounded down to whole euros).
 
-## The figures
+## Players reached
 
-### Players reached
-Sum of:
-- **Google Play**: users who installed each game (the "user installs" metric of
-  the Play Console statistics reports). Re-installs on the same account are not counted again.
-- **App Store**: first-time downloads (App Store Connect Sales and Trends, product types for
-  first-time downloads only; updates and re-downloads are excluded).
-- **Steam**: copies activated (Steamworks sales/activations reports).
+What platforms report, and why most of it is not "people":
 
-Limitation: no platform gives us unique *people*, and we cannot link the same person across
-platforms. The page says so ("Downloads and copies…") instead of claiming unique players.
+| Metric | What it counts | Used? |
+|---|---|---|
+| Downloads / install events | Every download, including re-downloads and re-installs | No |
+| Updates | Existing players updating | No |
+| Device installs (Google Play "Daily Device Installs") | Devices installing the game for the first time | **Google Play** |
+| First-time downloads (App Store product types 1, 1F, 1T, F1, 1E…) | Once per Apple ID per app | **App Store** |
+| Active users / active devices | Who is playing in a period, not total reach | No |
+| Activated copies (Steam CD keys) | Keys redeemed, played or not | No |
+| Lifetime unique users (Steamworks) | Steam accounts that launched the game | **Steam** |
 
-### Supporters & purchases
-Sum of:
-- **PayPal donors**: distinct PayPal payer accounts that made at least one completed,
-  non-refunded donation or subscription payment. A person who gives every month counts once.
-- **Store purchases**: paid game purchases on Google Play, the App Store and Steam, minus refunds.
+- **Google Play** — sum of "Daily Device Installs" from the monthly installs reports. Google
+  retired its per-account figures ("Total User Installs" is now always 0), so one person with
+  two devices counts twice.
+- **App Store** — first-time downloads from Sales and Trends; refunds (negative units) are
+  subtracted, re-downloads (3, 3F, 3T, F3) and updates (7, 7F, 7T, F7) are excluded.
+- **Steam** — "Lifetime unique users" summed over our games. No Steamworks Web API returns it,
+  so it is read from the Steamworks dashboard and entered in `tools/donate-stats/manual.json`
+  with its date; the page flags it when it is more than two days old.
 
-Limitation: stores do not tell us who buys a game, so a buyer who also donates may be counted
-twice. That is why the page calls this figure "Supporters & purchases" and not "people".
+**Limitation (stated on the page):** no platform identifies people across platforms or across
+games, so someone who plays two of our games, or on two platforms, counts more than once.
 
-### Total contributions
-Net amount received, in euros:
-- **PayPal**: completed donations and subscription payments, minus PayPal fees, refunds,
-  reversals and chargebacks.
-- **Google Play / App Store / Steam**: developer proceeds (after the store's commission and
-  taxes it withholds), minus refunds.
+## Supporters & purchases
 
-Amounts in other currencies use the exchange rate reported by each platform in its own
-financial report. Each transaction is counted once, keyed by its platform transaction ID.
+- **PayPal** — distinct PayPal payer accounts with completed donations or subscription payments
+  (event codes T0002, T0006, T0011, T0013, status S). Someone who gives monthly *and* once counts
+  once. A donor whose payments were all refunded or charged back is not counted.
+- **Purchases** — paid purchases, minus refunds: Google Play orders with a "Charge" and no
+  "Charge refund"; App Store paid units (refunds are negative); Steam `net_units_sold`. Free
+  downloads are not purchases.
+
+The stores never identify buyers, so a buyer who also donates counts as one supporter and one
+purchase. That is why the figure is called "Supporters & purchases", not "people".
+
+## Total contributions (EUR, net)
+
+- **PayPal** — completed payments plus their fees (negative), refunds, reversals and chargebacks
+  linked by `paypal_reference_id`. Temporary holds (T1110/T1111) are ignored.
+- **Google Play** — sum of "Amount (Merchant Currency)" in the monthly earnings reports for our
+  packages: charges, Google's fee, withheld taxes and refunds.
+- **App Store** — "Extended Partner Share" in the consolidated Finance reports (proceeds after
+  Apple's commission and taxes, refunds included).
+- **Steam** — `net_sales_usd` (sales minus returns and taxes) × the developer share in
+  `config.json` (70%, Valve's standard revenue share).
+
+Each transaction or report line is counted once (by transaction ID, order ID, or report period).
+Other currencies are converted with the European Central Bank reference rate of the
+transaction's date (App Store: the end of the report month). This is the only conversion, so the
+total may differ from the bank payouts by a few cents per transaction. Store earnings reports are
+monthly: the current month's sales appear in early next month.
 
 ## `data/stats.json`
 
 ```json
 {
-  "updatedAt": "2026-11-27T06:00:00Z",
+  "updatedAt": "2026-11-27T05:30:00Z",
   "currency": "EUR",
-  "stats": {
-    "playersReached":     { "sources": { "googlePlay": 0, "appStore": 0, "steam": 0 } },
-    "supporters":         { "sources": { "paypalDonors": 0, "storePurchases": 0 } },
-    "totalContributions": { "sources": { "paypal": 0, "googlePlay": 0, "appStore": 0, "steam": 0 } }
+  "platforms": {
+    "paypal":     { "name": "PayPal", "status": "ok", "verifiedAt": "…", "supporters": 0, "contributions": 0 },
+    "googlePlay": { "name": "Google Play", "status": "ok", "verifiedAt": "…", "players": 0, "purchases": 0, "contributions": 0 },
+    "appStore":   { "name": "App Store", "status": "ok", "verifiedAt": "…", "players": 0, "purchases": 0, "contributions": 0 },
+    "steam":      { "name": "Steam", "status": "ok", "verifiedAt": "…", "players": 0, "playersAsOf": "2026-11-20", "purchases": 0, "contributions": 0 }
   }
 }
 ```
 
-`updatedAt` is the time of the last successful refresh and is shown as "Last updated".
-Until an automatic refresh exists, the figures can be entered by hand from each platform's
-official reports. Only enter numbers copied from those reports.
+- `updatedAt` — last run in which at least one platform was verified ("Last updated").
+- `verifiedAt` / `<field>AsOf` — when that platform's figures were last verified. Older than two
+  days → the page says "<Platform> figures were last verified on … and may be out of date."
+- `status` — `ok`, `error` (last run failed; figures kept) or `not-configured`.
+- `null` — not verified: the platform is left out of that figure.
 
-## Automatic daily refresh (planned, not built yet)
-
-It needs credentials that only the account owners can create, and it can't be tested
-until they exist. The official data sources are:
-
-| Platform | Official source | Credentials needed |
-|---|---|---|
-| PayPal | Transaction Search API (`/v1/reporting/transactions`): payer ID, gross, fee and refunds per transaction; at most 31 days per request | REST app Client ID + Secret with Transaction Search enabled |
-| Google Play | Statistics and earnings reports exported by Play Console to its Google Cloud Storage bucket | Google Cloud service account invited in Play Console with access to reports |
-| App Store | App Store Connect API: Sales and Trends reports (`salesReports`) and finance reports (`financeReports`) | App Store Connect API key (Issuer ID, Key ID, .p8 file) with the Sales/Finance role |
-| Steam | Steamworks partner Web API, financial reports (`IPartnerFinancialsService`) | Steamworks Financial API Group Web API key |
-
-Planned design: a scheduled job runs once a day. For each platform it fetches new report
-data and stores it as dated raw records, removing duplicates by transaction or report ID.
-It then recomputes the totals and writes `data/stats.json` with the new `updatedAt`. If a
-platform fails, the job keeps that platform's last verified figure, reports the error and
-does not change `updatedAt` for it. Secrets must live in the hosting/CI secret store. They
-must never be in this folder: everything here is public.
+Until the daily job runs, figures can be entered by hand from each platform's official
+dashboard, with `verifiedAt` set to the date they were read. Only enter numbers copied from
+those reports.

@@ -1,0 +1,8 @@
+{
+  "_readme": "Figures that no platform API provides, copied by hand from the official dashboard. Always set asOf to the date the figure was read. Leave null until then.",
+  "steam": {
+    "lifetimeUniqueUsers": null,
+    "asOf": null,
+    "where": "Steamworks > each game > Players (\"Lifetime unique users\"), summed over all Bible Games Project games"
+  }
+}

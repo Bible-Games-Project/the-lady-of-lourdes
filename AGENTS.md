@@ -3873,6 +3873,15 @@ and fully zoomed out to see the entire map at once.
   maintainer's choice). PayPal settings live in `public/donate/config.js`;
   see `public/donate/README.md` before touching the payment flow.
 - Games and community statistics are data files (`public/donate/data/`).
-  The maintainer requires real game artwork only (no generated screenshots)
-  and real statistics only (null until verified, never estimates) — see
-  `public/donate/STATS.md`.
+  The maintainer requires real game artwork only (no generated screenshots),
+  no placeholder wording on the page, and real statistics only (null until
+  verified, never estimates) — see `public/donate/STATS.md`. Keep the stat
+  names exactly "Players reached", "Supporters & purchases", "Total
+  contributions" (never "downloads").
+- `tools/donate-stats/` is the daily stats job (PayPal, Google Play, App Store
+  Connect, Steamworks). Untested against real accounts. Its GitHub workflow is
+  kept as an inactive template (`daily-stats.workflow.yml`), not in
+  `.github/workflows/`: activating it needs the maintainer's secrets, and the
+  Build chat may not be able to push workflow files.
+- Store pages can't be fetched from the build sandbox (proxy 403), so real
+  game artwork has to come from the maintainer as attachments.

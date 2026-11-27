@@ -59,8 +59,6 @@
           <a class="btn btn--outline" href="#games">Explore Our Games</a>
         </div>
       </div>
-
-      <div class="showcase reveal" data-hero-games role="img" aria-label="Artwork from Bible Games Project games"></div>
     </div>
 
     <a class="scroll-cue" href="#community" aria-label="Read more">
@@ -82,32 +80,46 @@
           <article class="stat reveal" data-stat="playersReached">
             <p class="stat__value" data-value aria-live="polite">—</p>
             <h3 class="stat__label">Players reached</h3>
-            <p class="stat__desc">Downloads and copies of our games on Google Play, the App Store and Steam.</p>
+            <p class="stat__desc">People who got one of our games: first installs on Google Play, first-time downloads on the App Store and unique players on Steam. Updates and re-installs never count.</p>
             <p class="stat__sources" data-sources></p>
           </article>
           <article class="stat reveal" data-stat="supporters">
             <p class="stat__value" data-value aria-live="polite">—</p>
             <h3 class="stat__label">Supporters &amp; purchases</h3>
-            <p class="stat__desc">People who donate through PayPal, plus every purchase of our games.</p>
+            <p class="stat__desc">Each PayPal donor counted once, one-time or monthly, plus every paid purchase of our games, minus refunds.</p>
             <p class="stat__sources" data-sources></p>
           </article>
           <article class="stat reveal" data-stat="totalContributions">
             <p class="stat__value" data-value aria-live="polite">—</p>
             <h3 class="stat__label">Total contributions</h3>
-            <p class="stat__desc">What game sales and donations have given the project, after fees and refunds.</p>
+            <p class="stat__desc">What the project actually received from game sales and donations, in euros, after fees, refunds and chargebacks.</p>
             <p class="stat__sources" data-sources></p>
           </article>
         </div>
 
         <div class="stats__foot reveal">
           <p class="stats__updated" data-stats-updated>Verified figures will be published here soon.</p>
+          <p class="stats__stale" data-stats-stale role="note"></p>
           <details class="method">
             <summary>How we count</summary>
             <div class="method__body">
-              <p><strong>Players reached</strong> — first-time downloads on the App Store, users who installed our games on Google Play and copies activated on Steam. Updates and re-downloads are not counted. Stores do not tell us when the same person plays on two platforms, so that person may be counted twice.</p>
-              <p><strong>Supporters &amp; purchases</strong> — each PayPal donor counts once, however many times they give (monthly supporters included). Each game purchase, minus refunds, counts once. Stores do not tell us who buys a game, so we cannot know whether a buyer is also a donor: that is why we do not call this figure “people”.</p>
-              <p><strong>Total contributions</strong> — the net amount the project actually receives, in euros: after PayPal and store fees, minus refunds and chargebacks. Amounts in other currencies use the exchange rate reported by each platform.</p>
-              <p>Every figure comes from the official reports of PayPal, Google Play, App Store Connect and Steamworks. Under each figure we list the platforms it includes. If a platform cannot be reached, we keep its last verified figure. We never estimate or round up.</p>
+              <h3>Players reached</h3>
+              <p>Platforms report different things: <em>downloads</em> (every time a game is fetched, including re-downloads), <em>installations</em> (one per device), <em>active users</em> (people playing in a given month), <em>activated copies</em> (Steam keys) and <em>players</em> (accounts that actually launched the game). To count people reached, we use the figure closest to “one person, one game” on each platform:</p>
+              <ul>
+                <li><strong>Google Play</strong> — devices that installed the game for the first time. Updates and re-installs on the same device are excluded. Google no longer reports first installs per account, so someone with a phone and a tablet counts twice.</li>
+                <li><strong>App Store</strong> — first-time downloads. Apple counts these once per Apple ID; re-downloads and updates are excluded.</li>
+                <li><strong>Steam</strong> — lifetime unique users from Steamworks: Steam accounts that actually played the game.</li>
+              </ul>
+              <p>Google, Apple and Valve never tell us who their players are, so we cannot recognise the same person on two platforms or in two of our games. We add the platforms together and say so here, rather than claim to count unique people. Monthly active users are not added, because they measure who is playing now, not how many people we have reached.</p>
+
+              <h3>Supporters &amp; purchases</h3>
+              <p>Every PayPal donor counts once, identified by their PayPal account, whether they gave once, give every month, or both. Donors whose gifts were all refunded are not counted. To this we add every paid purchase of our games on Google Play, the App Store and Steam, minus refunds. Free downloads are not purchases. The stores do not tell us who their buyers are, so a buyer who also donates is counted once as a supporter and once as a purchase.</p>
+
+              <h3>Total contributions</h3>
+              <p>The money the project actually receives, in euros. PayPal donations and monthly support are counted after PayPal's fees, refunds and chargebacks. Store sales are counted as the developer's share after Google's, Apple's or Valve's commission, taxes withheld by the store and refunds. Every transaction is counted once, by its transaction or order ID. Amounts in other currencies are converted with the European Central Bank reference rate of the day of the transaction or report.</p>
+
+              <h3>Updates</h3>
+              <p>The figures come from the official reports of PayPal, Google Play Console, App Store Connect and Steamworks, refreshed once a day. Store earnings reports are monthly, so the latest month's sales may appear a few weeks later. If a platform cannot be reached, we keep its last verified figure and mark it as possibly out of date. We never estimate or round up.</p>
             </div>
           </details>
         </div>
@@ -132,14 +144,14 @@
         <div class="section-head reveal">
           <p class="eyebrow eyebrow--red">Why support us?</p>
           <h2 id="why-title">Every Contribution Makes a Difference</h2>
-          <p class="section-lead">We are a small, independent team. Your support goes directly into making our games.</p>
+          <p class="section-lead">Your support helps us create, improve and publish Christian video games, making the Bible and the Christian faith accessible to more people around the world.</p>
         </div>
 
         <ol class="reasons">
           <li class="reason reveal">
             <div class="reason__top">
               <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4"/><circle cx="16" cy="11.5" r=".6"/><circle cx="17.5" cy="13.8" r=".6"/></svg>
-              <span class="reason__num" aria-hidden="true">01</span>
+              <span class="reason__num" aria-hidden="true"></span>
             </div>
             <h3>New Christian games</h3>
             <p>Develop new games for children, families and players of all ages.</p>
@@ -147,7 +159,7 @@
           <li class="reason reveal">
             <div class="reason__top">
               <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5Z"/><path d="M12 6.5v13"/></svg>
-              <span class="reason__num" aria-hidden="true">02</span>
+              <span class="reason__num" aria-hidden="true"></span>
             </div>
             <h3>More Bible stories</h3>
             <p>Turn more stories from Scripture into adventures people play and remember.</p>
@@ -155,7 +167,7 @@
           <li class="reason reveal">
             <div class="reason__top">
               <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3.5 14.4 9l5.6.5-4.3 3.8 1.3 5.6L12 16l-5 2.9 1.3-5.6L4 9.5 9.6 9Z"/></svg>
-              <span class="reason__num" aria-hidden="true">03</span>
+              <span class="reason__num" aria-hidden="true"></span>
             </div>
             <h3>Better existing games</h3>
             <p>Keep improving our games with fixes, polish and new content.</p>
@@ -163,7 +175,7 @@
           <li class="reason reveal">
             <div class="reason__top">
               <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
-              <span class="reason__num" aria-hidden="true">04</span>
+              <span class="reason__num" aria-hidden="true"></span>
             </div>
             <h3>Art, music &amp; sound</h3>
             <p>Create the artwork, music and sound that make each world feel alive.</p>
@@ -171,12 +183,30 @@
           <li class="reason reveal">
             <div class="reason__top">
               <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3Z"/></svg>
-              <span class="reason__num" aria-hidden="true">05</span>
+              <span class="reason__num" aria-hidden="true"></span>
             </div>
             <h3>More languages</h3>
             <p>Translate our games so families around the world can play them.</p>
           </li>
         </ol>
+
+        <details class="goes reveal">
+          <summary>
+            <span>Where Your Support Goes</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <div class="goes__body">
+            <p>Every contribution is spent on making and sharing our games:</p>
+            <ul class="goes__list">
+              <li>Game development</li>
+              <li>Art, animation and visual effects</li>
+              <li>Music and sound</li>
+              <li>Translations</li>
+              <li>Testing and optimization</li>
+              <li>Publishing and maintenance</li>
+            </ul>
+          </div>
+        </details>
       </div>
     </section>
 
@@ -264,8 +294,9 @@
         </div>
       </div>
       <nav class="footer__nav" aria-label="Page sections">
-        <a href="#games">Our games</a>
         <a href="#community">Our community</a>
+        <a href="#games">Our games</a>
+        <a href="#why">Why support us</a>
         <a href="#support">Support us</a>
       </nav>
       <div class="footer__meta">
