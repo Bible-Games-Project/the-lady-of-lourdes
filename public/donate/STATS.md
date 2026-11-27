@@ -33,7 +33,7 @@ What platforms report, and why most of it is not "people":
 **Limitation (stated on the page):** no platform identifies people across platforms or across
 games, so someone who plays two of our games, or on two platforms, counts more than once.
 
-## Supporters & purchases
+## Supporters
 
 - **PayPal** — distinct PayPal payer accounts with completed donations or subscription payments
   (event codes T0002, T0006, T0011, T0013, status S). Someone who gives monthly *and* once counts
@@ -43,9 +43,9 @@ games, so someone who plays two of our games, or on two platforms, counts more t
   downloads are not purchases.
 
 The stores never identify buyers, so a buyer who also donates counts as one supporter and one
-purchase. That is why the figure is called "Supporters & purchases", not "people".
+purchase.
 
-## Total contributions (EUR, net)
+## Community contributions (EUR, net)
 
 - **PayPal** — completed payments plus their fees (negative), refunds, reversals and chargebacks
   linked by `paypal_reference_id`. Temporary holds (T1110/T1111) are ignored.

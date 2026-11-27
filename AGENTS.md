@@ -3876,8 +3876,8 @@ and fully zoomed out to see the entire map at once.
   The maintainer requires real game artwork only (no generated screenshots),
   no placeholder wording on the page, and real statistics only (null until
   verified, never estimates) — see `public/donate/STATS.md`. Keep the stat
-  names exactly "Players reached", "Supporters & purchases", "Total
-  contributions" (never "downloads").
+  names and descriptions exactly as the maintainer wrote them: "Players
+  reached", "Supporters", "Community contributions" (never "downloads").
 - `tools/donate-stats/` is the daily stats job (PayPal, Google Play, App Store
   Connect, Steamworks). Untested against real accounts. Its GitHub workflow is
   kept as an inactive template (`daily-stats.workflow.yml`), not in
