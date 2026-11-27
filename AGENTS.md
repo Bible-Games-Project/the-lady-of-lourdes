@@ -3872,3 +3872,7 @@ and fully zoomed out to see the entire map at once.
 - Donations use the PayPal JS SDK client-side only (no server, by the
   maintainer's choice). PayPal settings live in `public/donate/config.js`;
   see `public/donate/README.md` before touching the payment flow.
+- Games and community statistics are data files (`public/donate/data/`).
+  The maintainer requires real game artwork only (no generated screenshots)
+  and real statistics only (null until verified, never estimates) — see
+  `public/donate/STATS.md`.

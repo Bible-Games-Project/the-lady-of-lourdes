@@ -1,0 +1,16 @@
+{
+  "_readme": "Community statistics shown on the page. See STATS.md for how each figure is calculated. Use null for anything not yet verified: the page then shows it as pending. Never put estimated numbers here.",
+  "updatedAt": null,
+  "currency": "EUR",
+  "stats": {
+    "playersReached": {
+      "sources": { "googlePlay": null, "appStore": null, "steam": null }
+    },
+    "supporters": {
+      "sources": { "paypalDonors": null, "storePurchases": null }
+    },
+    "totalContributions": {
+      "sources": { "paypal": null, "googlePlay": null, "appStore": null, "steam": null }
+    }
+  }
+}

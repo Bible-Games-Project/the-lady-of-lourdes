@@ -7,6 +7,15 @@ To move it to its own site or custom domain, copy this whole folder and serve
 `index.html` from the root. When it gets its own domain, change `og:image` in
 `index.html` to an absolute URL.
 
+## Editing the content
+
+- `data/games.js` — the games shown in "Our games" and in the hero. Add a game by copying
+  an entry. Use only real artwork from each game (in `assets/games/`). A game without an
+  image shows a clearly marked "Artwork coming soon" placeholder.
+- `data/stats.json` — the three community figures. `null` = not verified yet (shown as
+  "—"). See `STATS.md` for how every figure is calculated and for the planned daily refresh.
+- `config.js` — donation amounts, monthly tiers and PayPal settings.
+
 ## How donating works
 
 `donate.js` opens a dialog: one-time (€5/10/25/50 or a custom amount) or

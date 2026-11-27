@@ -9,6 +9,7 @@
  *   Use the Sandbox Client ID to test with fake money, the Live one to accept real payments.
  *   While it is empty, one-time donations fall back to the PayPal campaign link below and
  *   monthly support shows as "coming soon".
+ * - monthlyTiers[].recommended: shows a subtle "Recommended" badge on that tier.
  * - monthlyTiers[].planId: the "P-..." ID of a monthly subscription plan created in the same
  *   PayPal account (and the same Sandbox/Live mode) as the Client ID. A tier without a plan
  *   ID is shown as "coming soon".
@@ -23,10 +24,10 @@ window.BGP_DONATE_CONFIG = {
   maxAmount: 10000,
 
   monthlyTiers: [
-    { amount: 3, name: 'Friend of Bible Games Project', planId: '' },
-    { amount: 5, name: 'Supporter of Bible Games Project', planId: '' },
-    { amount: 10, name: 'Patron of Bible Games Project', planId: '' },
-    { amount: 25, name: 'Benefactor of Bible Games Project', planId: '' },
+    { amount: 3, shortName: 'Friend', name: 'Friend of Bible Games Project', planId: '' },
+    { amount: 5, shortName: 'Supporter', name: 'Supporter of Bible Games Project', planId: '', recommended: true },
+    { amount: 10, shortName: 'Patron', name: 'Patron of Bible Games Project', planId: '' },
+    { amount: 25, shortName: 'Benefactor', name: 'Benefactor of Bible Games Project', planId: '' },
   ],
   defaultMonthlyTier: 1,
 

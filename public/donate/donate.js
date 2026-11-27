@@ -42,7 +42,8 @@
   tiers.forEach(function (t, i) {
     var btn = choiceButton('tier', '', { tier: i });
     btn.innerHTML = '<span class="tier-options__amount">' + fmt(t.amount) + '<small>/month</small></span>' +
-      '<span class="tier-options__name">' + escapeHtml(t.name) + '</span>' +
+      '<span class="tier-options__name">' + escapeHtml(t.shortName || t.name) +
+      (t.recommended ? ' <span class="tier-options__badge">Recommended</span>' : '') + '</span>' +
       (connected && t.planId ? '' : '<span class="tier-options__soon">Coming soon</span>');
     tiersBox.appendChild(btn);
   });
@@ -334,12 +335,13 @@
 
   /* ---------- Open / close ---------- */
 
-  function open(mode) {
+  function open(mode, preset) {
     if (typeof dialog.showModal !== 'function') {
       window.location.href = cfg.fallbackDonateUrl;
       return;
     }
     closeButtons();
+    applyPreset(preset || {});
     setMode(mode);
     showStep('choose');
     document.documentElement.classList.add('dialog-open');
@@ -360,8 +362,20 @@
     var trigger = e.target.closest('[data-donate]');
     if (!trigger) return;
     e.preventDefault();
-    open(trigger.dataset.mode || 'once');
+    open(trigger.dataset.mode || 'once', trigger.dataset);
   });
+
+  /* Preselect what the visitor clicked on the page: an amount, "Custom" or a monthly tier. */
+  function applyPreset(p) {
+    if (p.custom) {
+      state.custom = true;
+    } else if (p.amount && isFinite(Number(p.amount))) {
+      state.custom = false;
+      state.onceAmount = Number(p.amount);
+    }
+    if (p.tier != null && tiers[Number(p.tier)]) state.tierIndex = Number(p.tier);
+    if (state.custom) setTimeout(function () { customInput.focus(); }, 50);
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {

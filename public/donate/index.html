@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Support Bible Games Project — Bringing Faith to Life Through Games</title>
-  <meta name="description" content="Bible Games Project creates meaningful Christian games that inspire, educate and bring people closer to the Bible. Support our mission with a one-time or monthly contribution." />
+  <title>Bible Games Project — Bringing Faith to Life Through Games</title>
+  <meta name="description" content="Bible Games Project creates meaningful Christian video games that inspire, educate and bring people closer to the Bible. Discover our games and support our mission." />
   <meta name="theme-color" content="#1a0b0d" />
 
   <!-- Social previews. When the page moves to its custom domain, make og:image an absolute URL. -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Bringing Faith to Life Through Games — Bible Games Project" />
-  <meta property="og:description" content="Support Bible Games Project and help bring more Bible stories to life through games." />
+  <meta property="og:description" content="Christian video games inspired by the Bible. Discover our games and support our mission." />
   <meta property="og:image" content="assets/img/hero-galilee-dusk.webp" />
   <meta name="twitter:card" content="summary_large_image" />
 
@@ -25,6 +25,8 @@
     }
   </script>
   <script src="config.js" defer></script>
+  <script src="data/games.js" defer></script>
+  <script src="page.js" defer></script>
   <script src="donate.js" defer></script>
 </head>
 <body>
@@ -34,95 +36,169 @@
     <div class="hero__bg" aria-hidden="true"></div>
     <div class="hero__shade" aria-hidden="true"></div>
 
-    <div class="brand reveal">
-      <span class="brand__mark" aria-hidden="true">BG</span>
-      <span class="brand__name">Bible Games Project</span>
-    </div>
-
-    <div class="hero__content">
-      <p class="eyebrow reveal">Independent Christian game development</p>
-      <h1 class="reveal">Bringing Faith to Life <em>Through Games.</em></h1>
-      <p class="hero__lead reveal">
-        We create meaningful Christian games that inspire, educate and bring people closer
-        to the Bible and the Christian faith.
-      </p>
-      <div class="reveal">
-        <a class="btn btn--primary" href="#support" data-donate>
-          Support Our Mission
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </a>
-        <p class="hero__note">One-time or monthly · Secure checkout with PayPal</p>
+    <div class="hero__top container">
+      <div class="brand reveal">
+        <span class="brand__mark" aria-hidden="true">BG</span>
+        <span class="brand__name">Bible Games Project</span>
       </div>
     </div>
 
-    <a class="scroll-cue" href="#why" aria-label="Read more">
+    <div class="container hero__grid">
+      <div class="hero__content">
+        <p class="eyebrow reveal">Independent Christian video games</p>
+        <h1 class="reveal">Bringing Faith to Life <em>Through Games.</em></h1>
+        <p class="hero__lead reveal">
+          We create meaningful Christian games that inspire, educate and bring people closer
+          to the Bible and the Christian faith.
+        </p>
+        <div class="hero__actions reveal">
+          <a class="btn btn--primary" href="#support" data-donate>
+            Support Our Mission
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn--outline" href="#games">Explore Our Games</a>
+        </div>
+      </div>
+
+      <div class="showcase reveal" data-hero-games role="img" aria-label="Artwork from Bible Games Project games"></div>
+    </div>
+
+    <a class="scroll-cue" href="#community" aria-label="Read more">
       <span></span>
     </a>
   </header>
 
   <main>
 
-    <!-- WHY SUPPORT US -->
-    <section class="why" id="why">
+    <!-- COMMUNITY STATISTICS -->
+    <section class="community" id="community" aria-labelledby="community-title">
       <div class="container">
         <div class="section-head reveal">
-          <p class="eyebrow eyebrow--red">Why support us?</p>
-          <h2>Every Contribution Makes a Difference</h2>
-          <p class="section-lead">
-            Bible Games Project is an independent initiative. Each contribution goes directly into
-            the work of creating, improving and publishing our games — and keeping them meaningful,
-            beautiful and accessible to everyone.
-          </p>
+          <p class="eyebrow">Our community</p>
+          <h2 id="community-title">A Growing Community of Players and Supporters</h2>
         </div>
 
-        <ul class="reasons">
-          <li class="reason reveal">
-            <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4"/><circle cx="16" cy="11.5" r=".6"/><circle cx="17.5" cy="13.8" r=".6"/></svg>
-            <h3>New Christian games</h3>
-            <p>Fund the development of new games for children, families and players of all ages.</p>
-          </li>
-          <li class="reason reveal">
-            <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5Z"/><path d="M12 6.5v13"/></svg>
-            <h3>More Bible stories</h3>
-            <p>Bring more stories from Scripture to life as adventures people can play and remember.</p>
-          </li>
-          <li class="reason reveal">
-            <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3.5 14.4 9l5.6.5-4.3 3.8 1.3 5.6L12 16l-5 2.9 1.3-5.6L4 9.5 9.6 9Z"/></svg>
-            <h3>Better existing games</h3>
-            <p>Keep improving the games you already know with fixes, polish and new content.</p>
-          </li>
-          <li class="reason reveal">
-            <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
-            <h3>Art, music &amp; sound</h3>
-            <p>Create the artwork, music and sound effects that make each world feel alive.</p>
-          </li>
-          <li class="reason reveal">
-            <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3Z"/></svg>
-            <h3>More languages</h3>
-            <p>Translate our games so children and families around the world can play them.</p>
-          </li>
-        </ul>
+        <div class="stats">
+          <article class="stat reveal" data-stat="playersReached">
+            <p class="stat__value" data-value aria-live="polite">—</p>
+            <h3 class="stat__label">Players reached</h3>
+            <p class="stat__desc">Downloads and copies of our games on Google Play, the App Store and Steam.</p>
+            <p class="stat__sources" data-sources></p>
+          </article>
+          <article class="stat reveal" data-stat="supporters">
+            <p class="stat__value" data-value aria-live="polite">—</p>
+            <h3 class="stat__label">Supporters &amp; purchases</h3>
+            <p class="stat__desc">People who donate through PayPal, plus every purchase of our games.</p>
+            <p class="stat__sources" data-sources></p>
+          </article>
+          <article class="stat reveal" data-stat="totalContributions">
+            <p class="stat__value" data-value aria-live="polite">—</p>
+            <h3 class="stat__label">Total contributions</h3>
+            <p class="stat__desc">What game sales and donations have given the project, after fees and refunds.</p>
+            <p class="stat__sources" data-sources></p>
+          </article>
+        </div>
+
+        <div class="stats__foot reveal">
+          <p class="stats__updated" data-stats-updated>Verified figures will be published here soon.</p>
+          <details class="method">
+            <summary>How we count</summary>
+            <div class="method__body">
+              <p><strong>Players reached</strong> — first-time downloads on the App Store, users who installed our games on Google Play and copies activated on Steam. Updates and re-downloads are not counted. Stores do not tell us when the same person plays on two platforms, so that person may be counted twice.</p>
+              <p><strong>Supporters &amp; purchases</strong> — each PayPal donor counts once, however many times they give (monthly supporters included). Each game purchase, minus refunds, counts once. Stores do not tell us who buys a game, so we cannot know whether a buyer is also a donor: that is why we do not call this figure “people”.</p>
+              <p><strong>Total contributions</strong> — the net amount the project actually receives, in euros: after PayPal and store fees, minus refunds and chargebacks. Amounts in other currencies use the exchange rate reported by each platform.</p>
+              <p>Every figure comes from the official reports of PayPal, Google Play, App Store Connect and Steamworks. Under each figure we list the platforms it includes. If a platform cannot be reached, we keep its last verified figure. We never estimate or round up.</p>
+            </div>
+          </details>
+        </div>
       </div>
     </section>
 
-    <!-- OUR MISSION -->
-    <section class="mission">
+    <!-- OUR GAMES -->
+    <section class="games" id="games" aria-labelledby="games-title">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow eyebrow--red">Our games</p>
+          <h2 id="games-title">The Games Behind the Mission</h2>
+          <p class="section-lead">Each of our games brings a part of the Bible and the Christian faith to life, for children, families and players of all ages.</p>
+        </div>
+        <div class="game-grid" data-games></div>
+      </div>
+    </section>
+
+    <!-- WHY SUPPORT US -->
+    <section class="why" id="why" aria-labelledby="why-title">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow eyebrow--red">Why support us?</p>
+          <h2 id="why-title">Every Contribution Makes a Difference</h2>
+          <p class="section-lead">We are a small, independent team. Your support goes directly into making our games.</p>
+        </div>
+
+        <ol class="reasons">
+          <li class="reason reveal">
+            <div class="reason__top">
+              <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4"/><circle cx="16" cy="11.5" r=".6"/><circle cx="17.5" cy="13.8" r=".6"/></svg>
+              <span class="reason__num" aria-hidden="true">01</span>
+            </div>
+            <h3>New Christian games</h3>
+            <p>Develop new games for children, families and players of all ages.</p>
+          </li>
+          <li class="reason reveal">
+            <div class="reason__top">
+              <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5Z"/><path d="M12 6.5v13"/></svg>
+              <span class="reason__num" aria-hidden="true">02</span>
+            </div>
+            <h3>More Bible stories</h3>
+            <p>Turn more stories from Scripture into adventures people play and remember.</p>
+          </li>
+          <li class="reason reveal">
+            <div class="reason__top">
+              <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3.5 14.4 9l5.6.5-4.3 3.8 1.3 5.6L12 16l-5 2.9 1.3-5.6L4 9.5 9.6 9Z"/></svg>
+              <span class="reason__num" aria-hidden="true">03</span>
+            </div>
+            <h3>Better existing games</h3>
+            <p>Keep improving our games with fixes, polish and new content.</p>
+          </li>
+          <li class="reason reveal">
+            <div class="reason__top">
+              <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
+              <span class="reason__num" aria-hidden="true">04</span>
+            </div>
+            <h3>Art, music &amp; sound</h3>
+            <p>Create the artwork, music and sound that make each world feel alive.</p>
+          </li>
+          <li class="reason reveal">
+            <div class="reason__top">
+              <svg class="reason__icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3Z"/></svg>
+              <span class="reason__num" aria-hidden="true">05</span>
+            </div>
+            <h3>More languages</h3>
+            <p>Translate our games so families around the world can play them.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- FOUNDERS & MISSION -->
+    <section class="mission" aria-labelledby="mission-title">
       <div class="container mission__grid">
         <figure class="mission__art reveal">
           <img src="assets/img/mission-night.webp" width="1024" height="1024" loading="lazy" decoding="async"
                alt="A stone house with a warm lamp in the window under a starry sky, with sheep resting nearby." />
         </figure>
         <div class="mission__text reveal">
-          <p class="eyebrow">Our mission</p>
-          <h2>Games That Bring the Bible to Life</h2>
+          <p class="eyebrow">Who we are</p>
+          <h2 id="mission-title">Two Brothers, One Mission</h2>
           <p>
-            Bible Games Project was founded by brothers <strong>Pau and Joan Sabé</strong> with one clear
-            mission: to make the Bible and the Christian faith more accessible through entertaining
-            and meaningful video games for children, families and people around the world.
+            We are <strong>Pau and Joan Sabé</strong>, two brothers who started Bible Games Project with a
+            simple wish: to make the Bible and the Christian faith more accessible through games that
+            are fun to play and meaningful to remember.
           </p>
           <p>
-            We believe games can be a beautiful way to discover the stories of the Bible — to walk
-            alongside its people, understand their faith and carry its message into everyday life.
+            We make our games for children, families and people around the world. We believe a game can
+            be a beautiful way to walk alongside the people of the Bible, understand their faith and carry
+            its message into everyday life.
           </p>
           <p class="signature">— Pau &amp; Joan</p>
         </div>
@@ -130,51 +206,43 @@
     </section>
 
     <!-- SUPPORT OUR MISSION -->
-    <section class="support" id="support">
+    <section class="support" id="support" aria-labelledby="support-title">
       <div class="container">
         <div class="section-head reveal">
           <p class="eyebrow eyebrow--red">Support our mission</p>
-          <h2>Be Part of Bible Games Project</h2>
-          <p class="section-lead">
-            Your contribution helps us keep creating, improving and publishing Christian video games.
-            Choose the way that suits you best — no account needed.
-          </p>
+          <h2 id="support-title">Help Us Create More Games</h2>
+          <p class="section-lead">Your contribution helps us keep creating, improving and publishing Christian video games. No account needed.</p>
         </div>
 
         <div class="plans">
           <article class="plan plan--featured reveal">
             <p class="plan__kicker">Monthly support</p>
             <h3>Walk with us every month</h3>
-            <p class="plan__text">Regular support lets us plan ahead and keep building new games. Cancel anytime from your PayPal account.</p>
-            <ul class="tiers">
-              <li><span class="tiers__amount">€3</span><span class="tiers__name">Friend</span></li>
-              <li><span class="tiers__amount">€5</span><span class="tiers__name">Supporter</span></li>
-              <li><span class="tiers__amount">€10</span><span class="tiers__name">Patron</span></li>
-              <li><span class="tiers__amount">€25</span><span class="tiers__name">Benefactor</span></li>
-            </ul>
+            <p class="plan__text">Regular support lets us plan ahead and keep building new games.</p>
+            <ul class="tiers" data-plan-tiers></ul>
             <a class="btn btn--light" href="#support" data-donate data-mode="monthly">
               Become a Monthly Supporter
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
             </a>
+            <p class="plan__fine">Cancel anytime from your PayPal account.</p>
           </article>
 
           <article class="plan reveal">
             <p class="plan__kicker">One-time donation</p>
             <h3>Give once, any amount</h3>
-            <p class="plan__text">Every contribution, no matter how small, helps us continue creating games that share the message of the Bible.</p>
-            <ul class="chips" aria-label="Suggested amounts">
-              <li>€5</li><li>€10</li><li>€25</li><li>€50</li><li>Custom</li>
-            </ul>
+            <p class="plan__text">Every contribution, no matter how small, helps us share the message of the Bible.</p>
+            <div class="quick-amounts" data-plan-amounts></div>
             <a class="btn btn--primary" href="#support" data-donate data-mode="once">
               Donate
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
             </a>
+            <p class="plan__fine">Pay with PayPal or with a card.</p>
           </article>
         </div>
 
         <p class="support__secure reveal">
           <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
-          Payments are handled securely by PayPal. You can pay with your PayPal account or with a card.
+          Payments are handled securely by PayPal. We never see your card or bank details.
         </p>
         <noscript>
           <p class="support__secure">
@@ -195,6 +263,11 @@
           <p>Making the Bible and the Christian faith more accessible through video games.</p>
         </div>
       </div>
+      <nav class="footer__nav" aria-label="Page sections">
+        <a href="#games">Our games</a>
+        <a href="#community">Our community</a>
+        <a href="#support">Support us</a>
+      </nav>
       <div class="footer__meta">
         <span>© <span id="year">2026</span> Bible Games Project</span>
         <span>Donations are processed securely by PayPal.</span>
@@ -267,22 +340,5 @@
     </div>
   </dialog>
 
-  <script>
-    // Fade sections in as they scroll into view (skipped when the visitor prefers reduced motion).
-    (function () {
-      document.getElementById('year').textContent = new Date().getFullYear();
-      var items = document.querySelectorAll('.reveal');
-      if (!document.documentElement.classList.contains('js-reveal')) return;
-      var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (entry) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            io.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-      items.forEach(function (el) { io.observe(el); });
-    })();
-  </script>
 </body>
 </html>
