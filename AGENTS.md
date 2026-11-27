@@ -3869,3 +3869,6 @@ and fully zoomed out to see the entire map at once.
   own project/custom domain later. Vite copies `public/` verbatim into `dist/`
   — keep the page plain HTML/CSS with relative paths, and don't wire it into
   the game's code or build.
+- Donations use the PayPal JS SDK client-side only (no server, by the
+  maintainer's choice). PayPal settings live in `public/donate/config.js`;
+  see `public/donate/README.md` before touching the payment flow.
